@@ -125,8 +125,9 @@ The system shall verify:
 - Required text (The main body text A, B, C, D points must remain intact and unmodified from the standard template).
 - Required agreement structure and prescribed text formatting where formatting is a business requirement.
 
-**Platform Terminology (PayMin / Digital Muhasil)**
-- The document must explicitly mention the correct digital platform, e.g., "Digital Muhasil" or "PayMin" / "Paymere BCX". The complete wording and formatting must be preserved.
+**Platform Terminology (PayMin / Digital Muhasil / Paymere BCX)**
+- The document must explicitly mention the correct digital platform, e.g., "Digital Muhasil" or "PayMin" / "Paymere BCX". 
+- The complete wording must be present, and **parallel line-to-line formatting must be maintained** exactly as the standard template.
 
 **Section 5 — Transaction Charges**
 - Transaction charges must be explicitly mentioned in Section 5.2 (e.g., "as per prevailing charges of 1-Link").
@@ -146,11 +147,16 @@ The system shall verify:
 
 ---
 
-## 8. E-Stamp Papers (Participation Memorandum & SLA)
+## 8. E-Stamp Papers & Notary Public (Participation Memorandum & SLA)
 **Content Requirements**
 - **Visual Authentication:** The print should visually resemble an original E-stamp paper (typically a brownish color texture), not just a plain A4 white paper printout.
 - **Text Validation:** Check the Non-judicial description, First Party, and Second Party details on the stamp paper to ensure they are accurate and match the intended agreement.
 - **Watermark:** Ensure the E-stamp watermark and extensions are valid. E-stamps shall be accepted as valid evidence and may be cross-checked against official online information.
+
+**Notary Public Requirements**
+- Where notarization is required, the document must contain a **Notary Public stamp/seal**.
+- Required notarial information must be present.
+- The notary public stamp and the picture/signature of the notary guy must be clearly visible and verifiable.
 
 ---
 
