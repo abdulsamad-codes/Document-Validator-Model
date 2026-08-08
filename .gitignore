@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+ENV/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Output files (generated, not source)
+extracted_ocr/
+extracted_ocr_pages/
+temp_page_*.png
+recovered_page_*.png
+page_*_layer_*.jpeg
+page_*_layer_*.png
+
+# Sensitive/Large PDFs (don't commit actual documents)
+*.pdf
+*.docx
+
+# Large image files (raw scans)
+*.jpeg
+*.jpg
+
+# Keep diagrams
+!diagrams/*.png
+!diagrams/*.jpg

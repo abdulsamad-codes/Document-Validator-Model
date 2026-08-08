@@ -1,0 +1,21 @@
+# Document Validator Model - Python Dependencies
+
+# PDF Processing
+PyMuPDF>=1.23.0          # fitz - PDF layer analysis, annotation removal
+pdf2image>=1.16.3        # Convert PDF pages to images for OCR
+pypdf>=3.0.0             # Modern PDF text extraction (text-based PDFs)
+pdfplumber>=0.10.0       # Advanced PDF text/table extraction
+
+# OCR
+pytesseract>=0.3.10      # Python wrapper for Tesseract OCR engine
+
+# Image Processing
+Pillow>=10.0.0           # PIL - Image handling
+opencv-python>=4.8.0     # cv2 - Image preprocessing (overlay removal, thresholding)
+numpy>=1.24.0            # Array operations for image processing
+
+# Document Processing
+python-docx>=0.8.11      # Read/parse .docx files
+
+# Utilities
+pathlib                  # Path handling (stdlib, no install needed)
