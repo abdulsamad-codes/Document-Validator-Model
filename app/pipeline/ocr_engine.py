@@ -9,16 +9,49 @@ import cv2
 import numpy as np
 import pytesseract
 import logging
+import os
+import sys
+from pathlib import Path
 from typing import Dict, List, Optional
 from config import OCR_LANGUAGES, OCR_CONFIDENCE_THRESHOLD
 
 logger = logging.getLogger(__name__)
 
 
+def _configure_tesseract() -> None:
+    """
+    Auto-configure the Tesseract binary path.
+    Priority:
+      1. TESSERACT_CMD environment variable (any OS)
+      2. Default Windows installation path
+      3. Leave unset — assumes tesseract is on PATH (Linux/Mac standard)
+    """
+    env_cmd = os.getenv("TESSERACT_CMD")
+    if env_cmd and Path(env_cmd).exists():
+        pytesseract.pytesseract.tesseract_cmd = env_cmd
+        return
+
+    if sys.platform == "win32":
+        default_win = Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe")
+        if default_win.exists():
+            pytesseract.pytesseract.tesseract_cmd = str(default_win)
+            return
+        # Not found — log a clear, actionable message
+        logger.warning(
+            "Tesseract not found at default Windows path. "
+            "Install from: https://github.com/UB-Mannheim/tesseract/wiki "
+            "or set the TESSERACT_CMD environment variable to the full path."
+        )
+
+
+_configure_tesseract()
+
+
 class OCREngine:
     def __init__(self, engine_type: str = "tesseract"):
         self.engine_type = engine_type
-        # In a real environment, you might need to set pytesseract.pytesseract.tesseract_cmd
+        # tesseract_cmd is configured at module load time by _configure_tesseract().
+        # To override at runtime, set the TESSERACT_CMD environment variable.
 
     def extract_text(self, image: np.ndarray) -> str:
         """
