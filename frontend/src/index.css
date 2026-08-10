@@ -1,0 +1,32 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Merriweather:wght@300;400;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-paper text-ink antialiased;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-ink text-white px-4 py-2 rounded-md font-medium transition-colors hover:bg-ink-light disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  
+  .badge {
+    @apply px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider text-white;
+  }
+  .badge-pass { @apply bg-status-pass; }
+  .badge-warning { @apply bg-status-warning text-ink; }
+  .badge-review { @apply bg-status-review; }
+  .badge-fail { @apply bg-status-fail; }
+  .badge-rejected { @apply bg-status-rejected; }
+}
+
+/* Base styles for the SVG animations */
+.pipeline-path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+}
