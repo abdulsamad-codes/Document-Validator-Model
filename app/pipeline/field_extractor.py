@@ -17,7 +17,7 @@ class FieldExtractor:
         # Compiled Regex Patterns
         self.patterns = {
             "cnic": re.compile(r'\b\d{5}[-\s]?\d{7}[-\s]?\d{1}\b'),
-            "iban": re.compile(r'\bPK\d{2}[A-Z]{4}\d{16}\b', re.IGNORECASE),
+            "iban": re.compile(r'PK\d{2}[A-Z]{4}\d{16}', re.IGNORECASE),
             # General account number heuristic: 10-24 digits possibly separated by dashes
             "account_number": re.compile(r'\b\d{4,6}[-\s]?\d{4,10}[-\s]?\d{2,6}\b'),
             # Date heuristc: DD-MM-YYYY, DD/MM/YYYY, etc.
@@ -49,7 +49,7 @@ class FieldExtractor:
         Find a keyword (case insensitive) and return surrounding text.
         Useful for extracting Account Titles near 'Title of Account'.
         """
-        match = re.search(r'\b' + re.escape(keyword) + r'\b', text, re.IGNORECASE)
+        match = re.search(re.escape(keyword), text, re.IGNORECASE)
         if match:
             start = max(0, match.end())
             end = min(len(text), start + window)
