@@ -1,15 +1,15 @@
 # 📄 Document Validator Model
 
-> **KPITB Fintech Document Verification System**  
+> **KPITB Financial Document Verification System**
 > An OCR-powered pipeline to validate onboarding documents submitted by sub-billers to KPITB (Khyber Pakhtunkhwa Information Technology Board).
 
 ---
 
 ## 🎯 Project Overview
 
-This project automates the validation of official onboarding documents required when a department or organization registers as a **sub-biller** under the KPITB digital payment ecosystem (PayMin / Digital Muhasil).
+This system automates the verification of official onboarding documents required when a department or organization registers as a **sub-biller** under the KPITB digital payment ecosystem (PayMin / Digital Muhasil).
 
-The system uses **OCR (Optical Character Recognition)** to extract text from scanned/image-based PDFs and applies a rule-based validation engine to verify document compliance.
+The pipeline uses **OCR** to extract text from scanned/image-based PDFs, applies a **rule-based validation engine** to verify document compliance, performs **cross-document consistency checks**, and provides a **human review dashboard** for final approval.
 
 ---
 
@@ -17,136 +17,157 @@ The system uses **OCR (Optical Character Recognition)** to extract text from sca
 
 ```
 Document-Validator-Model/
-├── README.md                        ← This file
-├── .gitignore                       ← Git ignore rules
-├── requirements.txt                 ← Python dependencies
 │
-├── docs/                            ← Documentation & Rules
-│   ├── Extracted_Rules.md           ← Validation rules (plain English)
-│   ├── COMPLETE_PDF_EXTRACTION_GUIDE.md  ← OCR extraction guide
-│   └── checklist.md                 ← Manual verification checklist
+├── config.py                            ← Central configuration (paths, thresholds)
+├── requirements.txt                     ← Python dependencies
+├── README.md                            ← This file
+├── .gitignore
 │
-├── scripts/                         ← Python processing scripts
-│   ├── extract_ocr_pdf.py           ← Main OCR extraction (all pages)
-│   ├── extract_pdf_layers.py        ← PDF layer analysis & annotation removal
-│   ├── recover_hidden_text.py       ← Recover text hidden by blue overlay
-│   ├── remove_blue_layer.py         ← Remove blue annotation layer from PDFs
-│   └── read_docx.py                 ← Read and extract text from .docx files
+├── app/                                 ← Core Application Package
+│   ├── __init__.py
+│   ├── main.py                          ← FastAPI entry point & API routes
+│   │
+│   ├── api/                             ← REST API Endpoints
+│   │   ├── upload.py                    ← Document upload & ingestion
+│   │   ├── verification.py              ← Trigger verification pipeline
+│   │   └── reports.py                   ← Verification reports & audit logs
+│   │
+│   ├── database/                        ← Database Models & ORM
+│   │   ├── connection.py                ← Database connection setup
+│   │   └── models.py                    ← Application, Document, Result models
+│   │
+│   ├── pipeline/                        ← Document Processing Pipeline
+│   │   ├── preprocessor.py              ← PDF detection & OpenCV image enhancement
+│   │   ├── ocr_engine.py                ← OCR extraction (PaddleOCR / Tesseract)
+│   │   ├── field_extractor.py           ← Regex + Pydantic structured field parsing
+│   │   ├── stamp_signature_detector.py  ← Stamp, seal & signature detection
+│   │   └── cross_matcher.py             ← Cross-document consistency matching
+│   │
+│   ├── rules/                           ← Business Rule Engine
+│   │   ├── base_rule.py                 ← Abstract rule interface
+│   │   ├── document_rules.py            ← Per-document rule validators
+│   │   └── rule_engine.py               ← Master rule evaluator & classifier
+│   │
+│   └── schemas/                         ← Pydantic Data Contracts
+│       ├── document_schemas.py          ← Structured document field schemas
+│       └── verification_schemas.py      ← Verification report response schemas
 │
-└── diagrams/                        ← Architecture & Flow Diagrams
-    ├── document_feedback_flow.png   ← Document feedback flow diagram
-    └── system_architecture.png      ← Overall system architecture
+├── dashboard/                           ← Human Review UI (Streamlit)
+│   ├── app.py                           ← Streamlit dashboard application
+│   └── components/                      ← Reusable UI components
+│
+├── scripts/                             ← Standalone Utilities
+│   ├── extract_ocr_pdf.py               ← CLI OCR extraction tool
+│   ├── extract_pdf_layers.py            ← PDF layer analysis
+│   ├── recover_hidden_text.py           ← Blue overlay removal (OpenCV)
+│   ├── remove_blue_layer.py             ← PDF annotation cleaner
+│   ├── read_docx.py                     ← DOCX text extractor
+│   └── generate_pdf.py                  ← Markdown-to-PDF converter
+│
+├── tests/                               ← Automated Test Suite
+│   ├── test_preprocessor.py
+│   ├── test_ocr.py
+│   ├── test_field_extractor.py
+│   └── test_rule_engine.py
+│
+├── data/                                ← Sample Data & Database
+│   └── samples/                         ← Sample onboarding PDFs for testing
+│
+├── docs/                                ← Documentation & Rule Base
+│   ├── Master_Rules_Combined.md         ← Complete master business rules
+│   ├── Master_Rules_Combined.pdf        ← PDF version of master rules
+│   ├── Extracted_Rules.md               ← Plain-English validation rules
+│   ├── checklist.md                     ← Manual verification checklist
+│   ├── COMPLETE_PDF_EXTRACTION_GUIDE.md ← OCR guide & methods
+│   ├── Document_Verification_Pipeline.docx ← System design specification
+│   ├── Document_Feedback_Flow.pdf       ← Document feedback flow diagram
+│   ├── Project_Document_Check.pdf       ← Project specification
+│   ├── Rules.docx                       ← Original raw rules
+│   └── reference_images/               ← Reference screenshots
+│
+└── diagrams/                            ← Architecture & Flow Diagrams
+    ├── document_feedback_flow.png
+    └── system_architecture.png
 ```
 
 ---
 
-## 📋 Documents Being Validated
+## 📋 Documents Verified
 
-| # | Document | Key Rules |
+| # | Document | Key Checks |
 |---|----------|-----------|
-| 1 | **Authority Letter** | Official letterhead, signed & stamped, focal person named |
-| 2 | **Account Maintenance Certificate** | Standard format, bank-signed, matches bank details in agreements |
+| 1 | **Authority Letter** | Official letterhead, focal person named, signed & stamped |
+| 2 | **Account Maintenance Certificate** | Bank letterhead, format correct, bank details match across docs |
 | 3 | **Application Form** | All fields filled, CNIC present, every page signed/stamped |
-| 4 | **Tripartite Agreement** | Correct org name, bank details match, all 3-party signatures |
-| 5 | **Bilateral Agreement (SLA)** | Mentions PayMin/Digital Muhasil, correct account numbers, Section 5.2 complete |
-| 6 | **E-Stamp Papers** | Correct texture/watermark, accurate first/second party details |
+| 4 | **Tripartite Agreement** | 3 parties named, org name correct, bank details match, witnesses present |
+| 5 | **Bilateral Agreement (SLA)** | PayMin/Digital Muhasil mentioned, Section 5.2 charges, account match |
+| 6 | **E-Stamp Papers** | Brownish texture, watermark valid, notary public stamp |
 | 7 | **Business Requirement Document** | Lists all digitizable revenue services |
-| 8 | **Formal Request Letter** | Correct subject: "Onboarding as sub-biller with KPITB" |
-| 9 | **CNIC Copies** | CNICs of all authorized persons attached |
+| 8 | **Formal Request Letter** | Subject: "Onboarding as sub-biller with KPITB" |
+| 9 | **CNIC Copies** | All authorized persons' CNICs attached & legible |
 
 ---
 
 ## ⚙️ Tech Stack
 
-- **Python 3.x**
-- **PyMuPDF (`fitz`)** — PDF layer extraction, annotation removal
-- **pytesseract** — OCR text extraction (Tesseract engine)
-- **pdf2image** — PDF-to-image conversion for OCR
-- **OpenCV (`cv2`)** — Image preprocessing (overlay removal, thresholding)
-- **Pillow (PIL)** — Image handling
+| Component | Technology |
+|-----------|-----------|
+| **OCR** | PaddleOCR / Tesseract via pytesseract |
+| **Image Processing** | OpenCV, Pillow |
+| **PDF Handling** | PyMuPDF (fitz), pdf2image |
+| **Data Schemas** | Pydantic v2 |
+| **API Server** | FastAPI + Uvicorn |
+| **Dashboard** | Streamlit |
+| **Database** | SQLite (dev) / PostgreSQL (prod) |
+| **Object Detection** | YOLOv11 (stamp/signature) |
+| **AI Reasoning** | Qwen2.5-VL (mismatch explanation) |
 
 ---
 
 ## 🚀 Quick Start
 
-### 1. Clone the Repository
 ```bash
+# Clone
 git clone https://github.com/abdulsamad-codes/Document-Validator-Model.git
 cd Document-Validator-Model
-```
 
-### 2. Install Python Dependencies
-```bash
+# Setup virtual environment
+python -m venv Myenv
+Myenv\Scripts\activate    # Windows
+source Myenv/bin/activate  # Linux/Mac
+
+# Install dependencies
 pip install -r requirements.txt
-```
 
-### 3. Install System Dependencies
+# Run API server
+uvicorn app.main:app --reload
 
-**Windows:**
-- [Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki)
-- [Poppler for Windows](https://github.com/oschwartz10612/poppler-windows/releases/)
-
-**Ubuntu/Debian:**
-```bash
-sudo apt-get install tesseract-ocr poppler-utils
-```
-
-**macOS:**
-```bash
-brew install tesseract poppler
-```
-
-### 4. Run OCR Extraction
-```bash
-# Extract text from all pages of a scanned PDF
-python scripts/extract_ocr_pdf.py
-
-# Remove blue annotation overlays from a PDF
-python scripts/remove_blue_layer.py
-
-# Analyze PDF layers and extract images
-python scripts/extract_pdf_layers.py
+# Run dashboard
+streamlit run dashboard/app.py
 ```
 
 ---
 
-## 📖 Validation Rules
+## 📖 Business Rules
 
-See [`docs/Extracted_Rules.md`](docs/Extracted_Rules.md) for the complete set of document validation rules.
+See [`docs/Master_Rules_Combined.md`](docs/Master_Rules_Combined.md) for the complete set of verification rules.
 
 ---
 
 ## 📊 Pipeline Flow
 
 ```
-Scanned PDF
-    │
-    ▼
-[PDF Layer Analysis]          ← extract_pdf_layers.py
-    │  Checks for text layers, extracts image layers
-    │
-    ▼
-[Blue Overlay Removal]        ← remove_blue_layer.py / recover_hidden_text.py
-    │  Removes annotation stamps blocking text
-    │
-    ▼
-[OCR Text Extraction]         ← extract_ocr_pdf.py
-    │  Converts pages to images → runs Tesseract OCR
-    │
-    ▼
-[Rule-Based Validation]       ← (validation engine — in development)
-    │  Checks each document against Extracted_Rules.md
-    │
-    ▼
-[Validation Report]
-    Flags missing fields, mismatched data, incomplete signatures
+Document Upload → PDF Layer Check → Image Enhancement → OCR Extraction
+       → Structured Field Parsing → Stamp/Signature Detection
+       → Cross-Document Matching → Business Rule Engine
+       → Verification Report → Human Review Dashboard
 ```
 
 ---
 
 ## 🏢 Context
 
-This project was developed during an internship at **KPITB (Khyber Pakhtunkhwa Information Technology Board)** as part of the **Fintech Team's** digital payment onboarding process automation initiative.
+Developed during an internship at **KPITB** as part of the **Fintech Team's** digital payment onboarding automation initiative.
 
 ---
 

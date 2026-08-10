@@ -37,14 +37,12 @@ recovered_page_*.png
 page_*_layer_*.jpeg
 page_*_layer_*.png
 
-# Sensitive/Large PDFs (don't commit actual documents)
-*.pdf
-*.docx
+# Sensitive/Large files (don't commit actual onboarding documents)
+data/samples/*.pdf
+data/samples/*.docx
+data/*.db
 
-# Large image files (raw scans)
-*.jpeg
-*.jpg
-
-# Keep diagrams
+# Keep diagrams and doc PDFs
 !diagrams/*.png
 !diagrams/*.jpg
+!docs/*.pdf
