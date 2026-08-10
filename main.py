@@ -13,8 +13,14 @@ Usage:
 """
 
 import sys
+import io
 import subprocess
 from pathlib import Path
+
+# Fix UnicodeEncodeError on Windows when printing emoji characters.
+if sys.platform == "win32":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8")
 
 BASE_DIR = Path(__file__).resolve().parent
 VENV_PYTHON = BASE_DIR / "Myenv" / "Scripts" / "python.exe"

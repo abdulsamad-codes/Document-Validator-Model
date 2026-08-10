@@ -52,16 +52,6 @@ EXACT_MATCH_FIELDS = [        # Fields that require exact (not fuzzy) matching
 ]
 
 # ============================================================================
-# VERIFICATION RESULT CLASSIFICATIONS
-# ============================================================================
-class VerificationStatus:
-    PASS = "PASS"
-    WARNING = "WARNING"
-    MANUAL_REVIEW = "MANUAL_REVIEW"
-    FAIL = "FAIL"
-    REJECTED = "REJECTED"
-
-# ============================================================================
 # DATABASE (for future use)
 # ============================================================================
 DATABASE_URL = os.getenv(

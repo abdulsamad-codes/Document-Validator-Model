@@ -8,6 +8,7 @@ from pdf2image import convert_from_path
 import pytesseract
 from PIL import Image
 import sys
+import argparse
 from pathlib import Path
 
 # ============================================================================
@@ -124,29 +125,54 @@ def extract_all_pages_ocr(pdf_path, output_dir="extracted_ocr"):
 # ============================================================================
 
 if __name__ == "__main__":
-    
-    pdf_file = "/mnt/user-data/uploads/DGAM_Onboarding_file.pdf"
-    
-    if not Path(pdf_file).exists():
-        print(f"✗ File not found: {pdf_file}")
+    parser = argparse.ArgumentParser(
+        description="Extract text from a scanned/image-based PDF using OCR."
+    )
+    parser.add_argument(
+        "pdf_file",
+        nargs="?",
+        default=None,
+        help="Path to the input PDF file (required)."
+    )
+    parser.add_argument(
+        "--output-txt",
+        default="PAGE1_output.txt",
+        help="Output .txt file for the first page (default: PAGE1_output.txt)."
+    )
+    parser.add_argument(
+        "--output-dir",
+        default="extracted_ocr_pages",
+        help="Output directory for all pages (default: ./extracted_ocr_pages)."
+    )
+    args = parser.parse_args()
+
+    if not args.pdf_file:
+        parser.print_help()
+        print("\nError: pdf_file argument is required.")
         sys.exit(1)
-    
+
+    pdf_file = args.pdf_file
+
+    if not Path(pdf_file).exists():
+        print(f"Error: File not found: {pdf_file}")
+        sys.exit(1)
+
     print(f"\n{'#'*70}")
     print(f"# OCR TEXT EXTRACTION - SCANNED/IMAGE-BASED PDF")
     print(f"# File: {pdf_file}")
     print(f"{'#'*70}")
-    
+
     # Extract from first page (Authority Letter with hidden text)
     extract_text_ocr(
-        pdf_file, 
+        pdf_file,
         page_num=0,  # First page
-        output_txt="/home/claude/PAGE1_AUTHORITY_LETTER.txt"
+        output_txt=args.output_txt
     )
-    
+
     # Extract all pages
     extract_all_pages_ocr(
         pdf_file,
-        output_dir="/home/claude/extracted_ocr_pages"
+        output_dir=args.output_dir
     )
-    
-    print("\n✓ OCR extraction complete!")
+
+    print("\nOCR extraction complete!")

@@ -18,6 +18,7 @@ The pipeline uses **OCR** to extract text from scanned/image-based PDFs, applies
 ```
 Document-Validator-Model/
 │
+├── main.py                              ← CLI entry point (start api / dashboard / tests)
 ├── config.py                            ← Central configuration (paths, thresholds)
 ├── requirements.txt                     ← Python dependencies
 ├── README.md                            ← This file
@@ -25,36 +26,38 @@ Document-Validator-Model/
 │
 ├── app/                                 ← Core Application Package
 │   ├── __init__.py
-│   ├── main.py                          ← FastAPI entry point & API routes
 │   │
 │   ├── api/                             ← REST API Endpoints
-│   │   ├── upload.py                    ← Document upload & ingestion
-│   │   ├── verification.py              ← Trigger verification pipeline
-│   │   └── reports.py                   ← Verification reports & audit logs
+│   │   └── endpoints.py                 ← All API routes (/health, /verify, /reports)
 │   │
-│   ├── database/                        ← Database Models & ORM
-│   │   ├── connection.py                ← Database connection setup
-│   │   └── models.py                    ← Application, Document, Result models
+│   ├── database/                        ← Audit Logging
+│   │   └── audit_logger.py              ← JSONL structured event logging for compliance
 │   │
 │   ├── pipeline/                        ← Document Processing Pipeline
 │   │   ├── preprocessor.py              ← PDF detection & OpenCV image enhancement
-│   │   ├── ocr_engine.py                ← OCR extraction (PaddleOCR / Tesseract)
+│   │   ├── ocr_engine.py                ← OCR extraction (Tesseract / PaddleOCR)
 │   │   ├── field_extractor.py           ← Regex + Pydantic structured field parsing
-│   │   ├── stamp_signature_detector.py  ← Stamp, seal & signature detection
-│   │   └── cross_matcher.py             ← Cross-document consistency matching
+│   │   ├── stamp_signature_detector.py  ← Stamp, seal & signature detection (OpenCV)
+│   │   └── orchestrator.py              ← End-to-end pipeline coordinator
 │   │
 │   ├── rules/                           ← Business Rule Engine
 │   │   ├── base_rule.py                 ← Abstract rule interface
 │   │   ├── document_rules.py            ← Per-document rule validators
-│   │   └── rule_engine.py               ← Master rule evaluator & classifier
+│   │   └── rule_engine.py               ← Master rule evaluator, classifier & cross-doc matcher
+│   │
+│   ├── prompts/                         ← AI Reasoning Engine
+│   │   └── reasoning_engine.txt         ← Structured prompt for human-review explanations
 │   │
 │   └── schemas/                         ← Pydantic Data Contracts
 │       ├── document_schemas.py          ← Structured document field schemas
 │       └── verification_schemas.py      ← Verification report response schemas
 │
-├── dashboard/                           ← Human Review UI (Streamlit)
+├── dashboard/                           ← Human Review UI (Streamlit MVP)
 │   ├── app.py                           ← Streamlit dashboard application
 │   └── components/                      ← Reusable UI components
+│
+├── frontend/                            ← React Dashboard (replaces Streamlit)
+│   └── src/                             ← Vite + React + TypeScript SPA
 │
 ├── scripts/                             ← Standalone Utilities
 │   ├── extract_ocr_pdf.py               ← CLI OCR extraction tool
@@ -64,26 +67,21 @@ Document-Validator-Model/
 │   ├── read_docx.py                     ← DOCX text extractor
 │   └── generate_pdf.py                  ← Markdown-to-PDF converter
 │
-├── tests/                               ← Automated Test Suite
+├── tests/                               ← Automated Test Suite (33/33 passing)
 │   ├── test_preprocessor.py
-│   ├── test_ocr.py
+│   ├── test_ocr_engine.py
 │   ├── test_field_extractor.py
-│   └── test_rule_engine.py
+│   ├── test_rule_engine.py
+│   ├── test_stamp_signature_detector.py
+│   ├── test_orchestrator.py
+│   └── test_audit_logger.py
 │
 ├── data/                                ← Sample Data & Database
-│   └── samples/                         ← Sample onboarding PDFs for testing
+│   └── samples/                         ← Sample onboarding PDFs (gitignored)
 │
 ├── docs/                                ← Documentation & Rule Base
 │   ├── Master_Rules_Combined.md         ← Complete master business rules
-│   ├── Master_Rules_Combined.pdf        ← PDF version of master rules
-│   ├── Extracted_Rules.md               ← Plain-English validation rules
-│   ├── checklist.md                     ← Manual verification checklist
-│   ├── COMPLETE_PDF_EXTRACTION_GUIDE.md ← OCR guide & methods
-│   ├── Document_Verification_Pipeline.docx ← System design specification
-│   ├── Document_Feedback_Flow.pdf       ← Document feedback flow diagram
-│   ├── Project_Document_Check.pdf       ← Project specification
-│   ├── Rules.docx                       ← Original raw rules
-│   └── reference_images/               ← Reference screenshots
+│   └── ...
 │
 └── diagrams/                            ← Architecture & Flow Diagrams
     ├── document_feedback_flow.png
@@ -94,33 +92,32 @@ Document-Validator-Model/
 
 ## 📋 Documents Verified
 
-| # | Document | Key Checks |
-|---|----------|-----------|
-| 1 | **Authority Letter** | Official letterhead, focal person named, signed & stamped |
-| 2 | **Account Maintenance Certificate** | Bank letterhead, format correct, bank details match across docs |
-| 3 | **Application Form** | All fields filled, CNIC present, every page signed/stamped |
-| 4 | **Tripartite Agreement** | 3 parties named, org name correct, bank details match, witnesses present |
-| 5 | **Bilateral Agreement (SLA)** | PayMin/Digital Muhasil mentioned, Section 5.2 charges, account match |
-| 6 | **E-Stamp Papers** | Brownish texture, watermark valid, notary public stamp |
-| 7 | **Business Requirement Document** | Lists all digitizable revenue services |
-| 8 | **Formal Request Letter** | Subject: "Onboarding as sub-biller with KPITB" |
-| 9 | **CNIC Copies** | All authorized persons' CNICs attached & legible |
+| # | Document                                  | Key Checks                                                               |
+| - | ----------------------------------------- | ------------------------------------------------------------------------ |
+| 1 | **Authority Letter**                | Official letterhead, focal person named, signed & stamped                |
+| 2 | **Account Maintenance Certificate** | Bank letterhead, format correct, bank details match across docs          |
+| 3 | **Application Form**                | All fields filled, CNIC present, every page signed/stamped               |
+| 4 | **Tripartite Agreement**            | 3 parties named, org name correct, bank details match, witnesses present |
+| 5 | **Bilateral Agreement (SLA)**       | PayMin/Digital Muhasil mentioned, Section 5.2 charges, account match     |
+| 6 | **E-Stamp Papers**                  | Brownish texture, watermark valid, notary public stamp                   |
+| 7 | **Business Requirement Document**   | Lists all digitizable revenue services                                   |
+| 8 | **Formal Request Letter**           | Subject: "Onboarding as sub-biller with KPITB"                           |
+| 9 | **CNIC Copies**                     | All authorized persons' CNICs attached & legible                         |
 
 ---
 
 ## ⚙️ Tech Stack
 
-| Component | Technology |
-|-----------|-----------|
-| **OCR** | PaddleOCR / Tesseract via pytesseract |
-| **Image Processing** | OpenCV, Pillow |
-| **PDF Handling** | PyMuPDF (fitz), pdf2image |
-| **Data Schemas** | Pydantic v2 |
-| **API Server** | FastAPI + Uvicorn |
-| **Dashboard** | Streamlit |
-| **Database** | SQLite (dev) / PostgreSQL (prod) |
-| **Object Detection** | YOLOv11 (stamp/signature) |
-| **AI Reasoning** | Qwen2.5-VL (mismatch explanation) |
+| Component                  | Technology                        | Status     |
+| -------------------------- | --------------------------------- | ---------- |
+| **OCR**              | Tesseract (pytesseract)           | ✅ Shipped |
+| **Image Processing** | OpenCV, Pillow                    | ✅ Shipped |
+| **PDF Handling**     | PyMuPDF (fitz), pdf2image         | ✅ Shipped |
+| **Data Schemas**     | Pydantic v2                       | ✅ Shipped |
+| **API Server**       | FastAPI + Uvicorn                 | ✅ Shipped |
+| **Dashboard**        | Streamlit + React (Vite)          | ✅ Shipped |
+| **Object Detection** | YOLOv11 (stamp/signature)         | 🔜 Planned |
+| **AI Reasoning**     | Qwen2.5-VL (mismatch explanation) | 🔜 Planned |
 
 ---
 
@@ -140,10 +137,13 @@ source Myenv/bin/activate  # Linux/Mac
 pip install -r requirements.txt
 
 # Run API server
-uvicorn app.main:app --reload
+python main.py api
 
-# Run dashboard
-streamlit run dashboard/app.py
+# Run dashboard (Streamlit)
+python main.py dashboard
+
+# Run full test suite
+python main.py test
 ```
 
 ---
