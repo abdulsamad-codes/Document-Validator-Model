@@ -15,6 +15,7 @@ BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 SAMPLES_DIR = DATA_DIR / "samples"
 DOCS_DIR = BASE_DIR / "docs"
+LOGS_DIR = BASE_DIR / "logs"
 
 # ============================================================================
 # OCR CONFIGURATION
