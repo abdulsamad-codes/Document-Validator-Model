@@ -1,0 +1,188 @@
+"""HTTP endpoints for the final human verification module.
+
+Exposes the review screen (``GET``), the final decision submission (``POST``)
+and the review history (``GET``). Routes stay thin: they build the service per
+request and translate the module's domain exceptions -- and the validation
+report exceptions raised while loading the report -- into documented HTTP
+errors.
+"""
+
+import logging
+from functools import wraps
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from app.database.connection import get_db
+from app.human_verification.exceptions import HumanReviewError
+from app.human_verification.schemas import (
+    ErrorResponse,
+    HumanReviewRequest,
+    ReviewHistory,
+    ReviewScreen,
+    ReviewSummary,
+)
+from app.human_verification.services import HumanVerificationService
+from app.reports.exceptions import ReportError
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(tags=["human-verification"])
+
+_GET_DB = Annotated[Session, Depends(get_db)]
+
+#: Shared OpenAPI error-response documentation reused by every endpoint.
+_ERROR_RESPONSES = {
+    400: {
+        "model": ErrorResponse,
+        "description": "Review decision is internally inconsistent.",
+    },
+    404: {"model": ErrorResponse, "description": "Application not found."},
+    409: {
+        "model": ErrorResponse,
+        "description": "Application has already been reviewed.",
+    },
+    422: {
+        "model": ErrorResponse,
+        "description": (
+            "No validation results, incomplete checklist, missing rejection "
+            "reason or missing corrections."
+        ),
+    },
+    500: {"model": ErrorResponse, "description": "Review could not be persisted."},
+}
+
+
+def _handle_human_review_errors(func):
+    """Translate module and report errors into HTTP error responses.
+
+    Keeps the error mapping inside the human verification module while remaining
+    compatible with FastAPI versions that do not expose router-level exception
+    handlers. Report errors surface while loading the validation report and are
+    re-exposed with their own status codes.
+    """
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except (HumanReviewError, ReportError) as exc:
+            logger.error(
+                "Human review error %s: %s",
+                exc.__class__.__name__,
+                exc.detail,
+            )
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+    return wrapper
+
+
+def _service(db: Session) -> HumanVerificationService:
+    """Build the human verification service bound to the request session."""
+    return HumanVerificationService(db)
+
+
+@router.get(
+    "/applications/{application_id}/human-review",
+    response_model=ReviewScreen,
+    summary="Open the final review screen",
+    description=(
+        "Assembles everything the employee needs for the final decision: the "
+        "validation report, the uploaded documents with their OCR state, the "
+        "normalized and confidence-scored extracted fields, the visual "
+        "detection outcomes, the current checklist state and any previous "
+        "review. No pipeline stage is re-run."
+    ),
+    responses=_ERROR_RESPONSES,
+)
+@_handle_human_review_errors
+def get_human_review(
+    application_id: int,
+    db: _GET_DB,
+) -> ReviewScreen:
+    """Open the final review screen for an application.
+
+    Args:
+        application_id: Id of the application.
+        db: Active database session.
+
+    Returns:
+        The review screen payload.
+
+    Raises:
+        HTTPException: When the application does not exist or has no
+            validation results to review.
+    """
+    return _service(db).get_review(application_id=application_id)
+
+
+@router.post(
+    "/applications/{application_id}/human-review",
+    response_model=ReviewSummary,
+    summary="Submit the final review decision",
+    description=(
+        "Records the employee's final decision for an application. An approval "
+        "requires the complete manual checklist, a correction requires at least "
+        "one corrected value and a rejection requires a mandatory rejection "
+        "reason. The application status is moved accordingly and the review, "
+        "checklist, corrections and audit trail are persisted. An application "
+        "can only be reviewed once."
+    ),
+    responses=_ERROR_RESPONSES,
+)
+@_handle_human_review_errors
+def submit_human_review(
+    application_id: int,
+    request: HumanReviewRequest,
+    db: _GET_DB,
+) -> ReviewSummary:
+    """Submit the employee's final decision for an application.
+
+    Args:
+        application_id: Id of the application.
+        request: Review payload with the employee's decision.
+        db: Active database session.
+
+    Returns:
+        A summary of the recorded review.
+
+    Raises:
+        HTTPException: When the application does not exist, was already
+            reviewed, has no validation results or the payload violates the
+            decision rules.
+    """
+    return _service(db).submit_review(
+        application_id=application_id,
+        request=request,
+    )
+
+
+@router.get(
+    "/applications/{application_id}/human-review/history",
+    response_model=ReviewHistory,
+    summary="Get the final review history",
+    description=(
+        "Returns the final reviews recorded for an application, most recent "
+        "first, together with their corrections and checklist state."
+    ),
+    responses=_ERROR_RESPONSES,
+)
+@_handle_human_review_errors
+def get_human_review_history(
+    application_id: int,
+    db: _GET_DB,
+) -> ReviewHistory:
+    """Return the final review history for an application.
+
+    Args:
+        application_id: Id of the application.
+        db: Active database session.
+
+    Returns:
+        The recorded reviews.
+
+    Raises:
+        HTTPException: When the application does not exist.
+    """
+    return _service(db).get_history(application_id=application_id)

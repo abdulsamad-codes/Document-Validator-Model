@@ -1,176 +1,464 @@
-# 📄 Document Validator Model
+# FinTech — Financial Document Verification System
 
-> **KPITB Financial Document Verification System**
-> An OCR-powered pipeline to validate onboarding documents submitted by sub-billers to KPITB (Khyber Pakhtunkhwa Information Technology Board).
+A full-stack enterprise platform for banks and compliance teams to onboard
+merchants and process **confidential financial documents**. Employees upload a
+fixed checklist of documents per application, and the system runs a staged,
+rule-driven verification pipeline — OCR, field extraction, confidence scoring,
+normalization, business rules and human review — then curates the verified
+corrections into a versioned, machine-learning-ready dataset.
+
+The frontend presents a professional FinTech workspace (sidebar navigation,
+dark/light/system themes, responsive layout) where finance employees process
+applications, while AI/dataset management is intentionally hidden under
+**Settings → Administration**.
 
 ---
 
-## 🎯 Project Overview
+## Table of contents
 
-This system automates the verification of official onboarding documents required when a department or organization registers as a **sub-biller** under the KPITB digital payment ecosystem (PayMin / Digital Muhasil).
-
-The pipeline uses **OCR** to extract text from scanned/image-based PDFs, applies a **rule-based validation engine** to verify document compliance, performs **cross-document consistency checks**, and provides a **human review dashboard** for final approval.
+- [Key features](#key-features)
+- [Technology stack](#technology-stack)
+- [Architecture](#architecture)
+- [Verification pipeline](#verification-pipeline)
+- [Repository structure](#repository-structure)
+- [Database schema](#database-schema)
+- [Getting started](#getting-started)
+- [Configuration](#configuration)
+- [Running the application](#running-the-application)
+- [Testing](#testing)
+- [API overview](#api-overview)
+- [Frontend overview](#frontend-overview)
+- [Security](#security)
+- [Module documentation](#module-documentation)
 
 ---
 
-## 📁 Project Structure
+## Key features
+
+**Employee workflow (finance/compliance focus)**
+- **Dashboard** — recent applications, document-upload progress, quick actions.
+  No AI metrics leak into the employee view.
+- **Applications** — searchable, filterable, sortable list of verification
+  cases; create, view details, track status.
+- **Upload Documents** — fixed per-application slot checklist (18 uploads):
+  7 required document families with per-category copy counts, plus CNIC
+  front/back. Slots are numbered (`Copy 1 … Copy N`), empty slots stay visible,
+  replace is scoped to its own slot, and per-category caps are enforced by the
+  backend.
+- **Validation Reports & Human Review** — rule-driven validation results and a
+  human review workspace per application.
+- **Settings → Administration** — Feedback analytics and Continuous Learning
+  dataset management, marked as restricted/admin-only.
+
+**Document verification pipeline (backend)**
+- **Upload & storage** — type-aware, extension + MIME + magic-byte validated
+  uploads streamed to a filesystem storage root.
+- **Document completeness** — verifies the full fixed checklist is present.
+- **Technical validation** — validates file bytes, structure and content.
+- **Document processing & text extraction** — OCR via PaddleOCR + PyMuPDF.
+- **Document analysis & field extraction** — visual detection and field
+  extraction from scanned documents.
+- **Confidence scoring** — per-field confidence from OCR, extraction and
+  analysis; critical low-confidence fields force human review.
+- **Normalization** — canonical values for names, dates, CNICs, etc.
+- **Business rule engine** — deterministic rule evaluation (PASS / FAIL /
+  WARNING / PENDING_MANUAL_REVIEW) with severities.
+- **Validation reports** — structured, printable per-application reports.
+- **Human verification** — reviewer approves, corrects or rejects; corrections
+  are recorded with the original OCR value.
+- **Feedback dataset** — the human-corrected field data, queryable and
+  exportable.
+- **Continuous learning** — curates verified corrections into a versioned,
+  SHA-256-hashed, ML-ready labelled dataset with JSON/CSV export.
+
+---
+
+## Technology stack
+
+| Layer     | Technology                                                                                     |
+| --------- | ---------------------------------------------------------------------------------------------- |
+| Backend   | Python 3.12, FastAPI, SQLAlchemy 2, Alembic, Pydantic v2, Uvicorn                              |
+| Database  | PostgreSQL (native ENUM types, full-text search, `UNIQUE` constraints)                          |
+| OCR/ML    | PaddleOCR, PaddlePaddle, PyMuPDF, OpenCV                                                       |
+| Frontend  | React 19, React Router 7, Axios, Vite 8, lucide-react icons                                    |
+| Styling   | CSS Modules + design tokens (sky/light/dark blue FinTech palette), dark/light/system themes     |
+| Auth      | Cookie-based sessions (short-lived access JWT + rotating refresh token), bcrypt password hashing |
+| Tests     | pytest (backend), Playwright-style headless Chrome/CDP checks (manual verification scripts)     |
+| Tooling   | Alembic migrations, `python-dotenv`, ESLint-free Vite build, git                                 |
+
+---
+
+## Architecture
 
 ```
-Document-Validator-Model/
-│
-├── main.py                              ← CLI entry point (start api / dashboard / tests)
-├── config.py                            ← Central configuration (paths, thresholds)
-├── requirements.txt                     ← Python dependencies
-├── README.md                            ← This file
-├── .gitignore
-│
-├── app/                                 ← Core Application Package
-│   ├── __init__.py
-│   │
-│   ├── api/                             ← REST API Endpoints
-│   │   └── endpoints.py                 ← All API routes (/health, /verify, /reports)
-│   │
-│   ├── database/                        ← Audit Logging
-│   │   └── audit_logger.py              ← JSONL structured event logging for compliance
-│   │
-│   ├── pipeline/                        ← Document Processing Pipeline
-│   │   ├── preprocessor.py              ← PDF detection & OpenCV image enhancement
-│   │   ├── ocr_engine.py                ← OCR extraction (Tesseract / PaddleOCR)
-│   │   ├── field_extractor.py           ← Regex + Pydantic structured field parsing
-│   │   ├── stamp_signature_detector.py  ← Stamp, seal & signature detection (OpenCV)
-│   │   └── orchestrator.py              ← End-to-end pipeline coordinator
-│   │
-│   ├── rules/                           ← Business Rule Engine
-│   │   ├── base_rule.py                 ← Abstract rule interface
-│   │   ├── document_rules.py            ← Per-document rule validators
-│   │   └── rule_engine.py               ← Master rule evaluator, classifier & cross-doc matcher
-│   │
-│   ├── prompts/                         ← AI Reasoning Engine
-│   │   └── reasoning_engine.txt         ← Structured prompt for human-review explanations
-│   │
-│   └── schemas/                         ← Pydantic Data Contracts
-│       ├── document_schemas.py          ← Structured document field schemas
-│       └── verification_schemas.py      ← Verification report response schemas
-│
-├── dashboard/                           ← Human Review UI (Streamlit MVP)
-│   ├── app.py                           ← Streamlit dashboard application
-│   └── components/                      ← Reusable UI components
-│
-├── frontend/                            ← React Dashboard (replaces Streamlit)
-│   └── src/                             ← Vite + React + TypeScript SPA
-│
-├── scripts/                             ← Standalone Utilities
-│   ├── extract_ocr_pdf.py               ← CLI OCR extraction tool
-│   ├── extract_pdf_layers.py            ← PDF layer analysis
-│   ├── recover_hidden_text.py           ← Blue overlay removal (OpenCV)
-│   ├── remove_blue_layer.py             ← PDF annotation cleaner
-│   ├── read_docx.py                     ← DOCX text extractor
-│   └── generate_pdf.py                  ← Markdown-to-PDF converter
-│
-├── tests/                               ← Automated Test Suite (33/33 passing)
-│   ├── test_preprocessor.py
-│   ├── test_ocr_engine.py
-│   ├── test_field_extractor.py
-│   ├── test_rule_engine.py
-│   ├── test_stamp_signature_detector.py
-│   ├── test_orchestrator.py
-│   └── test_audit_logger.py
-│
-├── data/                                ← Sample Data & Database
-│   └── samples/                         ← Sample onboarding PDFs (gitignored)
-│
-├── docs/                                ← Documentation & Rule Base
-│   ├── Master_Rules_Combined.md         ← Complete master business rules
-│   └── ...
-│
-└── diagrams/                            ← Architecture & Flow Diagrams
-    ├── document_feedback_flow.png
-    └── system_architecture.png
+                        ┌────────────────────────────────────────────┐
+ Browser (React SPA)   │  /api/v1   (Vite dev proxy → FastAPI)      │
+  ┌──────────────┐     └──────────────┬─────────────────────────────┘
+  │  Dashboard   │                    │
+  │  Applications│─── JSON ──────────▶│  FastAPI (app.main:app)
+  │  Upload      │                    │  ┌───────────────────────────┐
+  │  Settings    │◀─── JSON ──────────│  │ auth, upload, completeness │
+  └──────────────┘                    │  │ technical_validation,      │
+                                      │  │ document_processing,       │
+  storage/ (files) ◀─────────────────▶│  │ document_analysis,         │
+                                      │  │ confidence, normalization, │
+                                      │  │ rule_engine, reports,      │
+                                      │  │ human_verification,        │
+                                      │  │ feedback, continuous_learning
+                                      │  └────────────┬──────────────┘
+                                      │               │ SQLAlchemy
+                                      └───────────────▼────────────────┐
+                                        PostgreSQL (finance_verification)│
+                                        └────────────────────────────────┘
+```
+
+The backend follows a **feature-module** layout: every pipeline stage is a
+self-contained package with `routes.py` (thin HTTP layer), `services.py`
+(business logic), `schemas.py` (pydantic contracts), `repositories.py`,
+`validators.py`, `constants.py` and `exceptions.py`. Routes translate module
+domain exceptions into documented HTTP errors.
+
+---
+
+## Verification pipeline
+
+The pipeline is staged so each phase answers one question; results accumulate
+in the database and feed the next stage.
+
+```
+ Upload ─▶ Completeness ─▶ Technical Validation ─▶ Processing (OCR)
+   │            │                  │                     │
+   ▼            ▼                  ▼                     ▼
+ Human Review ◀─ Confidence ──── Normalization ──── Document Analysis
+   │            (low confidence                       (field extraction)
+   ▼            forces review)
+ Feedback ─────────────────────▶ Continuous Learning (curated ML dataset)
+```
+
+- Documents are uploaded into a fixed checklist of required types with copy
+  slots (e.g. 3 × 1-Link forms, 6 × Schedule of Charges, 1 × Authority Letter,
+  CNIC front + back).
+- Each pipeline stage stores its outputs (OCR text, extracted fields,
+  confidences, validation results, human reviews) in dedicated tables so the
+  full history is reproducible.
+- Human reviewers **approve, correct or reject**; every correction records the
+  original OCR value alongside the trusted corrected value.
+- The **continuous learning** stage folds only validated, complete records into
+  a versioned dataset with a reproducible content hash — ready for future model
+  improvements.
+
+---
+
+## Repository structure
+
+```
+finance-verification-system/
+├── backend/
+│   ├── app/
+│   │   ├── api/                 # Router aggregation + health endpoint
+│   │   ├── auth/                # Login, session, refresh, logout, seed script
+│   │   ├── core/                # Settings, logging, security (JWT, hashing)
+│   │   ├── database/            # Engine, session, Base, models, enums
+│   │   ├── completeness/        # Document completeness classification
+│   │   ├── technical_validation/
+│   │   ├── document_processing/ # OCR + text extraction
+│   │   ├── document_analysis/   # Visual detection + field extraction
+│   │   ├── confidence/          # Confidence scoring & review
+│   │   ├── normalization/       # Canonical value normalization
+│   │   ├── rule_engine/         # Business rule evaluation
+│   │   ├── reports/             # Validation report generation
+│   │   ├── human_verification/  # Human review workflow
+│   │   ├── feedback/            # Feedback (corrections) dataset API
+│   │   ├── continuous_learning/ # Curated ML dataset API
+│   │   ├── upload/              # Applications + document upload/storage
+│   │   ├── ocr/ preprocessing/ utils/ templates/
+│   │   ├── main.py              # create_app() factory + uvicorn entry
+│   │   └── __init__.py          # __version__ (0.1.0)
+│   ├── alembic/                 # Migration environment + versions/
+│   ├── tests/                   # 544 pytest cases across all modules
+│   ├── docs/                    # Per-module design docs (phases 5-14)
+│   ├── alembic.ini
+│   ├── pytest.ini
+│   └── requirements.txt
+├── frontend/
+│   └── src/
+│       ├── pages/               # Login, Dashboard, Applications, Create, Details,
+│       │                        # UploadDocuments, Verification, Settings
+│       ├── components/          # layout/, dashboard/, applications/, documents/,
+│       │                        # verification/, common/, auth/, theme/
+│       ├── data/                # navigation model, document catalogue, statuses
+│       ├── services/            # axios clients (api, applications, documents, verification)
+│       ├── store/               # ApplicationsContext (shared state)
+│       ├── hooks/  routes/  auth/  theme/  utils/  styles/  assets/
+│       ├── App.jsx
+│       └── main.jsx
+├── storage/                     # Uploaded files (gitignored): applications/APP-xxxxxx/
+├── scripts/                     # Operational scripts
+├── docs/                        # Top-level docs
+└── tests/                       # Top-level integration tests
 ```
 
 ---
 
-## 📋 Documents Verified
+## Database schema
 
-| # | Document                                  | Key Checks                                                               |
-| - | ----------------------------------------- | ------------------------------------------------------------------------ |
-| 1 | **Authority Letter**                | Official letterhead, focal person named, signed & stamped                |
-| 2 | **Account Maintenance Certificate** | Bank letterhead, format correct, bank details match across docs          |
-| 3 | **Application Form**                | All fields filled, CNIC present, every page signed/stamped               |
-| 4 | **Tripartite Agreement**            | 3 parties named, org name correct, bank details match, witnesses present |
-| 5 | **Bilateral Agreement (SLA)**       | PayMin/Digital Muhasil mentioned, Section 5.2 charges, account match     |
-| 6 | **E-Stamp Papers**                  | Brownish texture, watermark valid, notary public stamp                   |
-| 7 | **Business Requirement Document**   | Lists all digitizable revenue services                                   |
-| 8 | **Formal Request Letter**           | Subject: "Onboarding as sub-biller with KPITB"                           |
-| 9 | **CNIC Copies**                     | All authorized persons' CNICs attached & legible                         |
+All domain enums (`ApplicationStatus`, `DocumentType`, `DocumentProcessingStatus`,
+`ValidationStatus`, `Severity`, `ReviewDecision`) are native PostgreSQL ENUMs.
+
+| Table                      | Purpose                                                              |
+| -------------------------- | -------------------------------------------------------------------- |
+| `users`                    | Employee accounts (employee_id, email, role, bcrypt password hash).  |
+| `refresh_tokens`           | Rotating, revocable session tokens.                                  |
+| `applications`             | Verification cases and their lifecycle status.                       |
+| `audit_logs`               | Action history.                                                      |
+| `documents`                | Uploaded files; unique `(application_id, document_type, copy_number)`. |
+| `ocr_results`              | Raw OCR text per document.                                           |
+| `visual_detection_results` | Visual/object detection output.                                      |
+| `document_analysis_results`| Analysis summary per document.                                       |
+| `extracted_fields`         | Extracted field values + confidence inputs.                          |
+| `validation_results`       | Rule-engine outcomes (rule, status, severity, message).              |
+| `manual_checklists`        | Manual checklist state.                                              |
+| `human_reviews`            | Review decisions per application/document.                           |
+| `human_corrections`        | Original → corrected value pairs.                                    |
+| `feedback_dataset`         | Human-corrected field data (OCR value vs trusted value).             |
+
+> `documents` enforces a unique index on `(application_id, document_type,
+> copy_number)` so each numbered slot can hold exactly one file. The per-type
+> copy cap lives in `backend/app/upload/constants.py`
+> (`MAX_COPIES_BY_DOCUMENT_TYPE`: 1-Link 3, Tripartite 3, Schedule of Charges 6,
+> everything else 1).
 
 ---
 
-## ⚙️ Tech Stack
+## Getting started
 
-| Component                  | Technology                        | Status     |
-| -------------------------- | --------------------------------- | ---------- |
-| **OCR**              | Tesseract (pytesseract)           | ✅ Shipped |
-| **Image Processing** | OpenCV, Pillow                    | ✅ Shipped |
-| **PDF Handling**     | PyMuPDF (fitz), pdf2image         | ✅ Shipped |
-| **Data Schemas**     | Pydantic v2                       | ✅ Shipped |
-| **API Server**       | FastAPI + Uvicorn                 | ✅ Shipped |
-| **Dashboard**        | Streamlit + React (Vite)          | ✅ Shipped |
-| **Object Detection** | YOLOv11 (stamp/signature)         | 🔜 Planned |
-| **AI Reasoning**     | Qwen2.5-VL (mismatch explanation) | 🔜 Planned |
+### Prerequisites
 
----
+- **Python 3.12+**
+- **PostgreSQL 15+** (native enum support)
+- **Node.js 20+** and npm
+- (Optional) GPU/CPU builds of PaddlePaddle/PaddleOCR for the OCR pipeline.
 
-## 🚀 Quick Start
+### 1. Database
+
+Create the database and a role:
+
+```sql
+CREATE USER finance_app WITH PASSWORD 'finance-app-local-password';
+CREATE DATABASE finance_verification OWNER finance_app;
+```
+
+### 2. Backend
 
 ```bash
-# Clone
-git clone https://github.com/abdulsamad-codes/Document-Validator-Model.git
-cd Document-Validator-Model
-
-# Setup virtual environment
-python -m venv Myenv
-Myenv\Scripts\activate    # Windows
-source Myenv/bin/activate  # Linux/Mac
-
-# Install dependencies
+cd backend
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-# Run API server
-python main.py api
+# Configure environment
+cp .env.example .env    # then edit DATABASE_URL, SECRET_KEY, etc.
 
-# Run dashboard (Streamlit)
-python main.py dashboard
+# Apply migrations
+alembic upgrade head
 
-# Run full test suite
-python main.py test
+# Seed the default employee account (EMP-1001)
+python -m app.auth.seed
+```
+
+The default seeded account (development only):
+
+```
+Employee ID : EMP-1001
+Email       : employee@fintech.local
+Password    : Welcome@123
+```
+
+### 3. Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The Vite dev server runs on `http://localhost:5173` and proxies `/api/v1` to
+the FastAPI backend on `http://localhost:8000`.
+
+---
+
+## Configuration
+
+Backend settings are defined in `backend/app/core/config.py` and loaded from
+environment variables / `.env` (see `backend/.env.example`):
+
+| Variable                | Default                                            | Purpose                              |
+| ----------------------- | -------------------------------------------------- | ------------------------------------ |
+| `ENVIRONMENT`           | `development`                                      | dev/testing/production               |
+| `DEBUG`                 | `false`                                            | Never enable in production           |
+| `SECRET_KEY`            | dev placeholder (rejected in prod)                 | Token signing & crypto derivation    |
+| `DATABASE_URL`          | `postgresql+psycopg://postgres:postgres@localhost:5432/finance_verification` | DB connection  |
+| `LOG_LEVEL`             | `INFO`                                             | Root log level                       |
+| `API_PREFIX`            | `/api/v1`                                          | URL prefix for all routers           |
+| `MAX_UPLOAD_SIZE_MB`    | `25`                                               | Per-file upload limit                |
+| `CONFIDENCE_THRESHOLD`  | `0.85`                                             | Critical fields below this force review |
+| `DEFAULT_EMPLOYEE_*`    | `EMP-1001` etc.                                    | Seeded account credentials           |
+
+> The seed script **refuses to run** with the development default password when
+> `ENVIRONMENT=production`.
+
+---
+
+## Running the application
+
+**Backend (API + OpenAPI docs):**
+
+```bash
+cd backend
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+# Swagger UI: http://localhost:8000/docs
+```
+
+**Frontend (dev server):**
+
+```bash
+cd frontend
+npm run dev
+```
+
+**Production build:**
+
+```bash
+cd frontend && npm run build   # outputs to frontend/dist
 ```
 
 ---
 
-## 📖 Business Rules
+## Testing
 
-See [`docs/Master_Rules_Combined.md`](docs/Master_Rules_Combined.md) for the complete set of verification rules.
+The backend suite runs against the **real FastAPI app and the real development
+database**, with the storage backend redirected to a per-test temporary
+directory. `tests/conftest.py` wipes the database before/after every test and
+re-seeds the default employee account at the end of the session so local
+logins keep working after test runs.
+
+```bash
+cd backend
+pytest -q                 # 544 tests
+pytest tests/test_upload_api.py
+```
+
+Frontend verification uses headless Chrome via the Chrome DevTools Protocol
+(scripts in `/tmp` during development) to assert sidebar structure, routes,
+themes, responsive behavior and the upload-slot workflow end-to-end.
 
 ---
 
-## 📊 Pipeline Flow
+## API overview
+
+All endpoints are mounted under `/api/v1`. Interactive docs at `/docs`.
+
+| Module                | Endpoints                                                              |
+| --------------------- | ---------------------------------------------------------------------- |
+| Health                | `GET /health`                                                          |
+| Auth                  | `POST /auth/login`, `GET /auth/me`, `POST /auth/refresh`, `POST /auth/logout` |
+| Upload / Applications | `POST/GET /applications`, `GET /applications/{id}`, `POST /applications/{id}/documents`, `GET/PUT/DELETE /applications/{id}/documents/{doc_id}`, `GET /documents/{id}`, `GET /documents/{id}/download` |
+| Completeness          | `GET/POST /applications/{id}/completeness[/verify]`                    |
+| Technical validation  | `GET/POST /applications/{id}/technical-validation[/validate]`          |
+| Document processing   | `POST /applications/{id}/process-documents`, `GET .../ocr-results`     |
+| Document analysis     | `POST .../analyze-documents`, `GET .../analysis-results`               |
+| Confidence            | `POST .../confidence/evaluate`, `POST .../confidence/review`           |
+| Normalization         | `POST .../normalize`, `GET .../normalized-fields`                      |
+| Rule engine           | `POST .../validate`, `GET .../validation-results`                      |
+| Reports               | `GET .../validation-report`, `GET .../validation-report/html`, `GET .../validation-summary` |
+| Human verification    | `GET/POST .../human-review`, `GET .../human-review/history`            |
+| Feedback              | `GET /feedback`, `GET /feedback/{id}`, `GET /feedback/statistics`, `GET /feedback/export/json`, `GET /feedback/export/csv` |
+| Continuous learning   | `GET /continuous-learning/dataset`, `/statistics`, `/version`, `/export/json`, `/export/csv` |
+
+---
+
+## Frontend overview
+
+**Sidebar navigation (employee-facing):**
 
 ```
-Document Upload → PDF Layer Check → Image Enhancement → OCR Extraction
-       → Structured Field Parsing → Stamp/Signature Detection
-       → Cross-Document Matching → Business Rule Engine
-       → Verification Report → Human Review Dashboard
+MAIN         Dashboard · Applications
+DOCUMENTS    Upload Documents
+VERIFICATION Validation Reports · Human Review
+SYSTEM       Settings
 ```
 
+**Settings → Administration** carries the internal Feedback and Continuous
+Learning tools, visually marked **Restricted** — they are not shown as main
+sidebar entries. The navigation model lives in
+`frontend/src/data/navigation.js` (`NAVIGATION`, `ADMIN_NAV_ITEMS`,
+`INTERNAL_ROUTES`).
+
+**Shared state:** `frontend/src/store/ApplicationsContext.jsx` is the single
+source of truth for applications and their documents. The Dashboard recent
+list, Applications page and Upload page all read from the same store, so a new
+application or upload appears everywhere immediately.
+
+**Document catalogue:** `frontend/src/data/documents.js` defines the fixed
+required checklist — 9 required entries, 18 total slots — with
+`computeDocumentProgress()` powering the X/18 progress bar on the dashboard and
+upload page, and the per-category Complete / Incomplete / Missing checklist.
+
+**Themes:** `frontend/src/theme/` provides Light / Dark / System via CSS
+variables; the sidebar is collapsible on desktop, an icon rail on tablet and a
+drawer with backdrop on mobile.
+
 ---
 
-## 🏢 Context
+## Security
 
-Developed during an internship at **KPITB** as part of the **Fintech Team's** digital payment onboarding automation initiative.
+- **Authentication**: bcrypt-hashed passwords; short-lived JWT access cookie
+  plus rotating, revocable refresh cookie; 401 handling transparently refreshes
+  and replays requests.
+- **Uploads**: validated by extension, MIME type *and* magic-byte sniffing;
+  streamed in chunks to a storage root outside the source tree
+  (`storage/`, gitignored); per-type copy caps enforced server-side.
+- **Secrets**: `.env` is gitignored; production refuses the development secret
+  key and default seed password.
+- **Privacy**: document payloads are never stored in `localStorage`; no OCR
+  text or confidence internals are exposed in the employee UI; internal AI
+  functionality is hidden under restricted Administration settings.
 
 ---
 
-## 📄 License
+## Module documentation
 
-This project is intended for internal use at KPITB. All rights reserved.
+Per-module design docs live in `backend/docs/`:
+
+| File                  | Phase / topic                                   |
+| --------------------- | ----------------------------------------------- |
+| `technical_validation.md` | Phase 5 — technical validation              |
+| `document_processing.md`  | Phase 6 — OCR & text extraction             |
+| `document_analysis.md`    | Phase 7 — visual detection & field extraction |
+| `confidence.md`           | Phase 8 — confidence scoring                 |
+| `normalization.md`        | Phase 9 — normalization                      |
+| `rule_engine.md`          | Phase 10 — business rules                    |
+| `validation_reports.md`   | Phase 11 — validation reports                |
+| `human_verification.md`   | Phase 12 — human verification                |
+| `feedback.md`             | Phase 13 — feedback dataset                  |
+| `continuous_learning.md`  | Phase 14 — curated ML dataset                |
+
+---
+
+## Roadmap / status
+
+- **F1** Dashboard layout shell, auth + theme system ✅
+- **F2** Application management (list/search/filter/sort, create, details) ✅
+- **F3** Document upload & management with fixed slot checklist ✅
+- **F4** Verification workspace + shared applications store ✅
+- **Pipeline (F5–F14)** Completeness → technical validation → processing →
+  analysis → confidence → normalization → rule engine → reports → human
+  verification → feedback → continuous learning ✅
+- **Frontend navigation redesign** — employee-only sidebar, admin tools moved
+  under Settings ✅
+
+---
+
+## License
+
+Proprietary internal project. All data shown is fictional; do not upload real
+customer documents to this system without authorization.

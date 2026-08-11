@@ -1,0 +1,127 @@
+import { useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+
+import { ArrowLeft } from 'lucide-react';
+
+import ConfirmDialog from '../../components/common/ConfirmDialog/ConfirmDialog';
+import ErrorState from '../../components/common/ErrorState/ErrorState';
+import Spinner from '../../components/common/Spinner/Spinner';
+import { useToast } from '../../components/common/Toast/ToastContext';
+import DocumentList from '../../components/documents/DocumentList/DocumentList';
+import SummaryPanel from '../../components/documents/SummaryPanel/SummaryPanel';
+import { useDocuments } from '../../hooks/useDocuments';
+import { REQUIRED_DOCUMENT_TYPES } from '../../data/documents';
+import { getApiErrorMessage } from '../../utils/apiError';
+import styles from './UploadDocumentsPage.module.css';
+
+/**
+ * Document upload page for one application.
+ *
+ * Left column holds the fixed slot checklist; right column holds the summary
+ * panel. Each required category shows its exact number of numbered slots;
+ * choosing a file for a slot uploads (or replaces) exactly that slot. Uploading
+ * and deleting are confirmed, toasted and surfaced via the documents hook, and
+ * the shared store keeps the dashboard checklist in sync. "Continue to Document
+ * Completeness" opens the completeness module once all required copies exist.
+ */
+function UploadDocumentsPage() {
+  const { applicationId } = useParams();
+  const navigate = useNavigate();
+  const toast = useToast();
+
+  const { documents, loading, error, reload, pending, findDocument, uploadToSlot, removeDocument } =
+    useDocuments(applicationId);
+
+  const [deleteConfirmDocument, setDeleteConfirmDocument] = useState(null);
+  const [sessionTally, setSessionTally] = useState({ uploaded: 0, failed: 0 });
+
+  const handleUpload = async (documentType, copyNumber, file, validationError) => {
+    if (!file) {
+      if (validationError) {
+        setSessionTally((prev) => ({ ...prev, failed: prev.failed + 1 }));
+        toast.error(validationError);
+      }
+      return;
+    }
+    const result = await uploadToSlot({ documentType, copyNumber, file });
+    if (result.ok) {
+      setSessionTally((prev) => ({ ...prev, uploaded: prev.uploaded + 1 }));
+      toast.success(`Copy ${copyNumber} uploaded successfully.`);
+    } else {
+      setSessionTally((prev) => ({ ...prev, failed: prev.failed + 1 }));
+      toast.error(result.error);
+    }
+  };
+
+  const handleDeleteConfirmed = async () => {
+    const document = deleteConfirmDocument;
+    setDeleteConfirmDocument(null);
+    if (!document) {
+      return;
+    }
+    const result = await removeDocument(document);
+    if (result.ok) {
+      toast.success('Document deleted successfully.');
+    } else {
+      toast.error(result.error);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className={styles.center} aria-busy="true">
+        <Spinner size="medium" />
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.page}>
+      <Link to={`/applications/${applicationId}`} className={styles.backLink}>
+        <ArrowLeft aria-hidden="true" />
+        Back to Application #{applicationId}
+      </Link>
+
+      <header className={styles.header}>
+        <h2 className={styles.title}>Upload Documents</h2>
+        <p className={styles.subtitle}>
+          Attach the required files for application #{applicationId}.
+        </p>
+      </header>
+
+      {error ? (
+        <ErrorState message="Unable to load documents." onRetry={reload} />
+      ) : (
+        <div className={styles.layout}>
+          <div className={styles.main}>
+            <DocumentList
+              requiredTypes={REQUIRED_DOCUMENT_TYPES}
+              findDocument={findDocument}
+              pending={pending}
+              onUpload={handleUpload}
+              onDelete={setDeleteConfirmDocument}
+            />
+          </div>
+
+          <SummaryPanel
+            documents={documents}
+            sessionTally={sessionTally}
+            onContinue={() => navigate('/completeness')}
+          />
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={deleteConfirmDocument !== null}
+        title="Delete this document?"
+        message={`"${deleteConfirmDocument?.original_filename}" will be permanently removed from application #${applicationId}.`}
+        confirmLabel="Delete"
+        tone="danger"
+        onConfirm={handleDeleteConfirmed}
+        onCancel={() => setDeleteConfirmDocument(null)}
+      />
+    </div>
+  );
+}
+
+export default UploadDocumentsPage;

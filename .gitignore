@@ -29,6 +29,18 @@ ENV/
 Thumbs.db
 desktop.ini
 
+# Environment files
+.env
+backend/.env
+
+# Node.js / Frontend
+frontend/node_modules/
+frontend/dist/
+node_modules/
+
+# Storage (uploaded documents — never commit)
+storage/
+
 # Output files (generated, not source)
 extracted_ocr/
 extracted_ocr_pages/
@@ -36,11 +48,25 @@ temp_page_*.png
 recovered_page_*.png
 page_*_layer_*.jpeg
 page_*_layer_*.png
+temp_uploads/
+
+# Logs
+logs/
+*.log
+
+# Database
+*.db
+*.sqlite3
 
 # Sensitive/Large files (don't commit actual onboarding documents)
 data/samples/*.pdf
 data/samples/*.docx
 data/*.db
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
 
 # Keep diagrams and doc PDFs
 !diagrams/*.png

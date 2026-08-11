@@ -1,0 +1,77 @@
+"""Domain enums shared by the ORM models.
+
+Each enum maps to a native PostgreSQL ``ENUM`` type via SQLAlchemy. Native enum
+types enforce allowed values at the database level (data integrity) while the
+Python ``Enum`` classes keep the values strongly typed in application code. The
+enum type name derives from the class name in lower case; when a new value is
+added to an enum that already exists in a production database, a dedicated
+migration must ``ALTER TYPE`` the enum.
+"""
+
+from enum import Enum
+
+
+class ApplicationStatus(str, Enum):
+    """Lifecycle state of a verification application."""
+
+    SUBMITTED = "SUBMITTED"
+    PROCESSING = "PROCESSING"
+    PENDING_REVIEW = "PENDING_REVIEW"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    CORRECTED = "CORRECTED"
+
+
+class DocumentType(str, Enum):
+    """Document categories accepted by the verification pipeline.
+
+    The values mirror the checklist item families (signatures and stamps) that
+    are verified for each financial document.
+    """
+
+    TRIPARTITE_AGREEMENT = "TRIPARTITE_AGREEMENT"
+    BILATERAL_AGREEMENT = "BILATERAL_AGREEMENT"
+    ACCOUNT_MAINTENANCE_CERTIFICATE = "ACCOUNT_MAINTENANCE_CERTIFICATE"
+    ONE_LINK_LETTER = "ONE_LINK_LETTER"
+    AUTHORITY_LETTER = "AUTHORITY_LETTER"
+    SCHEDULE_OF_CHARGES = "SCHEDULE_OF_CHARGES"
+    BUSINESS_REQUIREMENT_DOCUMENT = "BUSINESS_REQUIREMENT_DOCUMENT"
+    FORMAL_REQUEST_LETTER = "FORMAL_REQUEST_LETTER"
+    OTHER_SUPPORTING_DOCUMENT = "OTHER_SUPPORTING_DOCUMENT"
+    CNIC_FRONT = "CNIC_FRONT"
+    CNIC_BACK = "CNIC_BACK"
+
+
+class DocumentProcessingStatus(str, Enum):
+    """State of a document within the processing pipeline."""
+
+    UPLOADED = "UPLOADED"
+    PENDING = "PENDING"
+    PROCESSING = "PROCESSING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+
+class ValidationStatus(str, Enum):
+    """Outcome of a validation rule check."""
+
+    PASS = "PASS"
+    FAIL = "FAIL"
+    WARNING = "WARNING"
+    PENDING_MANUAL_REVIEW = "PENDING_MANUAL_REVIEW"
+
+
+class Severity(str, Enum):
+    """Importance level of a validation result."""
+
+    ERROR = "ERROR"
+    WARNING = "WARNING"
+    INFO = "INFO"
+
+
+class ReviewDecision(str, Enum):
+    """Decision taken by a human reviewer."""
+
+    APPROVE = "APPROVE"
+    CORRECT = "CORRECT"
+    REJECT = "REJECT"

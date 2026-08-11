@@ -1,0 +1,345 @@
+"""Tests for the document analysis API and end-to-end analysis flow.
+
+End-to-end tests exercise the full chain through the real API: upload a
+document, run Phase 5 technical validation, run Phase 6 document processing and
+finally Phase 7 analysis. Digital PDFs carry their analysis text directly
+(PyMuPDF probe); scanned images use the deterministic fake OCR engine so no
+PaddleOCR model is required.
+"""
+
+import pymupdf
+
+from app.database.connection import SessionLocal
+from app.database.models.document_analysis_result import DocumentAnalysisResult
+from app.database.models.enums import DocumentType
+from tests.test_document_processing_api import patch_ocr_engine, process_documents
+from tests.test_technical_validation_api import (
+    add_document,
+    create_application,
+    encode_png,
+    make_document_image,
+    run_validation,
+)
+
+API = "/api/v1"
+
+BANK_STATEMENT_TEXT = """MONTHLY ACCOUNT STATEMENT
+Account Holder: John A. Doe
+Account Number: 1234567890
+IBAN: DE89370400440532013000
+Bank: Sparkasse
+Statement Period: 01/01/2026 - 31/01/2026
+Opening Balance: 1,250.50
+Closing Balance: 3,200.75
+Total Credits: 2,500.00
+Total Debits: 549.75
+Currency: EUR
+Transactions: 23
+"""
+
+PAYSLIP_TEXT = """PAYSLIP
+Employee Name: Jane Q. Roe
+Employee ID: EMP-1001
+Employer Name: Acme Corp GmbH
+Gross Salary: 5,000.00
+Net Salary: 3,850.50
+Salary Month: 2026-01
+Payment Date: 2026-01-31
+"""
+
+ID_TEXT = """NATIONAL IDENTITY CARD
+Full Name: Jose P. Garcia
+Date of Birth: 1990-05-15
+ID Number: 1234567890
+Nationality: Spain
+Issue Date: 2018-06-01
+Expiry Date: 2028-06-01
+"""
+
+TAX_TEXT = """TAX RETURN SUMMARY
+Taxpayer Name: Maria K. Novak
+Tax Reference Number: TAX-2025-000123
+Tax Year: 2025
+Gross Income: 45,000.00
+Total Tax: 9,800.00
+Currency: EUR
+"""
+
+PLAIN_TEXT = (
+    "Dear Sir or Madam, please find attached the meeting minutes from our "
+    "quarterly board session for your records. Kind regards."
+)
+
+
+def make_text_pdf_bytes(text: str) -> bytes:
+    """Build a digital PDF whose probed text is exactly ``text``."""
+    document = pymupdf.open()
+    page = document.new_page(width=595, height=842)
+    y = 72
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        page.insert_text((72, y), line, fontsize=12)
+        y += 18
+    content = document.tobytes()
+    document.close()
+    return content
+
+
+def add_digital_pdf(
+    storage_root,
+    application_id: int,
+    text: str,
+    *,
+    document_type: DocumentType = DocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    filename: str = "statement.pdf",
+) -> int:
+    """Upload a digital PDF carrying ``text`` and return its document id."""
+    return add_document(
+        storage_root,
+        application_id,
+        document_type,
+        filename,
+        make_text_pdf_bytes(text),
+        "application/pdf",
+    )
+
+
+def analyze_documents(client, application_id: int) -> dict:
+    """Call the analyze-documents endpoint and return the JSON response."""
+    response = client.post(f"{API}/applications/{application_id}/analyze-documents")
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def get_analysis_results(client, application_id: int) -> dict:
+    """Call the analysis-results endpoint and return the JSON response."""
+    response = client.get(f"{API}/applications/{application_id}/analysis-results")
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def stored_analysis_count() -> int:
+    """Return the number of persisted analysis result rows."""
+    db = SessionLocal()
+    try:
+        return len(db.query(DocumentAnalysisResult).all())
+    finally:
+        db.close()
+
+
+def run_processing(client, application_id: int) -> dict:
+    """Validate then process an application so its OCR results exist."""
+    run_validation(client, application_id)
+    return process_documents(client, application_id)
+
+
+# --- End-to-end analysis -----------------------------------------------------
+
+
+def test_analyze_bank_statement_end_to_end(client, storage_root, monkeypatch):
+    application_id = create_application(client)
+    add_digital_pdf(storage_root, application_id, BANK_STATEMENT_TEXT)
+    run_processing(client, application_id)
+    engine = patch_ocr_engine(monkeypatch)
+
+    result = analyze_documents(client, application_id)
+
+    assert result["total_analyzed"] == 1
+    assert result["total_failed"] == 0
+    item = result["items"][0]
+    assert item["outcome"] == "ANALYZED"
+    assert item["document_type"] == "BANK_STATEMENT"
+    assert item["verification_status"] == "VERIFIED"
+    assert item["confidence_score"] == 1.0
+    assert item["extracted_fields"]["account_number"] == "1234567890"
+    assert item["extracted_fields"]["opening_balance"] == 1250.5
+    assert item["issues"] == []
+    assert engine.calls == 0
+    assert stored_analysis_count() == 1
+
+    stored = get_analysis_results(client, application_id)
+    assert stored["total"] == 1
+    item = stored["items"][0]
+    assert item["verification_status"] == "VERIFIED"
+    assert item["confidence_score"] == 1.0
+    assert item["extracted_fields"]["iban"] == "DE89370400440532013000"
+    assert item["issues"] == []
+    assert item["created_at"] is not None
+
+
+def test_analyze_payslip_from_scanned_image(client, storage_root, monkeypatch):
+    application_id = create_application(client)
+    add_document(
+        storage_root,
+        application_id,
+        DocumentType.ONE_LINK_LETTER,
+        "payslip.png",
+        encode_png(make_document_image()),
+        "image/png",
+    )
+    run_validation(client, application_id)
+    engine = patch_ocr_engine(monkeypatch, texts=[PAYSLIP_TEXT])
+    process_documents(client, application_id)
+
+    result = analyze_documents(client, application_id)
+
+    assert result["total_analyzed"] == 1
+    item = result["items"][0]
+    assert item["document_type"] == "PAYSLIP"
+    assert item["verification_status"] == "VERIFIED"
+    assert item["extracted_fields"]["employee_name"] == "Jane Q. Roe"
+    assert item["extracted_fields"]["gross_salary"] == 5000.0
+    assert item["extracted_fields"]["net_salary"] == 3850.5
+    assert engine.calls == 1
+
+
+def test_analyze_identity_document(client, storage_root):
+    application_id = create_application(client)
+    add_digital_pdf(
+        storage_root,
+        application_id,
+        ID_TEXT,
+        document_type=DocumentType.OTHER_SUPPORTING_DOCUMENT,
+        filename="id.pdf",
+    )
+    run_processing(client, application_id)
+
+    result = analyze_documents(client, application_id)
+
+    item = result["items"][0]
+    assert item["document_type"] == "ID_DOCUMENT"
+    assert item["verification_status"] == "VERIFIED"
+    assert item["extracted_fields"]["full_name"] == "Jose P. Garcia"
+    assert item["extracted_fields"]["expiry_date"] == "2028-06-01"
+
+
+def test_analyze_tax_document(client, storage_root):
+    application_id = create_application(client)
+    add_digital_pdf(
+        storage_root,
+        application_id,
+        TAX_TEXT,
+        document_type=DocumentType.SCHEDULE_OF_CHARGES,
+        filename="tax.pdf",
+    )
+    run_processing(client, application_id)
+
+    result = analyze_documents(client, application_id)
+
+    item = result["items"][0]
+    assert item["document_type"] == "TAX_DOCUMENT"
+    assert item["verification_status"] == "VERIFIED"
+    assert item["extracted_fields"]["tax_reference_number"] == "TAX-2025-000123"
+    assert item["extracted_fields"]["total_tax"] == 9800.0
+
+
+# --- Failure handling --------------------------------------------------------
+
+
+def test_analyze_without_ocr_result_fails_document(client, storage_root):
+    application_id = create_application(client)
+    add_digital_pdf(storage_root, application_id, BANK_STATEMENT_TEXT)
+    run_validation(client, application_id)
+
+    result = analyze_documents(client, application_id)
+
+    assert result["total_analyzed"] == 0
+    assert result["total_failed"] == 1
+    item = result["items"][0]
+    assert item["outcome"] == "FAILED"
+    assert "No OCR result found" in item["message"]
+    assert stored_analysis_count() == 0
+
+
+def test_analyze_unknown_document_type_fails(client, storage_root):
+    application_id = create_application(client)
+    add_digital_pdf(
+        storage_root,
+        application_id,
+        PLAIN_TEXT,
+        document_type=DocumentType.OTHER_SUPPORTING_DOCUMENT,
+        filename="letter.pdf",
+    )
+    run_processing(client, application_id)
+
+    result = analyze_documents(client, application_id)
+
+    assert result["total_analyzed"] == 0
+    assert result["total_failed"] == 1
+    item = result["items"][0]
+    assert item["outcome"] == "FAILED"
+    assert "could not be determined" in item["message"]
+    assert stored_analysis_count() == 0
+
+
+def test_analyze_application_not_found(client):
+    post = client.post(f"{API}/applications/999999/analyze-documents")
+    assert post.status_code == 404
+    get = client.get(f"{API}/applications/999999/analysis-results")
+    assert get.status_code == 404
+
+
+def test_get_analysis_results_empty_application(client):
+    application_id = create_application(client)
+    result = get_analysis_results(client, application_id)
+    assert result["total"] == 0
+    assert result["items"] == []
+
+
+def test_reanalysis_upserts_single_row(client, storage_root):
+    application_id = create_application(client)
+    add_digital_pdf(storage_root, application_id, BANK_STATEMENT_TEXT)
+    run_processing(client, application_id)
+
+    first = analyze_documents(client, application_id)
+    second = analyze_documents(client, application_id)
+
+    assert first["total_analyzed"] == 1
+    assert second["total_analyzed"] == 1
+    assert stored_analysis_count() == 1
+    assert get_analysis_results(client, application_id)["total"] == 1
+
+
+def test_analyze_partial_failure_isolation(client, storage_root, monkeypatch):
+    application_id = create_application(client)
+    add_digital_pdf(storage_root, application_id, BANK_STATEMENT_TEXT)
+    add_digital_pdf(
+        storage_root,
+        application_id,
+        PAYSLIP_TEXT,
+        document_type=DocumentType.ONE_LINK_LETTER,
+        filename="payslip.pdf",
+    )
+    run_processing(client, application_id)
+
+    result = analyze_documents(client, application_id)
+
+    assert result["total_analyzed"] == 2
+    assert result["total_failed"] == 0
+
+
+# --- Report content ----------------------------------------------------------
+
+
+def test_analysis_report_reports_missing_critical_field(client, storage_root):
+    incomplete = BANK_STATEMENT_TEXT.replace(
+        "Opening Balance: 1,250.50", "Opening Balance: -"
+    )
+    application_id = create_application(client)
+    add_digital_pdf(storage_root, application_id, incomplete)
+    run_processing(client, application_id)
+
+    result = analyze_documents(client, application_id)
+
+    assert result["total_analyzed"] == 1
+    item = result["items"][0]
+    assert item["verification_status"] == "NEEDS_REVIEW"
+    assert item["confidence_score"] < 1.0
+    assert any("Opening balance missing" in issue for issue in item["issues"])
+    statuses = {v["field"]: v["status"] for v in item["validation_results"]}
+    assert statuses["opening_balance"] == "missing"
+
+    stored = get_analysis_results(client, application_id)["items"][0]
+    assert stored["verification_status"] == "NEEDS_REVIEW"
+    assert any("Opening balance missing" in issue for issue in stored["issues"])

@@ -1,0 +1,194 @@
+/**
+ * Document type catalogue.
+ *
+ * Mirrors the backend `DocumentType` enum (app/database/models/enums.py) so the
+ * upload UI always sends a value the API accepts. Applications require a fixed
+ * set of documents, some of them in multiple copies (a single 1-Link form is
+ * uploaded three times, six Schedule of Charges agreements, etc.). The catalogue
+ * below is the single source of truth for those requirements: the dashboard's
+ * per-application checklist and the upload page's slot grid both derive their
+ * required sets and copy counts from here.
+ */
+
+export const DOCUMENT_GROUP_REQUIRED = 'required';
+export const DOCUMENT_GROUP_SUPPORTING = 'supporting';
+
+export const DOCUMENT_TYPES = [
+  {
+    type: 'AUTHORITY_LETTER',
+    label: 'Authority Letter',
+    group: DOCUMENT_GROUP_REQUIRED,
+    requiredCopies: 1,
+  },
+  {
+    type: 'ACCOUNT_MAINTENANCE_CERTIFICATE',
+    label: 'Account Maintenance Certificate',
+    group: DOCUMENT_GROUP_REQUIRED,
+    requiredCopies: 1,
+  },
+  {
+    type: 'ONE_LINK_LETTER',
+    label: '1-Link Application Form',
+    group: DOCUMENT_GROUP_REQUIRED,
+    requiredCopies: 3,
+  },
+  {
+    type: 'TRIPARTITE_AGREEMENT',
+    label: 'Tripartite Agreement',
+    group: DOCUMENT_GROUP_REQUIRED,
+    requiredCopies: 3,
+  },
+  {
+    type: 'SCHEDULE_OF_CHARGES',
+    label: 'Schedule of Charges Agreement (Sub-Biller)',
+    group: DOCUMENT_GROUP_REQUIRED,
+    requiredCopies: 6,
+  },
+  {
+    type: 'BUSINESS_REQUIREMENT_DOCUMENT',
+    label: 'Onboarding / Business Requirement Document',
+    group: DOCUMENT_GROUP_REQUIRED,
+    requiredCopies: 1,
+  },
+  {
+    type: 'BILATERAL_AGREEMENT',
+    label: 'Bilateral / Business Agreement',
+    group: DOCUMENT_GROUP_REQUIRED,
+    requiredCopies: 1,
+  },
+  {
+    type: 'CNIC',
+    label: 'CNIC (Front & Back)',
+    group: DOCUMENT_GROUP_REQUIRED,
+    requiredCopies: 2,
+    slotTypes: ['CNIC_FRONT', 'CNIC_BACK'],
+    slotLabels: ['Front', 'Back'],
+  },
+];
+
+export const REQUIRED_DOCUMENT_TYPES = DOCUMENT_TYPES.filter(
+  ({ group }) => group === DOCUMENT_GROUP_REQUIRED
+);
+
+export const SUPPORTING_DOCUMENT_TYPES = DOCUMENT_TYPES.filter(
+  ({ group }) => group === DOCUMENT_GROUP_SUPPORTING
+);
+
+/**
+ * Total number of required uploads per application
+ * (1 + 1 + 3 + 3 + 6 + 1 + 1 + 2).
+ */
+export const TOTAL_REQUIRED_DOCUMENTS = REQUIRED_DOCUMENT_TYPES.reduce(
+  (sum, entry) => sum + entry.requiredCopies,
+  0
+);
+
+/**
+ * Look up the catalogue entry for a document type value.
+ *
+ * Composite topics (e.g. CNIC front/back) map their backend slot types onto the
+ * single catalogue entry so every view shows the same grouped topic.
+ *
+ * @param {string} type A backend `DocumentType` value.
+ * @returns {object} The matching catalogue entry, or the fallback entry.
+ */
+export function getDocumentTypeConfig(type) {
+  const bySlotType = DOCUMENT_TYPES.find(
+    (entry) => entry.slotTypes && entry.slotTypes.includes(type)
+  );
+  return (
+    bySlotType ??
+    DOCUMENT_TYPES.find((entry) => entry.type === type) ??
+    DOCUMENT_TYPES[0]
+  );
+}
+
+/**
+ * Compute upload progress from a list of uploaded documents.
+ *
+ * Shared by the dashboard checklist and the upload page so both views always
+ * agree: a category is `complete` when it holds its required number of copies,
+ * `incomplete` when at least one copy exists but the quota is unmet, and
+ * `missing` when none of the required copies have been uploaded yet.
+ *
+ * @param {Array<object>} documents Uploaded document metadata.
+ * @returns {{totalCopies: number, uploadedCopies: number, percent: number,
+ *   categories: Array<object>}}
+ */
+export function computeDocumentProgress(documents = []) {
+  const counts = {};
+  for (const document of documents) {
+    counts[document.document_type] = (counts[document.document_type] ?? 0) + 1;
+  }
+
+  const categories = REQUIRED_DOCUMENT_TYPES.map((entry) => {
+    const present = entry.slotTypes
+      ? entry.slotTypes.reduce((sum, slotType) => sum + (counts[slotType] ?? 0), 0)
+      : counts[entry.type] ?? 0;
+    let status = 'missing';
+    if (present >= entry.requiredCopies) {
+      status = 'complete';
+    } else if (present > 0) {
+      status = 'incomplete';
+    }
+    return {
+      type: entry.type,
+      label: entry.label,
+      required: entry.requiredCopies,
+      present,
+      status,
+    };
+  });
+
+  const uploadedCopies = categories.reduce((sum, category) => sum + category.present, 0);
+  const totalCopies = TOTAL_REQUIRED_DOCUMENTS;
+  const percent =
+    totalCopies === 0 ? 0 : Math.round((Math.min(uploadedCopies, totalCopies) / totalCopies) * 100);
+
+  return { totalCopies, uploadedCopies, percent, categories };
+}
+
+/**
+ * File formats the backend accepts (app/upload/constants.py). Client-side
+ * validation uses the exact same allow-list so no valid upload is ever blocked
+ * by the browser, and unsupported files fail fast before hitting the network.
+ */
+export const ACCEPTED_EXTENSIONS = [
+  '.pdf',
+  '.doc',
+  '.docx',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.tif',
+  '.tiff',
+];
+
+export const ACCEPTED_TYPES_TEXT = 'PDF, PNG, JPG, JPEG, DOC, DOCX, TIF, TIFF';
+
+export const MAX_FILE_SIZE_MB = 25;
+
+export const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+
+/**
+ * Validate a selected file before upload.
+ *
+ * @param {File} file The file selected by the user.
+ * @returns {string | null} An error message, or null when the file is valid.
+ */
+export function validateUploadFile(file) {
+  if (!file) {
+    return 'No file was provided.';
+  }
+  if (file.size === 0) {
+    return 'The selected file is empty.';
+  }
+  if (file.size > MAX_FILE_SIZE_BYTES) {
+    return `File exceeds the maximum allowed size of ${MAX_FILE_SIZE_MB} MB.`;
+  }
+  const extension = `.${file.name.split('.').pop().toLowerCase()}`;
+  if (!ACCEPTED_EXTENSIONS.includes(extension)) {
+    return `Unsupported file type. Accepted formats: ${ACCEPTED_TYPES_TEXT}.`;
+  }
+  return null;
+}

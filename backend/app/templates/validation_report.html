@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Validation Report #{{ report.application_id }}</title>
+<style>
+  :root {
+    --ink: #1a2332;
+    --muted: #5b6b7c;
+    --line: #d7dee6;
+    --pass: #1e7e34;
+    --fail: #b42318;
+    --warn: #b54708;
+    --pending: #175cd3;
+    --bg-soft: #f4f6f9;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0 auto;
+    max-width: 900px;
+    padding: 32px 24px;
+    font-family: "Segoe UI", Arial, sans-serif;
+    font-size: 13px;
+    color: var(--ink);
+    line-height: 1.45;
+  }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 {
+    font-size: 15px;
+    margin: 28px 0 10px;
+    padding-bottom: 6px;
+    border-bottom: 2px solid var(--line);
+  }
+  .muted { color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0; }
+  th, td {
+    border: 1px solid var(--line);
+    padding: 6px 8px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th { background: var(--bg-soft); font-weight: 600; }
+  td.num, th.num { text-align: right; }
+  .banner {
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin: 18px 0;
+    color: #fff;
+    font-size: 16px;
+    font-weight: 700;
+  }
+  .banner.approved { background: var(--pass); }
+  .banner.failed, .banner.rejected { background: var(--fail); }
+  .banner.manual { background: var(--warn); }
+  .badge {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #fff;
+  }
+  .badge.pass { background: var(--pass); }
+  .badge.fail { background: var(--fail); }
+  .badge.warn { background: var(--warn); }
+  .badge.pending { background: var(--pending); }
+  .badge.neutral { background: var(--muted); }
+  ul { margin: 6px 0 6px 18px; padding: 0; }
+  li { margin: 4px 0; }
+  .grid { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+  .stat {
+    flex: 1 1 120px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px;
+    text-align: center;
+  }
+  .stat .value { font-size: 22px; font-weight: 700; }
+  .stat .label { color: var(--muted); font-size: 11px; }
+  .footer {
+    margin-top: 40px;
+    padding-top: 10px;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 11px;
+  }
+  @media print {
+    body { padding: 0; font-size: 11px; }
+    h2 { break-after: avoid; }
+    table, .banner { break-inside: avoid; }
+    a { color: var(--ink); text-decoration: none; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Validation Report</h1>
+<div class="muted">Application #{{ report.application_id }} &middot; Report version {{ report.report_version }} &middot; Generated {{ report.generated_at.strftime("%Y-%m-%d %H:%M:%S UTC") }}</div>
+
+<div class="banner {{ 'approved' if report.overall_status == 'APPROVED' else ('manual' if report.overall_status == 'MANUAL_REVIEW_REQUIRED' else ('rejected' if report.overall_status == 'REJECTED' else 'failed')) }}">
+  Overall Status: {{ report.overall_status }}
+</div>
+
+<h2>Application Information</h2>
+<table>
+  <tr><th>Application ID</th><td>{{ report.application.application_id }}</td></tr>
+  <tr><th>Current Status</th><td>{{ report.application.status }}</td></tr>
+  <tr><th>Submission Date</th><td>{{ report.application.submitted_at.strftime("%Y-%m-%d %H:%M:%S UTC") }}</td></tr>
+  <tr><th>Last Updated</th><td>{{ report.application.updated_at.strftime("%Y-%m-%d %H:%M:%S UTC") }}</td></tr>
+  <tr><th>Created By</th><td>{{ report.application.created_by }}</td></tr>
+</table>
+
+<h2>Document Summary</h2>
+{% if report.document_summary %}
+<table>
+  <thead>
+    <tr>
+      <th>Document Type</th>
+      <th>Processing</th>
+      <th>OCR</th>
+      <th>Technical Validation</th>
+      <th>Analysis</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for document in report.document_summary %}
+    <tr>
+      <td>{{ document.document_type }} <span class="muted">(#{{ document.document_id }})</span></td>
+      <td>{{ document.processing_status }}</td>
+      <td>{{ document.ocr_status }}{% if document.ocr_confidence is not none %} <span class="muted">({{ "%.2f"|format(document.ocr_confidence) }})</span>{% endif %}</td>
+      <td>{% if document.technical_validation_status == 'FAILED' %}<span class="badge fail">FAILED</span>{% elif document.technical_validation_status == 'PASS' %}<span class="badge pass">PASS</span>{% else %}<span class="badge neutral">{{ document.technical_validation_status }}</span>{% endif %}</td>
+      <td>{{ document.analysis_status }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No documents uploaded.</p>
+{% endif %}
+
+<h2>Extraction Summary</h2>
+<div class="grid">
+  <div class="stat"><div class="value">{{ report.extraction_summary.total_fields }}</div><div class="label">Total Fields</div></div>
+  <div class="stat"><div class="value">{{ report.extraction_summary.auto_verified }}</div><div class="label">Auto Verified</div></div>
+  <div class="stat"><div class="value">{{ report.extraction_summary.human_corrected }}</div><div class="label">Human Corrected</div></div>
+  <div class="stat"><div class="value">{{ report.extraction_summary.pending_review }}</div><div class="label">Pending</div></div>
+  <div class="stat"><div class="value">{% if report.extraction_summary.overall_confidence is not none %}{{ "%.2f"|format(report.extraction_summary.overall_confidence) }}{% else %}-{% endif %}</div><div class="label">Overall Confidence</div></div>
+</div>
+
+<h2>Business Rule Summary</h2>
+<div class="grid">
+  <div class="stat"><div class="value">{{ report.rule_summary.total }}</div><div class="label">Total Rules</div></div>
+  <div class="stat"><div class="value">{{ report.rule_summary.passed }}</div><div class="label">Passed</div></div>
+  <div class="stat"><div class="value">{{ report.rule_summary.failed }}</div><div class="label">Failed</div></div>
+  <div class="stat"><div class="value">{{ report.rule_summary.warnings }}</div><div class="label">Warnings</div></div>
+  <div class="stat"><div class="value">{{ report.rule_summary.pending_manual_review }}</div><div class="label">Pending Review</div></div>
+</div>
+<table>
+  <thead>
+    <tr>
+      <th>Category</th>
+      <th class="num">Total</th>
+      <th class="num">Passed</th>
+      <th class="num">Failed</th>
+      <th class="num">Warnings</th>
+      <th class="num">Pending</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for group in report.rule_summary.by_category %}
+    <tr>
+      <td>{{ group.category }}</td>
+      <td class="num">{{ group.total }}</td>
+      <td class="num">{{ group.passed }}</td>
+      <td class="num">{{ group.failed }}</td>
+      <td class="num">{{ group.warnings }}</td>
+      <td class="num">{{ group.pending_manual_review }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h2>Visual Detection Summary</h2>
+<div class="grid">
+  <div class="stat"><div class="value">{{ report.visual_detection_summary.signature_detected }}</div><div class="label">Signatures Detected</div></div>
+  <div class="stat"><div class="value">{{ report.visual_detection_summary.stamp_detected }}</div><div class="label">Stamps Detected</div></div>
+  <div class="stat"><div class="value">{{ report.visual_detection_summary.signature_missing }}</div><div class="label">Signatures Missing</div></div>
+  <div class="stat"><div class="value">{{ report.visual_detection_summary.stamp_missing }}</div><div class="label">Stamps Missing</div></div>
+  <div class="stat"><div class="value">{% if report.visual_detection_summary.average_confidence is not none %}{{ "%.2f"|format(report.visual_detection_summary.average_confidence) }}{% else %}-{% endif %}</div><div class="label">Detection Confidence</div></div>
+</div>
+
+<h2>Recommendations</h2>
+{% if report.recommendations %}
+<ul>
+  {% for recommendation in report.recommendations %}
+  <li><strong>{{ recommendation.code }}:</strong> {{ recommendation.message }}</li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="muted">No recommendations.</p>
+{% endif %}
+
+<div class="footer">
+  Generated by Finance Verification System &middot; Report version {{ report.report_version }} &middot;
+  This report aggregates existing validation results and performs no new validation or detection.
+</div>
+
+</body>
+</html>
