@@ -1,0 +1,146 @@
+"""Service layer for enqueueing and tracking bulk queue jobs."""
+
+from __future__ import annotations
+
+import logging
+
+from sqlalchemy.orm import Session
+
+from app.bulk_queue.exceptions import ApplicationNotFound
+from app.bulk_queue.schemas import (
+    EnqueueResponse,
+    ProcessingActionResponse,
+    ProcessingDocumentResponse,
+    ProcessingDocumentsResponse,
+    ProcessingProgressResponse,
+    QueueProgressResponse,
+)
+from app.core.config import get_settings
+from app.database.models.enums import JobStatus
+from app.database.repositories.application_repository import ApplicationRepository
+from app.database.repositories.queue_job_repository import QueueJobRepository
+
+logger = logging.getLogger(__name__)
+
+
+class BulkQueueService:
+    """Coordinates application-level queue operations."""
+
+    def __init__(self, db: Session) -> None:
+        self._db = db
+        self._applications = ApplicationRepository(db)
+        self._jobs = QueueJobRepository(db)
+        self._settings = get_settings()
+
+    def enqueue_application(self, *, application_id: int) -> EnqueueResponse:
+        """Enqueue every eligible UPLOADED document for one application."""
+        if self._applications.get_by_id(application_id) is None:
+            raise ApplicationNotFound()
+        jobs, created, existing = self._jobs.enqueue_uploaded_documents(
+            application_id=application_id,
+            max_attempts=self._settings.bulk_queue_max_attempts,
+        )
+        logger.info(
+            "Bulk queue enqueue application_id=%s created=%s existing=%s",
+            application_id,
+            created,
+            existing,
+        )
+        return EnqueueResponse(
+            message="Documents enqueued successfully",
+            application_id=application_id,
+            jobs_created=created,
+            jobs_existing=existing,
+            total_jobs=len(jobs),
+            jobs=list(jobs),
+        )
+
+    def start_processing(self, *, application_id: int) -> ProcessingActionResponse:
+        """Queue all eligible uploaded documents and report the action safely."""
+        if self._applications.get_by_id(application_id) is None:
+            raise ApplicationNotFound()
+        jobs, created, _ = self._jobs.enqueue_uploaded_documents(
+            application_id=application_id,
+            max_attempts=self._settings.bulk_queue_max_attempts,
+        )
+        active = sum(
+            1
+            for job in jobs
+            if job.status in {JobStatus.QUEUED, JobStatus.PROCESSING, JobStatus.RETRY_WAITING}
+        )
+        return ProcessingActionResponse(
+            message=("Document processing started" if jobs else "No documents are ready to process"),
+            application_id=application_id,
+            documents_queued=created,
+            documents_already_in_progress=max(active - created, 0),
+        )
+
+    def progress(self, *, application_id: int) -> QueueProgressResponse:
+        """Return application queue progress grouped by status."""
+        if self._applications.get_by_id(application_id) is None:
+            raise ApplicationNotFound()
+        counts = self._jobs.progress_for_application(application_id)
+        return QueueProgressResponse(
+            application_id=application_id,
+            total=sum(counts.values()),
+            queued=counts.get(JobStatus.QUEUED, 0),
+            processing=counts.get(JobStatus.PROCESSING, 0),
+            completed=counts.get(JobStatus.COMPLETED, 0),
+            failed=counts.get(JobStatus.FAILED, 0),
+            retry_waiting=counts.get(JobStatus.RETRY_WAITING, 0),
+        )
+
+    def processing_progress(self, *, application_id: int) -> ProcessingProgressResponse:
+        """Return business-language progress for one application."""
+        if self._applications.get_by_id(application_id) is None:
+            raise ApplicationNotFound()
+        counts = self._jobs.progress_for_application(application_id)
+        total = sum(counts.values())
+        completed = counts.get(JobStatus.COMPLETED, 0)
+        return ProcessingProgressResponse(
+            application_id=application_id,
+            total_documents=total,
+            queued=counts.get(JobStatus.QUEUED, 0) + counts.get(JobStatus.RETRY_WAITING, 0),
+            processing=counts.get(JobStatus.PROCESSING, 0),
+            completed=completed,
+            failed=counts.get(JobStatus.FAILED, 0),
+            progress_percentage=round(completed / total * 100, 1) if total else 0.0,
+            documents_needing_attention=counts.get(JobStatus.FAILED, 0),
+        )
+
+    def processing_documents(self, *, application_id: int) -> ProcessingDocumentsResponse:
+        """Return safe per-document statuses without queue internals."""
+        if self._applications.get_by_id(application_id) is None:
+            raise ApplicationNotFound()
+        documents = []
+        for job in self._jobs.list_by_application(application_id):
+            status = {
+                JobStatus.QUEUED: ("QUEUED", "Waiting to start"),
+                JobStatus.RETRY_WAITING: ("QUEUED", "Waiting to retry"),
+                JobStatus.PROCESSING: ("PROCESSING", "Processing"),
+                JobStatus.COMPLETED: ("COMPLETED", "Processed successfully"),
+                JobStatus.FAILED: ("FAILED", "Needs attention"),
+            }[job.status]
+            documents.append(
+                ProcessingDocumentResponse(
+                    document_id=job.document_id,
+                    file_name=job.document.original_filename if job.document else "Document",
+                    status=status[0],
+                    message=status[1],
+                    updated_at=job.completed_at or job.started_at or job.created_at,
+                )
+            )
+        return ProcessingDocumentsResponse(application_id=application_id, documents=documents)
+
+    def retry_failed(self, *, application_id: int) -> ProcessingActionResponse:
+        """Reset failed documents for a deliberate operator retry."""
+        if self._applications.get_by_id(application_id) is None:
+            raise ApplicationNotFound()
+        retried = self._jobs.retry_failed_for_application(application_id)
+        return ProcessingActionResponse(
+            message=("Failed documents queued for retry" if retried else "No documents need retry"),
+            application_id=application_id,
+            documents_queued=retried,
+            documents_already_in_progress=0,
+            documents_retried=retried,
+        )
