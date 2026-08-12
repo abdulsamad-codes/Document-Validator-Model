@@ -7,6 +7,7 @@ database metadata is involved -- no files are written.
 """
 
 import pytest
+from sqlalchemy import func, select
 
 from app.completeness.constants import (
     OPTIONAL_DOCUMENT_TYPES,
@@ -38,12 +39,27 @@ def insert_document(
     document_type: DocumentType,
     filename: str | None = None,
 ) -> None:
-    """Insert a document row directly, without touching the storage backend."""
+    """Insert a document row directly, without touching the storage backend.
+
+    The copy slot defaults to the next free number for that (application,
+    type) so duplicate scenarios can be constructed without colliding with the
+    unique copy-slot index enforced by the database.
+    """
     db = SessionLocal()
     try:
+        existing = (
+            db.execute(
+                select(func.max(Document.copy_number)).where(
+                    Document.application_id == application_id,
+                    Document.document_type == document_type,
+                )
+            ).scalar()
+            or 0
+        )
         DocumentRepository(db).create(
             application_id=application_id,
             document_type=document_type,
+            copy_number=int(existing) + 1,
             original_filename=filename or f"{document_type.value.lower()}.pdf",
             stored_file_path=(
                 f"applications/APP-{application_id:06d}/test/"
