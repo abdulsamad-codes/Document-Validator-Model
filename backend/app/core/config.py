@@ -67,9 +67,26 @@ class Settings(BaseSettings):
         bulk_queue_workers: Number of controlled queue workers to run.
         bulk_queue_max_attempts: Default retry budget for one queue job.
         bulk_queue_poll_interval: Seconds workers wait between empty polls.
-        bulk_queue_retry_backoff_seconds: Base seconds for retry backoff.
-        bulk_queue_stale_after_seconds: Seconds before PROCESSING jobs are
-            treated as abandoned by a crashed worker.
+        bulk_queue_retry_backoff_seconds: Base seconds for exponential retry
+            backoff (first retry waits ``1 * base``, then ``2 * base``, then
+            ``4 * base``, ...).
+        bulk_queue_stale_after_seconds: Seconds before a PROCESSING job with no
+            worker heartbeat is treated as abandoned by a crashed worker.
+        bulk_queue_background_drain: Whether the HTTP request lifecycle may run
+            in-process workers after ``/processing/start`` and
+            ``/processing/retry``. Production deployments that run dedicated
+            worker processes (``python -m app.bulk_queue``) should disable this
+            so queue draining never happens inside the request path.
+        database_pool_size: Number of connections each database engine pool
+            keeps open; bounds memory and file descriptors under load.
+        database_max_overflow: Extra connections the pool may open on demand
+            before clients queue for a free connection. The combined pool size
+            is validated to be large enough for the configured queue workers.
+        ai_fallback_enabled: Whether the analysis pipeline may consult an AI/VLM
+            field fallback. AI stays a fallback, never the default: when
+            enabled, only missing or invalid expected fields are sent to a
+            configured fallback provider, and the rule/regex pipeline always
+            runs first. Defaults to false (no AI calls ever).
     """
 
     model_config = SettingsConfigDict(
@@ -111,6 +128,10 @@ class Settings(BaseSettings):
     bulk_queue_poll_interval: float = Field(default=1.0, ge=0.05, le=60.0)
     bulk_queue_retry_backoff_seconds: int = Field(default=30, ge=0)
     bulk_queue_stale_after_seconds: int = Field(default=900, ge=1)
+    bulk_queue_background_drain: bool = Field(default=True)
+    database_pool_size: int = Field(default=5, ge=1)
+    database_max_overflow: int = Field(default=10, ge=0)
+    ai_fallback_enabled: bool = Field(default=False)
 
     @model_validator(mode="after")
     def _validate_environment(self) -> "Settings":
@@ -121,6 +142,24 @@ class Settings(BaseSettings):
             _DEV_SECRET_KEY
         ):
             raise ValueError("SECRET_KEY must be overridden when ENVIRONMENT is production")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_pool_sizing(self) -> "Settings":
+        """Keep the database pool large enough for the configured queue workers.
+
+        During an in-process drain every worker holds one claim session for the
+        full duration of a job, plus a request session and occasional heartbeat
+        sessions. A pool smaller than ``workers + 2`` would exhaust under load
+        and fail claims; fail fast instead so operators size the pool.
+        """
+        total_pool = self.database_pool_size + self.database_max_overflow
+        if total_pool < self.bulk_queue_workers + 2:
+            raise ValueError(
+                "DATABASE_POOL_SIZE + DATABASE_MAX_OVERFLOW must be at least "
+                "BULK_QUEUE_WORKERS + 2 so queue workers never exhaust "
+                "database connections"
+            )
         return self
 
 

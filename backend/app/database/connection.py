@@ -20,6 +20,9 @@ def create_engine_from_settings(settings: Settings) -> Engine:
     ``pool_pre_ping`` verifies the connection is alive before handing it to the
     application, protecting against silently stale pooled connections after a
     database restart. Debug mode enables SQL echo for development inspection.
+    The pool is bounded by ``database_pool_size`` / ``database_max_overflow`` so
+    a large queue can never exhaust the database connection limit (and with it
+    memory and file descriptors).
 
     Args:
         settings: Application settings providing the database URL.
@@ -32,6 +35,8 @@ def create_engine_from_settings(settings: Settings) -> Engine:
         pool_pre_ping=True,
         echo=settings.debug,
         future=True,
+        pool_size=settings.database_pool_size,
+        max_overflow=settings.database_max_overflow,
     )
 
 

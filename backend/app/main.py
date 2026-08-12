@@ -10,10 +10,12 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from app import __version__
 from app.api import api_router
+from app.auth.exceptions import AuthenticationError
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.database.connection import engine
@@ -74,6 +76,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_tags=OPENAPI_TAGS,
         lifespan=lifespan,
     )
+
+    @application.exception_handler(AuthenticationError)
+    async def _auth_error_handler(request: Request, exc: AuthenticationError):
+        """Translate auth errors into HTTP responses."""
+        logger.info("Authentication error %s: %s", exc.__class__.__name__, exc.detail)
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail},
+        )
 
     application.include_router(api_router, prefix=resolved_settings.api_prefix)
     logger.info(

@@ -66,6 +66,19 @@ def _run_processing_workers() -> None:
         logger.exception("Application document processing stopped unexpectedly")
 
 
+def _schedule_drain(background_tasks: BackgroundTasks) -> None:
+    """Schedule an in-process drain after the response, when enabled.
+
+    Production deployments that run dedicated worker processes
+    (``python -m app.bulk_queue``) set ``bulk_queue_background_drain=false`` so
+    queue draining never happens inside the HTTP request path. The operator
+    endpoints stay non-blocking in both modes: background draining runs after
+    the response is sent, and dedicated worker processes poll independently.
+    """
+    if get_settings().bulk_queue_background_drain:
+        background_tasks.add_task(_run_processing_workers)
+
+
 @router.post(
     "/applications/{application_id}/processing/start",
     response_model=ProcessingActionResponse,
@@ -82,7 +95,7 @@ def start_processing(
     """Start processing uploaded documents for an authenticated operator."""
     response = _service(db).start_processing(application_id=application_id)
     if response.documents_queued or response.documents_already_in_progress:
-        background_tasks.add_task(_run_processing_workers)
+        _schedule_drain(background_tasks)
     return response
 
 
@@ -134,7 +147,7 @@ def retry_processing(
     """Retry failed documents without affecting unrelated documents."""
     response = _service(db).retry_failed(application_id=application_id)
     if response.documents_retried:
-        background_tasks.add_task(_run_processing_workers)
+        _schedule_drain(background_tasks)
     return response
 
 
@@ -142,12 +155,13 @@ def retry_processing(
     "/applications/{application_id}/queue/enqueue",
     response_model=EnqueueResponse,
     summary="Enqueue uploaded documents",
-    responses=_ERROR_RESPONSES,
+    responses={401: {"model": ErrorResponse}, **_ERROR_RESPONSES},
 )
 @_handle_queue_errors
 def enqueue_application(
     application_id: int,
     db: _GET_DB,
+    _user: _CURRENT_USER,
 ) -> EnqueueResponse:
     """Enqueue all eligible UPLOADED documents for an application."""
     return _service(db).enqueue_application(application_id=application_id)
@@ -157,12 +171,13 @@ def enqueue_application(
     "/applications/{application_id}/queue/progress",
     response_model=QueueProgressResponse,
     summary="Get queue progress",
-    responses=_ERROR_RESPONSES,
+    responses={401: {"model": ErrorResponse}, **_ERROR_RESPONSES},
 )
 @_handle_queue_errors
 def queue_progress(
     application_id: int,
     db: _GET_DB,
+    _user: _CURRENT_USER,
 ) -> QueueProgressResponse:
     """Return application-level queue progress."""
     return _service(db).progress(application_id=application_id)
@@ -172,9 +187,12 @@ def queue_progress(
     "/queue/workers/drain",
     response_model=WorkerRunResponse,
     summary="Drain available queue jobs",
-    responses={422: {"model": ErrorResponse}, 500: _ERROR_RESPONSES[500]},
+    responses={401: {"model": ErrorResponse}, 422: {"model": ErrorResponse}, 500: _ERROR_RESPONSES[500]},
 )
+@_handle_queue_errors
 def drain_workers(
+    db: _GET_DB,
+    _user: _CURRENT_USER,
     workers: Annotated[int | None, Query(ge=1, le=16)] = None,
 ) -> WorkerRunResponse:
     """Run controlled workers until the queue is empty.
@@ -183,11 +201,7 @@ def drain_workers(
     bounded worker drain, never exposes internal errors, and relies on job
     progress endpoints for per-application visibility.
     """
-    try:
-        summary = drain_queue(workers=workers)
-    except Exception as exc:
-        logger.exception("Unexpected bulk worker failure: %s", exc.__class__.__name__)
-        raise HTTPException(status_code=500, detail="Queue operation failed") from exc
+    summary = drain_queue(workers=workers)
     resolved_workers = workers or get_settings().bulk_queue_workers
     return WorkerRunResponse(
         workers=resolved_workers,

@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import Select, case, func, or_, select
+from sqlalchemy import Select, case, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, selectinload
 
@@ -152,7 +152,23 @@ class QueueJobRepository(BaseRepository[QueueJob]):
         error: str,
         retry_backoff_seconds: int,
     ) -> QueueJob:
-        """Record a failed attempt and either schedule retry or fail permanently."""
+        """Record a failed attempt and either schedule retry or fail permanently.
+
+        Transient failures move the job to ``RETRY_WAITING`` with an exponential
+        backoff deadline: the first retry waits ``1 * backoff`` seconds, the
+        second ``2 * backoff``, the third ``4 * backoff``, and so on. When the
+        attempt budget (``max_attempts``) is exhausted the job is permanently
+        ``FAILED`` and its document is marked failed so operators can see it.
+
+        Args:
+            job: The claimed job being processed.
+            error: Human-readable failure detail (truncated for storage).
+            retry_backoff_seconds: Base delay in seconds for the exponential
+                backoff schedule.
+
+        Returns:
+            The updated job.
+        """
         now = datetime.now(timezone.utc)
         job.attempts += 1
         job.last_error = error[:2000]
@@ -161,11 +177,14 @@ class QueueJobRepository(BaseRepository[QueueJob]):
             job.status = JobStatus.FAILED
             job.completed_at = now
             job.retry_at = None
+            job.started_at = None
             if job.document is not None:
                 job.document.processing_status = DocumentProcessingStatus.FAILED
         else:
             job.status = JobStatus.RETRY_WAITING
-            job.retry_at = now + timedelta(seconds=retry_backoff_seconds * job.attempts)
+            backoff = retry_backoff_seconds * (2 ** (job.attempts - 1))
+            job.retry_at = now + timedelta(seconds=backoff)
+            job.completed_at = None
             if job.document is not None:
                 job.document.processing_status = DocumentProcessingStatus.UPLOADED
         self._db.add(job)
@@ -173,13 +192,60 @@ class QueueJobRepository(BaseRepository[QueueJob]):
         self._db.refresh(job)
         return job
 
+    def heartbeat(
+        self,
+        *,
+        job_id: int,
+        now: datetime | None = None,
+    ) -> None:
+        """Refresh the liveness lease of a PROCESSING job.
+
+        While a worker processes a job it periodically refreshes ``started_at``
+        as a heartbeat. Stale-job recovery only reclaims jobs whose ``started_at``
+        is older than the configured timeout, so a live (but slow) worker is
+        never falsely declared crashed and its document is never processed twice.
+
+        Args:
+            job_id: Id of the job being processed.
+            now: Heartbeat timestamp; defaults to the current UTC time.
+        """
+        now = now or datetime.now(timezone.utc)
+        self._db.execute(
+            update(QueueJob)
+            .where(QueueJob.id == job_id, QueueJob.status == JobStatus.PROCESSING)
+            .values(started_at=now)
+        )
+        self._db.commit()
+
     def recover_stale_processing(
         self,
         *,
         stale_after_seconds: int,
         now: datetime | None = None,
     ) -> int:
-        """Release or fail jobs abandoned in PROCESSING after worker crash."""
+        """Release or fail jobs abandoned in PROCESSING after worker crash.
+
+        A job whose ``started_at`` (refreshed as a heartbeat by the processing
+        worker) is older than ``stale_after_seconds`` is considered abandoned.
+        If the attempt budget is already exhausted the job is permanently
+        ``FAILED``; otherwise it returns to ``QUEUED`` so another worker can pick
+        it up. In both cases the worker lease is cleared and the document status
+        is reset so no document is ever permanently stuck in ``PROCESSING``.
+        Completed jobs are never touched: they are not selected by this query.
+
+        Crashed attempts deliberately do not consume the retry budget: a job
+        whose worker crashed repeatedly is requeued again rather than silently
+        dropped, so infrastructure failures never burn the document's retries.
+        The attempt budget only applies to genuine processing failures.
+
+        Args:
+            stale_after_seconds: Age of ``started_at`` after which a PROCESSING
+                job is treated as abandoned.
+            now: Reference timestamp; defaults to the current UTC time.
+
+        Returns:
+            The number of stale jobs recovered.
+        """
         now = now or datetime.now(timezone.utc)
         threshold = now - timedelta(seconds=stale_after_seconds)
         jobs = list(
@@ -195,7 +261,9 @@ class QueueJobRepository(BaseRepository[QueueJob]):
         )
         for job in jobs:
             job.worker_id = None
-            job.last_error = "Recovered stale PROCESSING job"
+            job.last_error = "Recovered stale PROCESSING job (worker crash)"
+            job.started_at = None
+            job.retry_at = None
             if job.attempts >= job.max_attempts:
                 job.status = JobStatus.FAILED
                 job.completed_at = now
@@ -203,7 +271,9 @@ class QueueJobRepository(BaseRepository[QueueJob]):
                     job.document.processing_status = DocumentProcessingStatus.FAILED
             else:
                 job.status = JobStatus.QUEUED
-                job.retry_at = None
+                job.completed_at = None
+                if job.document is not None:
+                    job.document.processing_status = DocumentProcessingStatus.UPLOADED
         if jobs:
             self._db.commit()
         return len(jobs)

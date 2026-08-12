@@ -1,8 +1,27 @@
-"""Controlled workers for the persistent bulk processing queue."""
+"""Controlled workers for the persistent bulk processing queue.
+
+Two deployment modes are supported:
+
+* **In-process (development).** ``drain_queue`` runs a bounded pool of worker
+  threads inside the API process, driven by FastAPI ``BackgroundTasks``. This
+  keeps the operator flow convenient while the queue remains PostgreSQL-backed.
+  Set ``bulk_queue_background_drain=false`` to disable this mode.
+
+* **Dedicated worker processes (production).** Run ``python -m app.bulk_queue``
+  as one or more separate processes; each runs :meth:`BulkQueueWorker.loop_forever`
+  and polls the same PostgreSQL queue. Row-level ``FOR UPDATE SKIP LOCKED``
+  claiming guarantees two workers — in the same process or in different
+  processes — can never claim the same job.
+
+Workers refresh a per-job heartbeat while processing so that a slow but live
+worker is never falsely declared crashed, while jobs abandoned by a crashed
+worker are recovered by the next poll after ``bulk_queue_stale_after_seconds``.
+"""
 
 from __future__ import annotations
 
 import logging
+import threading
 import time
 import uuid
 from collections.abc import Callable
@@ -33,7 +52,18 @@ class WorkerRunSummary:
 
 
 class BulkQueueWorker:
-    """Claims and processes jobs one at a time."""
+    """Claims and processes jobs one at a time.
+
+    Args:
+        session_factory: Factory producing one session per claim/heartbeat.
+            Defaults to the application's :data:`SessionLocal`.
+        settings: Application settings; defaults to the cached process settings.
+        worker_id: Stable identifier stored on claimed jobs. Auto-generated when
+            omitted.
+        processor_factory: Callable receiving a session and returning the object
+            with a ``process_one(application_id=..., document_id=...)`` method.
+            Defaults to the real :class:`DocumentProcessingService`.
+    """
 
     def __init__(
         self,
@@ -54,7 +84,19 @@ class BulkQueueWorker:
         self._stop_requested = True
 
     def run_until_empty(self, *, max_jobs: int | None = None) -> WorkerRunSummary:
-        """Drain available jobs until empty, stopped, or max_jobs is reached."""
+        """Drain available jobs until empty, stopped, or max_jobs is reached.
+
+        Stale PROCESSING jobs abandoned by crashed workers are recovered before
+        every claim attempt, so recovery requires no manual intervention and no
+        job is permanently stuck in PROCESSING as long as at least one worker is
+        alive.
+
+        Args:
+            max_jobs: Optional cap on the number of jobs processed by this run.
+
+        Returns:
+            The aggregate outcome of the run.
+        """
         summary = WorkerRunSummary()
         while not self._stop_requested and (max_jobs is None or summary.processed < max_jobs):
             with self._session_factory() as db:
@@ -69,11 +111,73 @@ class BulkQueueWorker:
         return summary
 
     def loop_forever(self) -> None:
-        """Continuously poll for jobs until :meth:`stop` is called."""
+        """Continuously poll for jobs until :meth:`stop` is called.
+
+        Intended for dedicated worker processes (``python -m app.bulk_queue``).
+        Each iteration drains one job, then sleeps ``bulk_queue_poll_interval``
+        seconds when the queue is empty.
+        """
         while not self._stop_requested:
             summary = self.run_until_empty(max_jobs=1)
             if summary.processed == 0:
                 time.sleep(self._settings.bulk_queue_poll_interval)
+
+    def _heartbeat_interval(self) -> float:
+        """Seconds between heartbeat refreshes, derived from the stale timeout.
+
+        A live worker must refresh ``started_at`` well before the stale timeout
+        fires; one third of the timeout (minimum one second) keeps the heartbeat
+        cheap while leaving generous headroom for slow OCR runs.
+        """
+        stale_after = self._settings.bulk_queue_stale_after_seconds
+        if stale_after <= 0:
+            return 0.0
+        return max(1, stale_after // 3)
+
+    def _start_heartbeat(self, job_id: int) -> Callable[[], None]:
+        """Start a daemon heartbeat thread for a claimed job.
+
+        The thread refreshes the job's ``started_at`` lease every heartbeat
+        interval using its own session, so a long-running but live worker is not
+        declared stale (and its document is not reprocessed by another worker).
+        The returned callable stops and joins the thread.
+
+        Args:
+            job_id: Id of the claimed job.
+
+        Returns:
+            A stop function for the heartbeat thread.
+        """
+        interval = self._heartbeat_interval()
+        if interval <= 0:
+            return lambda: None
+
+        stop_event = threading.Event()
+
+        def _beat() -> None:
+            while not stop_event.wait(interval):
+                try:
+                    with self._session_factory() as heartbeat_db:
+                        QueueJobRepository(heartbeat_db).heartbeat(job_id=job_id)
+                except Exception:
+                    logger.exception(
+                        "Bulk queue heartbeat failed for job_id=%s worker_id=%s",
+                        job_id,
+                        self.worker_id,
+                    )
+
+        thread = threading.Thread(
+            target=_beat,
+            name=f"bulk-heartbeat-{self.worker_id}-{job_id}",
+            daemon=True,
+        )
+        thread.start()
+
+        def _stop() -> None:
+            stop_event.set()
+            thread.join(timeout=interval + 2)
+
+        return _stop
 
     def _process_claimed_job(
         self,
@@ -83,6 +187,7 @@ class BulkQueueWorker:
         summary: WorkerRunSummary,
     ) -> None:
         summary.processed += 1
+        stop_heartbeat = self._start_heartbeat(job.id)
         try:
             result = self._processor_factory(db).process_one(
                 application_id=job.application_id,
@@ -116,6 +221,8 @@ class BulkQueueWorker:
                 summary.failed += 1
             else:
                 summary.retried += 1
+        finally:
+            stop_heartbeat()
 
 
 def drain_queue(
@@ -127,9 +234,20 @@ def drain_queue(
 ) -> WorkerRunSummary:
     """Drain available queue jobs with controlled worker count.
 
-    The synchronous implementation advances workers round-robin. Production can
-    run separate processes with the same worker class; PostgreSQL row locks still
-    guarantee distinct claims.
+    The synchronous implementation advances workers round-robin in a thread
+    pool. Production can run separate processes with the same worker class;
+    PostgreSQL row locks still guarantee distinct claims.
+
+    Args:
+        workers: Number of concurrent workers; defaults to the configured
+            ``bulk_queue_workers``.
+        session_factory: Session factory handed to every worker.
+        settings: Application settings; defaults to the cached process settings.
+        processor_factory: Processor factory handed to every worker; defaults to
+            the real document processing service.
+
+    Returns:
+        The aggregate outcome across all workers.
     """
     resolved_settings = settings or get_settings()
     worker_count = workers or resolved_settings.bulk_queue_workers
