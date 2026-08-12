@@ -2,7 +2,7 @@
 
 from collections.abc import Sequence
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database.models.document import Document
@@ -29,7 +29,7 @@ class DocumentRepository(BaseRepository[Document]):
         *,
         application_id: int,
         document_type: DocumentType,
-        copy_number: int = 1,
+        copy_number: int | None = None,
         original_filename: str,
         stored_file_path: str,
         file_type: str,
@@ -40,7 +40,8 @@ class DocumentRepository(BaseRepository[Document]):
         Args:
             application_id: Owning application id.
             document_type: Category of the document.
-            copy_number: 1-based slot index for this copy within the type.
+            copy_number: 1-based slot index for this copy within the type. If
+                omitted, the next available slot is allocated.
             original_filename: Filename supplied by the uploader.
             stored_file_path: Location of the file on the storage backend.
             file_type: Media type (MIME) of the stored file.
@@ -49,6 +50,17 @@ class DocumentRepository(BaseRepository[Document]):
         Returns:
             The persisted document with server-generated fields loaded.
         """
+        if copy_number is None:
+            copy_number = int(
+                self._db.scalar(
+                    select(func.max(Document.copy_number)).where(
+                        Document.application_id == application_id,
+                        Document.document_type == document_type,
+                    )
+                )
+                or 0
+            ) + 1
+
         document = Document(
             application_id=application_id,
             document_type=document_type,
@@ -60,6 +72,31 @@ class DocumentRepository(BaseRepository[Document]):
         )
         self._db.add(document)
         return self._commit_and_refresh(document)
+
+    def create_many(self, *, documents: list[Document]) -> list[Document]:
+        """Persist several documents in a single transaction.
+
+        All rows are added and committed together so the batch is atomic:
+        either every document is persisted or none is. Server-generated values
+        (ids, timestamps) are reloaded before returning.
+
+        Args:
+            documents: Fully-populated :class:`Document` instances (without
+                primary keys yet).
+
+        Returns:
+            The persisted documents with server-generated fields loaded.
+
+        Raises:
+            sqlalchemy.exc.IntegrityError: When any row violates a constraint
+                (e.g. the unique copy-slot index). The caller rolls the session
+                back and cleans up any files written for the batch.
+        """
+        self._db.add_all(documents)
+        self._db.commit()
+        for document in documents:
+            self._db.refresh(document)
+        return documents
 
     def get_by_application(
         self,
