@@ -171,6 +171,84 @@ class UploadService:
         )
         return document
 
+    def upload_bulk(
+        self,
+        *,
+        application_id: int,
+        filename: str,
+        content_type: str,
+        file: BinaryIO,
+    ) -> list[Document]:
+        """Accept a single bulk PDF, split it into individual documents, and persist each.
+
+        Uses the DocumentSplitter to detect document boundaries using text
+        heuristics (PyMuPDF `get_text`), then persists each split sub-document
+        with its detected DocumentType.
+
+        Args:
+            application_id: Id of the owning application.
+            filename: Raw client-supplied filename.
+            content_type: Declared media type (must be PDF).
+            file: Stream of the bulk PDF.
+
+        Returns:
+            A list of persisted Document records, one per detected document type.
+
+        Raises:
+            ApplicationNotFoundException: When the application does not exist.
+            InvalidFileTypeException: When the file is not a PDF.
+        """
+        from app.preprocessing.splitter import DocumentSplitter
+
+        application = self._get_application(application_id)
+
+        # Validate that it's a PDF before we try to split it
+        validate_file_content(filename, content_type, file.read(8))
+        file.seek(0)
+
+        split_results = DocumentSplitter.split_bulk_pdf(file)
+        created_documents: list[Document] = []
+
+        logger.info(
+            "Bulk upload for application id=%s: splitting %s into %d documents",
+            application_id,
+            filename,
+            len(split_results),
+        )
+
+        for doc_type, pdf_bytes in split_results:
+            # Track copy numbers per type for multi-copy document types
+            existing_copies = sum(
+                1 for d in created_documents if d.document_type == doc_type
+            )
+            copy_number = existing_copies + 1
+
+            stored_path = self._storage.save(
+                application.id, doc_type, pdf_bytes, ".pdf"
+            )
+            try:
+                document = self._documents.create(
+                    application_id=application.id,
+                    document_type=doc_type,
+                    copy_number=copy_number,
+                    original_filename=f"{doc_type.value.lower()}_copy{copy_number}.pdf",
+                    stored_file_path=stored_path,
+                    file_type="application/pdf",
+                    processing_status=DocumentProcessingStatus.UPLOADED,
+                )
+                created_documents.append(document)
+            except Exception:
+                self._db.rollback()
+                self._storage.delete(stored_path)
+                raise
+
+        logger.info(
+            "Bulk upload complete: created %d documents for application id=%s",
+            len(created_documents),
+            application_id,
+        )
+        return created_documents
+
     def replace(
         self,
         *,
