@@ -16,6 +16,7 @@ from app.database.models.human_correction import HumanCorrection
 from app.database.models.human_review import HumanReview
 from app.database.models.manual_checklist import ManualChecklist
 from app.database.models.ocr_result import OCRResult
+from app.database.models.queue_job import QueueJob
 from app.database.models.refresh_token import RefreshToken
 from app.database.models.user import User
 from app.database.models.validation_result import ValidationResult
@@ -32,6 +33,7 @@ __all__ = [
     "HumanReview",
     "ManualChecklist",
     "OCRResult",
+    "QueueJob",
     "RefreshToken",
     "User",
     "ValidationResult",
