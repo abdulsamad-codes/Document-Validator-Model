@@ -19,6 +19,7 @@ from app.database.models.enums import DocumentProcessingStatus, DocumentType
 if TYPE_CHECKING:
     from app.database.models.application import Application
     from app.database.models.ocr_result import OCRResult
+    from app.database.models.queue_job import QueueJob
     from app.database.models.visual_detection import VisualDetection
 
 
@@ -45,7 +46,14 @@ class Document(Base):
         Index("ix_documents_document_type", "document_type"),
         Index("ix_documents_processing_status", "processing_status"),
         Index("ix_documents_uploaded_at", "uploaded_at"),
-        Index("ix_documents_app_type_copy", "application_id", "document_type", "copy_number"),
+        #: A numbered copy slot can hold exactly one file per application.
+        Index(
+            "ix_documents_app_type_copy",
+            "application_id",
+            "document_type",
+            "copy_number",
+            unique=True,
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -81,6 +89,11 @@ class Document(Base):
         uselist=False,
     )
     visual_detections: Mapped[list[VisualDetection]] = relationship(
+        back_populates="document",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    queue_jobs: Mapped[list[QueueJob]] = relationship(
         back_populates="document",
         cascade="all, delete-orphan",
         passive_deletes=True,
