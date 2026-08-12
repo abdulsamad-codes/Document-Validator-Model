@@ -56,10 +56,17 @@ def test_split_unclassified_pages_become_other():
 
 def test_split_empty_pdf():
     """An empty PDF should produce no documents."""
-    doc = pymupdf.open()
-    buffer = io.BytesIO(doc.write())
-    doc.close()
-    buffer.seek(0)
+    # PyMuPDF's writer refuses to serialize a zero-page document ("cannot save
+    # with zero pages"), so the zero-page PDF is hand-crafted directly instead
+    # of built via `pymupdf.open()` + `.write()`. It reads back with 0 pages
+    # even though it can't be produced by PyMuPDF's own save path.
+    raw_pdf = (
+        b"%PDF-1.4\n"
+        b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"
+        b"2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n"
+        b"trailer\n<< /Root 1 0 R >>\n%%EOF\n"
+    )
+    buffer = io.BytesIO(raw_pdf)
     result = DocumentSplitter.split_bulk_pdf(buffer)
     assert result == []
 

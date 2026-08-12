@@ -92,7 +92,9 @@ class DocumentSplitter:
         if cls._ocr_engine is None:
             from paddleocr import PaddleOCR
 
-            cls._ocr_engine = PaddleOCR(use_angle_cls=True, lang="en", enable_mkldnn=False)
+            cls._ocr_engine = PaddleOCR(
+                use_textline_orientation=True, lang="en", enable_mkldnn=False
+            )
         return cls._ocr_engine
 
     @classmethod
