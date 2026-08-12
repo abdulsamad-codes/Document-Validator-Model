@@ -56,7 +56,7 @@ def test_split_unclassified_pages_become_other():
 
 def test_split_empty_pdf():
     """An empty PDF should produce no documents."""
-    doc = fitz.open()
+    doc = pymupdf.open()
     buffer = io.BytesIO(doc.write())
     doc.close()
     buffer.seek(0)

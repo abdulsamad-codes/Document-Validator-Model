@@ -74,3 +74,4 @@ htmlcov/
 !docs/*.pdf
 
 /Confidential Data/
+/demo/

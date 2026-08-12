@@ -32,7 +32,10 @@ class ImageEnhancer:
         # Denoise slightly to remove background static
         denoised = cv2.fastNlMeansDenoising(enhanced, None, h=10, templateWindowSize=7, searchWindowSize=21)
         
-        return denoised
+        # Convert back to 3-channel image for OCR models that expect RGB/BGR input
+        denoised_bgr = cv2.cvtColor(denoised, cv2.COLOR_GRAY2BGR)
+        
+        return denoised_bgr
 
     @staticmethod
     def deskew_image(image: np.ndarray) -> np.ndarray:
