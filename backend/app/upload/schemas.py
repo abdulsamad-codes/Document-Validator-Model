@@ -97,6 +97,21 @@ class DocumentDeleteResponse(BaseModel):
     message: str = Field(examples=["Document deleted successfully"])
 
 
+class BulkUploadSplitItem(BaseModel):
+    """Metadata for a single document extracted during a bulk upload split."""
+
+    document_type: DocumentType
+    document: DocumentMetadata
+
+
+class BulkUploadResponse(BaseModel):
+    """Response returned after a bulk PDF is split and stored."""
+
+    message: str = Field(examples=["Bulk PDF split into 9 documents successfully"])
+    documents_created: int
+    documents: list[BulkUploadSplitItem]
+
+
 class ErrorResponse(BaseModel):
     """Envelope used for every upload error response."""
 
