@@ -72,3 +72,5 @@ htmlcov/
 !diagrams/*.png
 !diagrams/*.jpg
 !docs/*.pdf
+
+/Confidential Data/

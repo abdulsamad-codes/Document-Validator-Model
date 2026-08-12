@@ -40,6 +40,7 @@ class DocumentType(str, Enum):
     OTHER_SUPPORTING_DOCUMENT = "OTHER_SUPPORTING_DOCUMENT"
     CNIC_FRONT = "CNIC_FRONT"
     CNIC_BACK = "CNIC_BACK"
+    BULK_UPLOAD = "BULK_UPLOAD"
 
 
 class DocumentProcessingStatus(str, Enum):

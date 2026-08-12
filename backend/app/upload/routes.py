@@ -22,8 +22,11 @@ from app.upload.schemas import (
     ApplicationCreateResponse,
     ApplicationDetailResponse,
     ApplicationListResponse,
+    BulkUploadResponse,
+    BulkUploadSplitItem,
     DocumentDeleteResponse,
     DocumentListResponse,
+    DocumentMetadata,
     DocumentReplaceResponse,
     DocumentUploadResponse,
     ErrorResponse,
@@ -403,4 +406,58 @@ def download_document(
         path=path,
         media_type=document.file_type,
         filename=document.original_filename,
+    )
+
+
+@router.post(
+    "/applications/{application_id}/bulk-upload",
+    response_model=BulkUploadResponse,
+    status_code=201,
+    summary="Upload a bulk PDF containing all onboarding documents",
+    description=(
+        "Accepts a single PDF that contains all the organization's onboarding documents "
+        "combined. The file is automatically split into individual documents using "
+        "text-based heuristics and each is stored separately with the detected "
+        "DocumentType. Useful when organizations provide a single combined onboarding file."
+    ),
+    responses=_ERROR_RESPONSES,
+)
+@_handle_upload_errors
+def upload_bulk_document(
+    application_id: int,
+    file: Annotated[UploadFile | None, File(description="The combined bulk PDF file.")] = None,
+    db: _GET_DB = ...,
+) -> BulkUploadResponse:
+    """Upload a single bulk PDF and auto-split it into individual categorized documents.
+
+    Args:
+        application_id: Id of the owning application.
+        file: Multipart bulk PDF file.
+        db: Active database session.
+
+    Returns:
+        A list of all persisted documents extracted from the bulk file.
+
+    Raises:
+        HTTPException: When the file is missing, not a PDF, or splitting fails.
+    """
+    if file is None:
+        raise MissingFileException()
+    documents = _service(db).upload_bulk(
+        application_id=application_id,
+        filename=file.filename or "",
+        content_type=file.content_type or "",
+        file=file.file,
+    )
+    split_items = [
+        BulkUploadSplitItem(
+            document_type=doc.document_type,
+            document=DocumentMetadata.model_validate(doc),
+        )
+        for doc in documents
+    ]
+    return BulkUploadResponse(
+        message=f"Bulk PDF split into {len(documents)} documents successfully",
+        documents_created=len(documents),
+        documents=split_items,
     )
