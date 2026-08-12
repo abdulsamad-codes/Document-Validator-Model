@@ -75,7 +75,7 @@ function VerificationSummary({ summary }) {
         </SummaryCard>
 
         <SummaryCard
-          icon={ScanStamp}
+          icon={Stamp}
           title="Stamps"
           value={summary.stamps.total ? 'Checked' : 'No checks'}
           detail="Stamp presence across documents"
