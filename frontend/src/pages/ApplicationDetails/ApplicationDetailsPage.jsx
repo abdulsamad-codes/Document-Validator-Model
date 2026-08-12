@@ -4,6 +4,7 @@ import { ArrowLeft, History, ShieldCheck, UploadCloud } from 'lucide-react';
 import ApplicationStatusBadge from '../../components/applications/ApplicationStatusBadge/ApplicationStatusBadge';
 import { ApplicationCardSkeleton } from '../../components/applications/ApplicationSkeleton/ApplicationSkeleton';
 import DocumentsSection from '../../components/documents/DocumentsSection/DocumentsSection';
+import ProcessingProgress from '../../components/processing/ProcessingProgress/ProcessingProgress';
 import ErrorState from '../../components/common/ErrorState/ErrorState';
 import { useApplication } from '../../hooks/useApplication';
 import { formatDate, formatDateTime } from '../../utils/format';
@@ -114,6 +115,7 @@ function ApplicationDetailsPage() {
       </section>
 
       <DocumentsSection applicationId={application.id} />
+      <ProcessingProgress applicationId={application.id} />
 
       <div className={styles.placeholders}>
         <PlaceholderCard
