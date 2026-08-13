@@ -353,28 +353,29 @@ def test_bulk_upload_declared_mime_mismatch_returns_400(client):
 
 
 def test_bulk_upload_atomic_rollback(client, storage_root: Path, monkeypatch):
-    """A mid-batch storage failure leaves no database rows or orphaned files."""
+    """A failure after the file is stored leaves no database row or orphaned file.
+
+    Bulk upload now persists a single ``BULK_UPLOAD`` placeholder document and
+    enqueues it for background splitting -- there is no multi-document batch
+    to roll back mid-persist any more, so this simulates the queue-enqueue
+    step failing after the file has already been written to storage.
+    """
     application_id = create_application(client)
-    original_save = StorageService.save
-    calls = {"n": 0}
 
-    def flaky_save(instance, *args, **kwargs):
-        calls["n"] += 1
-        if calls["n"] == 2:
-            raise StorageException("simulated disk failure")
-        return original_save(instance, *args, **kwargs)
+    def flaky_enqueue(*args, **kwargs):
+        raise StorageException("simulated queue failure")
 
-    monkeypatch.setattr(StorageService, "save", flaky_save)
+    monkeypatch.setattr(
+        "app.database.repositories.queue_job_repository.QueueJobRepository.enqueue_uploaded_documents",
+        flaky_enqueue,
+    )
 
     response = upload_bulk(
         client,
         application_id,
-        make_bulk_pdf([
-            "TRIPARTITE AGREEMENT\nFirst.",
-            "TRIPARTITE AGREEMENT\nSecond.",
-        ]),
+        make_bulk_pdf(["TRIPARTITE AGREEMENT\nBody."]),
     )
 
     assert response.status_code == 500, response.text
     assert document_count(application_id) == 0
-    assert stored_files(storage_root, application_id, "tripartite") == []
+    assert stored_files(storage_root, application_id, "bulk") == []

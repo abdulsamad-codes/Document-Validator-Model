@@ -1,0 +1,50 @@
+.row {
+  transition: background-color var(--transition);
+}
+
+.row:hover {
+  background: var(--color-primary-light);
+}
+
+.selected {
+  background: var(--color-primary-light);
+}
+
+.idCell {
+  font-weight: 600;
+}
+
+.actionsCell {
+  text-align: right;
+}
+
+.actionButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-card);
+  color: var(--color-primary-dark);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--transition), border-color var(--transition);
+}
+
+.actionButton:hover {
+  background: var(--color-primary-light);
+  border-color: var(--color-primary);
+}
+
+.actionButton svg {
+  width: 15px;
+  height: 15px;
+}
+
+@media (max-width: 720px) {
+  .actionsCell {
+    text-align: left;
+  }
+}

@@ -2,7 +2,7 @@
 
 Rules are pure functions of a :class:`RuleContext`, so every rule is unit
 tested here by building contexts by hand -- no database, no HTTP. Tests cover
-every rule category plus the registry contract (47 rules, 8 categories,
+every rule category plus the registry contract (50 rules, 8 categories,
 unique ids) and the overall-status/severity derivation helpers.
 """
 
@@ -87,18 +87,18 @@ def run(rule_id: str, ctx: RuleContext) -> RuleResult:
 # --- Registry contract -------------------------------------------------------
 
 
-def test_registry_has_47_rules_in_8_categories():
+def test_registry_has_50_rules_in_8_categories():
     from collections import Counter
 
     rules = REGISTRY.rules()
-    assert len(rules) == 47
+    assert len(rules) == 50
     categories = Counter(rule.category for rule in rules)
     assert categories == {
         "document_completeness": 8,
         "field_presence": 6,
-        "format": 5,
+        "format": 6,
         "cross_document": 4,
-        "date": 5,
+        "date": 7,
         "visual": 11,
         "policy": 4,
         "quality": 4,

@@ -7,6 +7,7 @@ import ApplicationsPage from '../pages/Applications/ApplicationsPage';
 import CreateApplicationPage from '../pages/CreateApplication/CreateApplicationPage';
 import Dashboard from '../pages/Dashboard/Dashboard';
 import LoginPage from '../pages/Login/LoginPage';
+import OperatorDashboardPage from '../pages/OperatorDashboard/OperatorDashboardPage';
 import PlaceholderPage from '../pages/Placeholder/PlaceholderPage';
 import SettingsPage from '../pages/Settings/SettingsPage';
 import UploadDocumentsPage from '../pages/UploadDocuments/UploadDocumentsPage';
@@ -25,7 +26,9 @@ import VerificationPage from '../pages/Verification/VerificationPage';
  * application context. Unknown URLs are redirected to the dashboard.
  */
 const PLACEHOLDER_ITEMS = [
-  ...NAV_ITEMS.filter(({ id }) => !['dashboard', 'applications', 'upload', 'settings'].includes(id)),
+  ...NAV_ITEMS.filter(
+    ({ id }) => !['dashboard', 'applications', 'upload', 'settings', 'human-review'].includes(id)
+  ),
   ...ADMIN_NAV_ITEMS,
   ...INTERNAL_ROUTES,
 ];
@@ -43,6 +46,7 @@ function AppRoutes() {
         <Route path="applications/:applicationId" element={<ApplicationDetailsPage />} />
         <Route path="upload" element={<Navigate to="/applications" replace />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="human-review" element={<OperatorDashboardPage />} />
         {PLACEHOLDER_ITEMS.map(({ id, label, path }) => (
           <Route
             key={id}

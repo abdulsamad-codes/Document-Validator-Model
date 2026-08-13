@@ -12,7 +12,6 @@ from app.rule_engine.rules.base import BaseRule
 from app.rule_engine.rules.cross_document_rules import (
     CrossAccountHolderRule,
     CrossAccountNumberRule,
-    CrossBranchCodeRule,
     CrossIbanRule,
     CrossPeriodRule,
 )
@@ -102,20 +101,30 @@ class RuleRegistry:
                 FieldBalancesPresenceRule(),
 
 
-                # Format (5).
+                # Format (6).
                 FormatIbanRule(),
                 FormatCnicRule(),
                 FormatAccountNumberRule(),
                 FormatAmountRule(),
                 FormatDateShapeRule(),
+                FormatEStampRule(),
 
                 # Cross-document consistency (4).
+                # CrossBranchCodeRule is implemented but deliberately not
+                # registered: its `branch_code` field has no extraction or
+                # normalization support anywhere in the pipeline (unlike the
+                # other cross-document fields below, which are genuinely
+                # extracted), and `_CrossDocumentRule.evaluate` FAILs (not
+                # WARNING/PENDING_MANUAL_REVIEW) when a participant document
+                # lacks the field. Registering it today would make every real
+                # application FAIL this rule permanently. Register it once
+                # branch-code extraction exists.
                 CrossAccountHolderRule(),
                 CrossAccountNumberRule(),
                 CrossIbanRule(),
                 CrossPeriodRule(),
 
-                # Date and period (5).
+                # Date and period (7).
                 DatePeriodSequenceRule(),
                 DatePeriodRangeRule(),
                 DateIssuePrecedesExpiryRule(),
@@ -130,8 +139,8 @@ class RuleRegistry:
                 VisualSignatureAuthorityLetterRule(),
                 VisualSignatureBilateralRule(),
                 VisualSignatureFormalRequestRule(),
-                # VisualStampTripartiteRule(),
-                # VisualStampAmcRule(),
+                VisualStampTripartiteRule(),
+                VisualStampAmcRule(),
                 VisualStampOneLinkRule(),
                 VisualStampAuthorityLetterRule(),
                 VisualStampBilateralRule(),

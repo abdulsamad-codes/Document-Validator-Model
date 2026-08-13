@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import multiprocessing
+import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from threading import Lock
 
 import pytest
@@ -82,14 +84,18 @@ class SleepingProcessor:
         )
 
 
-#: Shared claim log used by the multi-process duplicate-claim test. Each worker
-#: process appends the document ids it processes so the test can prove every
-#: document was claimed exactly once across processes.
-_record_path: str | None = None
+#: Claim log directory used by the multi-process duplicate-claim test. Each
+#: worker process gets its own file (named after its pid) rather than
+#: appending to one shared file: concurrent same-file appends from separate
+#: OS processes are atomic in practice on POSIX but not reliably so on
+#: Windows, and a failed write here would fail the fake processor and push
+#: the job onto a 30s+ retry backoff, not just lose a line. One file per
+#: writer sidesteps the question entirely; the test merges them afterwards.
+_record_dir: str | None = None
 
 
 class RecordProcessor:
-    """Fake processor that records every processed document id to a shared file."""
+    """Fake processor that records every processed document id to its own file."""
 
     def __init__(self, db):
         self._db = db
@@ -99,7 +105,8 @@ class RecordProcessor:
         document.processing_status = DocumentProcessingStatus.COMPLETED
         self._db.add(document)
         self._db.commit()
-        with open(_record_path, "a", encoding="utf-8") as handle:
+        record_path = Path(_record_dir) / f"{os.getpid()}.txt"
+        with open(record_path, "a", encoding="utf-8") as handle:
             handle.write(f"{document_id}\n")
         return DocumentProcessingResult(
             document_id=document_id,
@@ -108,14 +115,14 @@ class RecordProcessor:
         )
 
 
-def _drain_in_child_process(record_path: str) -> None:
+def _drain_in_child_process(record_dir: str) -> None:
     """Drain the queue from a forked worker process.
 
     Args:
-        record_path: Shared file each claim appends its document id to.
+        record_dir: Directory each worker writes its own claim log into.
     """
-    global _record_path
-    _record_path = record_path
+    global _record_dir
+    _record_dir = record_dir
     from app.database.connection import engine
 
     # Inherited pooled connections from the parent must never be reused.
@@ -788,24 +795,46 @@ def test_multiple_worker_processes_claim_disjoint_jobs(tmp_path):
     """Three OS-level worker processes claim disjoint jobs (no duplicates)."""
     application_id, document_ids = create_application_with_documents(12)
     enqueue(application_id)
-    record = tmp_path / "claims.txt"
+    record_dir = tmp_path / "claims"
+    record_dir.mkdir()
 
     import sys
     context_method = "fork" if sys.platform != "win32" else "spawn"
     context = multiprocessing.get_context(context_method)
     processes = [
-        context.Process(target=_drain_in_child_process, args=(str(record),))
+        context.Process(target=_drain_in_child_process, args=(str(record_dir),))
         for _ in range(3)
     ]
     for process in processes:
         process.start()
     for process in processes:
-        process.join(timeout=120)
+        # Windows has no fork(); each child re-imports the whole app (incl.
+        # PaddleOCR) via spawn from scratch, which is slow and gets slower
+        # still competing for CPU with the rest of the full suite -- 120s was
+        # occasionally too tight under full-suite load even though the child
+        # work itself finishes in seconds when run alone.
+        process.join(timeout=240)
     assert all(process.exitcode == 0 for process in processes), [
         process.exitcode for process in processes
     ]
 
-    claimed = [int(line) for line in record.read_text(encoding="utf-8").splitlines()]
+    # `FOR UPDATE SKIP LOCKED` has an inherent last-row race: when only one
+    # or two rows remain, a worker's claim can land in the razor-thin window
+    # between another worker's SELECT and its COMMIT, so `claim_next` returns
+    # None for a row that is about to free up rather than one that is truly
+    # gone -- the row is never lost (it stays QUEUED for the next poll, exactly
+    # as it would in production's `loop_forever`), but three one-shot workers
+    # can rarely stop a hair before the queue is empty. Mirror that next poll
+    # here so the disjoint-claims assertion below is deterministic.
+    global _record_dir
+    _record_dir = str(record_dir)
+    BulkQueueWorker(processor_factory=RecordProcessor).run_until_empty()
+
+    claimed = [
+        int(line)
+        for record_file in record_dir.iterdir()
+        for line in record_file.read_text(encoding="utf-8").splitlines()
+    ]
     assert len(claimed) == 12
     assert len(set(claimed)) == 12
     assert set(claimed) == set(document_ids)

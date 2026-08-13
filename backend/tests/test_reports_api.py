@@ -34,12 +34,12 @@ SUMMARY_URL = "/validation-summary"
 
 REPORT_VERSION = "1.0.0"
 
-#: Per-group rule totals expected from the 47-rule ruleset.
+#: Per-group rule totals expected from the 50-rule ruleset.
 EXPECTED_GROUP_TOTALS = {
     "Document Validation": 14,
-    "Format Validation": 5,
+    "Format Validation": 6,
     "Cross Document Validation": 4,
-    "Date Validation": 5,
+    "Date Validation": 7,
     "Signature Validation": 6,
     "Stamp Validation": 5,
     "Business Policy Validation": 4,
@@ -108,10 +108,10 @@ def test_report_approved_application(client, storage_root):
     assert len(report["document_summary"]) == 8
 
     summary = report["rule_summary"]
-    assert summary["total"] == 47
+    assert summary["total"] == 50
     assert summary["failed"] == 0
     assert summary["pending_manual_review"] == 0
-    assert summary["passed"] + summary["warnings"] == 47
+    assert summary["passed"] + summary["warnings"] == 50
 
     assert [
         group["category"] for group in summary["by_category"]
@@ -144,7 +144,7 @@ def test_report_failed_application(client, storage_root):
 
     assert report["overall_status"] == "FAILED"
     summary = report["rule_summary"]
-    assert summary["total"] == 47
+    assert summary["total"] == 50
     assert summary["failed"] > 0
     # Only the present AMC document's visual rules await detection; the rest
     # fail because their documents are missing.
@@ -209,8 +209,8 @@ def test_report_summary_condensed(client, storage_root):
     assert summary["overall_status"] == "APPROVED"
     assert summary["application_status"] == "SUBMITTED"
     assert summary["document_count"] == 8
-    assert summary["rule_total"] == 47
-    assert summary["rule_passed"] + summary["rule_warnings"] == 47
+    assert summary["rule_total"] == 50
+    assert summary["rule_passed"] + summary["rule_warnings"] == 50
     assert summary["rule_failed"] == 0
     assert summary["rule_pending_review"] == 0
     assert summary["field_count"] > 0

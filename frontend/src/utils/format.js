@@ -39,3 +39,21 @@ export function formatDateTime(iso) {
         minute: '2-digit',
       });
 }
+
+/**
+ * Turn a SCREAMING_SNAKE_CASE backend enum value into a readable label,
+ * e.g. "document_completeness" -> "Document Completeness".
+ *
+ * @param {string | null | undefined} value The raw enum value.
+ * @returns {string} A title-cased label, or an en-dash when empty.
+ */
+export function humanizeEnum(value) {
+  if (!value) {
+    return '\u2014';
+  }
+  return value
+    .toLowerCase()
+    .split('_')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}

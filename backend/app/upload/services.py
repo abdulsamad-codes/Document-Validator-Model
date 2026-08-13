@@ -180,20 +180,21 @@ class UploadService:
         content_type: str,
         file: BinaryIO,
     ) -> list[Document]:
-        """Accept a single bulk PDF, split it, and persist every document atomically.
+        """Accept a single bulk PDF, store it, and queue it for background splitting.
 
         The stream is read within the configured size limit, validated through
         the shared upload validators (extension, MIME type, magic bytes, empty
-        content), split into logical documents by the
-        :class:`~app.preprocessing.splitter.DocumentSplitter` and persisted in
-        a single transaction. Copy numbers continue from the application's
-        existing database records, and the whole batch is rejected with
-        ``DuplicateDocumentException`` before anything is written when any
-        split type would exceed its ``MAX_COPIES_BY_DOCUMENT_TYPE`` allowance.
+        content) plus a cheap structural check (readable, non-zero pages), then
+        stored as a single ``BULK_UPLOAD`` placeholder document and enqueued on
+        the bulk processing queue. The actual page classification/split (and
+        any OCR fallback for scanned pages) happens later in the background
+        worker (see :meth:`app.preprocessing.splitter.DocumentSplitter.split_bulk_pdf`
+        via ``document_processing.services``) so the HTTP request never blocks
+        on OCR.
 
-        On any failure nothing is left behind: the transaction is rolled back
-        and every file written by this batch is removed, so no orphan database
-        rows or files can survive a partial persist.
+        On any failure nothing is left behind: the stored file is removed and
+        the transaction rolled back, so no orphan database row or file can
+        survive a partial persist.
 
         Args:
             application_id: Id of the owning application.
@@ -202,13 +203,11 @@ class UploadService:
             file: Stream of the bulk PDF.
 
         Returns:
-            The persisted Document records, one per detected logical document,
-            each ``UPLOADED`` and ready for the verification pipeline.
+            A single-element list containing the persisted ``BULK_UPLOAD``
+            placeholder document, ``UPLOADED`` and queued for splitting.
 
         Raises:
             ApplicationNotFoundException: When the application does not exist.
-            DuplicateDocumentException: When the batch would exceed a type's
-                copy allowance or a concurrent upload filled a copy slot.
             InvalidFileTypeException / FileTooLargeException: When the file
                 fails validation or is not a readable, non-empty PDF.
         """
@@ -220,10 +219,18 @@ class UploadService:
         extension = validate_file_content(filename, content_type, content)
         if extension != ".pdf":
             raise InvalidFileTypeException("Bulk upload accepts only PDF files")
+        DocumentSplitter.validate_structure(content)
 
         safe_filename = sanitize_filename(filename)
         stored_path = self._storage.save(application.id, DocumentType.BULK_UPLOAD, content, ".pdf")
-        
+
+        # `DocumentRepository.create` commits immediately (see
+        # `BaseRepository._commit_and_refresh`), so a failure in the enqueue
+        # step below cannot be undone by `db.rollback()` alone -- the document
+        # row is already durable. Track it so the except branch can issue a
+        # compensating delete and keep the whole method atomic from the
+        # caller's perspective.
+        document: Document | None = None
         try:
             document = self._documents.create(
                 application_id=application.id,
@@ -234,12 +241,17 @@ class UploadService:
                 file_type="application/pdf",
                 processing_status=DocumentProcessingStatus.UPLOADED,
             )
-            
+
             from app.database.repositories.queue_job_repository import QueueJobRepository
-            QueueJobRepository(self._db).enqueue(application.id, document.id)
-            
+            QueueJobRepository(self._db).enqueue_uploaded_documents(
+                application_id=application.id,
+                max_attempts=get_settings().bulk_queue_max_attempts,
+            )
+
         except Exception:
             self._db.rollback()
+            if document is not None:
+                self._documents.delete(document)
             self._delete_file(stored_path)
             raise
 

@@ -7,20 +7,10 @@ ruleset can be unit-tested without any persistence layer.
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from typing import ClassVar
-
-@dataclass(frozen=True)
-class NormalizedValue:
-    """Simple container for normalized field value used in tests."""
-    value: str
-    document_id: int
-
-
 
 from app.database.models.enums import ValidationStatus
 from app.rule_engine.schemas import FieldValue, RuleContext, RuleResult
-
 
 
 class BaseRule(ABC):

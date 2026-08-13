@@ -71,6 +71,27 @@ class _DateRule(BaseRule):
         """Evaluate the rule against one normalized value."""
         raise NotImplementedError  # pragma: no cover - abstract
 
+    def _evaluate_presence(self, context: RuleContext, present_message: str) -> RuleResult:
+        """Fail when the field is present but blank; warn when never extracted."""
+        matching_fields = [f for f in context.fields if f.field_name == self.field_name]
+        valid_values = normalized_values(context, self.field_name)
+        if not valid_values and matching_fields:
+            return self.result(
+                ValidationStatus.FAIL,
+                f"Required field {self.field_name} is missing or blank",
+                related_document_ids=sorted({f.document_id for f in matching_fields}),
+                related_field_names=[self.field_name],
+            )
+        if not valid_values:
+            return self._nothing_to_validate()
+
+        return self.result(
+            ValidationStatus.PASS,
+            present_message,
+            related_document_ids=sorted({f.document_id for f in matching_fields}),
+            related_field_names=[self.field_name],
+        )
+
 
 class DatePeriodSequenceRule(_DateRule):
     """The statement period must be chronological (start before or on end)."""
@@ -316,23 +337,8 @@ class DateIssuePresenceRule(_DateRule):
     field_name = "issue_date"
 
     def evaluate(self, context: RuleContext) -> RuleResult:
-        valid_values = normalized_values(context, self.field_name)
-        if not valid_values and any(v for v in context.fields if v.field_name == self.field_name):
-            return self.result(
-                ValidationStatus.FAIL,
-                f"Required field {self.field_name} is missing or blank",
-                related_document_ids=sorted({v.document_id for v in context.fields if v.field_name == self.field_name}),
-                related_field_names=[self.field_name],
-            )
-        if not valid_values:
-            return self._nothing_to_validate()
-            
-        return self.result(
-            ValidationStatus.PASS,
-            "Issue dates are present",
-            related_document_ids=sorted({v.document_id for v in valid_values}),
-            related_field_names=[self.field_name],
-        )
+        return self._evaluate_presence(context, "Issue dates are present")
+
 
 class DateExpiryPresenceRule(_DateRule):
     """The expiry date must be present."""
@@ -342,20 +348,4 @@ class DateExpiryPresenceRule(_DateRule):
     field_name = "expiry_date"
 
     def evaluate(self, context: RuleContext) -> RuleResult:
-        valid_values = normalized_values(context, self.field_name)
-        if not valid_values and any(v for v in context.fields if v.field_name == self.field_name):
-            return self.result(
-                ValidationStatus.FAIL,
-                f"Required field {self.field_name} is missing or blank",
-                related_document_ids=sorted({v.document_id for v in context.fields if v.field_name == self.field_name}),
-                related_field_names=[self.field_name],
-            )
-        if not valid_values:
-            return self._nothing_to_validate()
-            
-        return self.result(
-            ValidationStatus.PASS,
-            "Expiry dates are present",
-            related_document_ids=sorted({v.document_id for v in valid_values}),
-            related_field_names=[self.field_name],
-        )
+        return self._evaluate_presence(context, "Expiry dates are present")

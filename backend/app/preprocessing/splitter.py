@@ -106,6 +106,52 @@ class DocumentSplitter:
     """Splits a bulk PDF into conservative, individually classified documents."""
 
     @classmethod
+    def validate_structure(
+        cls,
+        content: bytes,
+        *,
+        max_bytes: int | None = None,
+    ) -> None:
+        """Cheaply reject unreadable or empty PDFs before they are queued.
+
+        Opens the PDF just far enough to confirm it is well-formed and has at
+        least one page -- no per-page classification or OCR, so this is safe
+        to call synchronously from the upload request even though the actual
+        split (page classification, optional OCR fallback) is deferred to the
+        background queue worker.
+
+        Raises:
+            InvalidFileTypeException: When the content is empty, is not a
+                readable PDF, or has zero pages.
+            FileTooLargeException: When ``content`` exceeds ``max_bytes``.
+        """
+        if not content:
+            raise InvalidFileTypeException("The uploaded file is empty")
+        if max_bytes is not None and len(content) > max_bytes:
+            raise FileTooLargeException(
+                f"File exceeds the maximum allowed size of {max_bytes // (1024 * 1024)} MB"
+            )
+        if not content.startswith(b"%PDF-"):
+            raise InvalidFileTypeException(
+                "The uploaded file is not a valid, readable PDF"
+            )
+
+        try:
+            document = fitz.open(stream=content, filetype="pdf")
+        except (fitz.FileDataError, fitz.EmptyFileError, ValueError) as exc:
+            raise InvalidFileTypeException(
+                "The uploaded file is not a valid, readable PDF"
+            ) from exc
+
+        try:
+            if len(document) == 0:
+                raise InvalidFileTypeException(
+                    "Bulk PDF produced no documents; expected at least one"
+                )
+        finally:
+            document.close()
+
+    @classmethod
     def split_bulk_pdf(
         cls,
         content: bytes,

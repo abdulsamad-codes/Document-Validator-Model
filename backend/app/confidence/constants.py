@@ -63,7 +63,9 @@ LOW_OCR_CONFIDENCE: float = 0.5
 # -- Critical fields ----------------------------------------------------------
 #: Fields whose low confidence forces human review regardless of how the rest of
 #: the application scored (IBAN, account number, account title, bank name, CNIC
-#: and the date fields, mapped onto the extractor's field names).
+#: and the date fields, mapped onto the extractor's field names). Deliberately
+#: a separate set from `app.document_analysis.constants.CRITICAL_FIELDS`, which
+#: is scoped per document type for analysis scoring, not review gating.
 CRITICAL_FIELDS: frozenset[str] = frozenset(
     {
         "iban",

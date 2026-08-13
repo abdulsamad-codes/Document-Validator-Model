@@ -47,6 +47,19 @@ export const VERIFICATION_SEVERITIES = [
   { value: 'REVIEW_REQUIRED', label: 'Review Required', variant: 'neutral' },
 ];
 
+/**
+ * Validation task lifecycle statuses (operator dashboard queue).
+ *
+ * Mirrors the backend `ValidationTaskStatus` enum.
+ */
+export const VALIDATION_TASK_STATUSES = [
+  { value: 'PENDING', label: 'Pending', variant: 'info' },
+  { value: 'IN_REVIEW', label: 'In Review', variant: 'warning' },
+  { value: 'VALIDATED', label: 'Validated', variant: 'success' },
+  { value: 'REJECTED', label: 'Rejected', variant: 'danger' },
+  { value: 'NEEDS_CORRECTION', label: 'Needs Correction', variant: 'neutral' },
+];
+
 export const DOCUMENT_STATUSES = [
   { value: 'UPLOADED', label: 'Uploaded', variant: 'success' },
   { value: 'PENDING', label: 'Uploaded', variant: 'success' },
@@ -78,6 +91,10 @@ export function getApplicationStatus(value) {
 
 export function getDocumentStatus(value) {
   return findStatus(DOCUMENT_STATUSES, value);
+}
+
+export function getValidationTaskStatus(value) {
+  return findStatus(VALIDATION_TASK_STATUSES, value);
 }
 
 /**

@@ -101,7 +101,10 @@ EXPECTED_FIELDS: dict[AnalyzedDocumentType, frozenset[str]] = {
 }
 
 #: Fields whose absence forces the document into manual review regardless of
-#: how the remaining checks scored.
+#: how the remaining checks scored. Scoped per document type for analysis
+#: scoring — deliberately a separate set from `app.confidence.constants.
+#: CRITICAL_FIELDS`, which is a flat global set gating human-review routing.
+#: Keep both in sync by intent, not by identical membership.
 CRITICAL_FIELDS: dict[AnalyzedDocumentType, frozenset[str]] = {
     AnalyzedDocumentType.BANK_STATEMENT: frozenset(
         {"account_number", "account_holder", "opening_balance", "closing_balance"}

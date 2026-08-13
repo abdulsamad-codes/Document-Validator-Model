@@ -179,10 +179,20 @@ def test_get_application_logs_not_found(client):
 
 
 def test_logs_pagination(client):
+    # Starting an already-started task is an illegal transition (409), so the
+    # six log rows come from one legitimate TASK_CREATED + TASK_STARTED plus
+    # four separate FIELD_VERIFIED events instead of repeated start() calls.
     application_id = create_application(client)
     task_id = create_task(client, application_id)
-    for _ in range(5):
-        start_task(client, task_id)
+    start_task(client, task_id)
+
+    for _ in range(4):
+        field_id = make_extracted_field(application_id)
+        response = client.post(
+            f"{API}/validation/fields/{field_id}/verify",
+            json={"validation_task_id": task_id, "result": "CONFIRMED"},
+        )
+        assert response.status_code == 201, response.text
 
     page = client.get(
         f"{API}/validation/tasks/{task_id}/logs", params={"limit": 2}

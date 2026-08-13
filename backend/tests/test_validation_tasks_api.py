@@ -160,7 +160,7 @@ def test_create_task_with_priority(client):
 
 
 def test_create_task_application_not_found(client):
-    response = create_task(client, application_id=999999)
+    response = create_task(client, application_id=999999, expected_status=404)
 
     assert response.status_code == 404
     assert "Application not found" in response.json()["detail"]
@@ -212,8 +212,10 @@ def test_get_task_not_found(client):
 
 
 def test_list_tasks_filter_and_paginate(client):
-    application_id = create_application(client)
-    ids = [create_task(client, application_id).json()["id"] for _ in range(3)]
+    # One task per application: only one active task is allowed per
+    # application, so the queue-wide listing is exercised across three
+    # separate applications instead of three tasks on one.
+    ids = [create_task(client, create_application(client)).json()["id"] for _ in range(3)]
     start(client, ids[0])
 
     response = client.get(f"{API}/validation/tasks")
