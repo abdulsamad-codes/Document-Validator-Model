@@ -15,7 +15,7 @@ provider is bundled: production wires one through dependency injection, and with
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Protocol
 
 from app.document_analysis.constants import AnalyzedDocumentType

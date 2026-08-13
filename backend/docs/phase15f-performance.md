@@ -9,7 +9,9 @@ verification and the operator UI are unchanged.
 ## Main bottlenecks found
 
 1. **OCR dominates everything.** A real PaddleOCR probe on this machine measured
-   **29.5 s per scanned page** (CPU-only backend, ~2 MP page, PP-OCR models).
+   **~40.5 s per scanned page** (latest verification, CPU-only backend, ~2 MP
+   page, PP-OCR models). An earlier run measured 29.5 s/page; OCR runtime varies
+   with CPU/system load.
    A scanned document is 100-1000x more expensive than a digital one.
 2. **Scanned PDFs rendered every page into memory up front.** `render_pdf_pages`
    materialized all page images (plus preprocessed copies) before OCR began, so
@@ -61,7 +63,10 @@ code paths run (validation, routing, PyMuPDF probing, page rendering, OpenCV
 preprocessing, queue claiming, analysis); the calibrated OCR engine sleeps the
 measured per-page cost (0.2 s/page) so the matrix completes in minutes while
 queue overhead and non-OCR cost stay accurate. The genuine per-page PaddleOCR
-cost is reported separately (29.5 s/page on this machine). 4 logical CPUs.
+cost is reported separately (~40.5 s/page on this machine, latest verification;
+earlier run measured 29.5 s/page). 4 logical CPUs.
+
+This is a single-machine representative measurement, not a production guarantee.
 
 | Docs | Workers | Drain (s) | Docs/min | Avg doc (s) | Worker util. | Queue wait (s) | OCR calls | AI calls | AI-fallback need | Completed / Failed / Retries |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -98,6 +103,8 @@ Readings:
 
 * 4 logical CPUs; OCR is CPU-bound and PaddleOCR already uses multiple native
   threads per process, so 3-4 workers thrash cores for little gain.
+* A re-verification run showed 3 workers gave no improvement over 2 on the
+  80-document batch (21.6 s vs 21.3 s drain), confirming diminishing returns.
 * Peak RSS with the real OCR engine loaded reached **2.1 GB**; each extra worker
   adds roughly that in a separate process, so RAM argues against more than 2.
 * Database pool (5 + 10) comfortably covers 2 workers plus heartbeat/request
@@ -108,7 +115,7 @@ Readings:
 
 ## Regression tests
 
-`tests/test_performance_safety.py` (10 tests):
+`tests/test_performance_safety.py` (11 tests):
 
 * digital PDFs never invoke OCR (through the queue worker's `process_one`);
 * scanned PDFs invoke OCR exactly once per page, in order;
@@ -120,6 +127,7 @@ Readings:
 * AI is disabled by default (zero calls, gap still measured);
 * a failing AI call is recorded and never breaks analysis;
 * provider values are gated to the requested fields;
+* an invalid-but-present field corrected by AI is merged and revalidated;
 * the PaddleOCR engine singleton is reused (integration-marked).
 
 Retry/recovery behaviour and progress consistency are covered by the Phase 15E
@@ -127,14 +135,20 @@ tests (`tests/test_bulk_queue.py`).
 
 ## Verification
 
-* `pytest -q`: **623 passed** (613 pre-existing + 10 new).
+* `pytest -q`: **624 passed** (613 pre-existing + 11 new) on this machine
+  (includes the real-PaddleOCR integration tests and the engine-singleton test).
 * `alembic check`: **No new upgrade operations detected** (no schema change).
+* Full benchmark matrix re-verified: real OCR probe **40.49 s/page**, OCR calls
+  exactly **7 / 28 / 56** for 10 / 40 / 80 documents, **0 AI calls**, **15.56%**
+  AI-fallback need, peak RSS **2069 MB**. The review run reproduced the recorded
+  matrix (worker utilization 74-91%); the table above retains the recorded
+  representative run.
 * Benchmark artifact: `scripts/benchmark_real_pipeline.py`; regenerate with
   `PYTHONPATH=. .venv/bin/python scripts/benchmark_real_pipeline.py`.
 
 ## Remaining bottlenecks
 
-* **Real OCR (~29.5 s/page on this CPU-only machine)** is the bottleneck to
+* **Real OCR (~40.5 s/page on this CPU-only machine)** is the bottleneck to
   attack next: batch size per worker, a lighter OCR profile for large scans, or
   GPU/MKLDNN acceleration. Not addressed here because it would change engine
   semantics.

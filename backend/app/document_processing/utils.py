@@ -3,7 +3,8 @@
 Pure, side-effect free OpenCV functions that prepare an image for OCR: deskew,
 denoise, contrast enhancement and adaptive thresholding, combined into a single
 :func:`preprocess_image` pipeline. Page rendering for scanned PDFs reuses
-PyMuPDF through the module-agnostic :func:`render_pdf_pages`. These helpers never
+PyMuPDF through the lazy :func:`iter_pdf_pages` iterator (with the eager
+:func:`render_pdf_pages` kept as a compatibility wrapper). These helpers never
 raise the module's domain exceptions; exception-raising checks live in
 :mod:`app.document_processing.validators`.
 """

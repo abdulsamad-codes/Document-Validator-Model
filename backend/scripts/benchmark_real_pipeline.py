@@ -39,8 +39,16 @@ import cv2
 import numpy as np
 import pymupdf
 
-from app.bulk_queue.workers import drain_queue
 from app.core.config import get_settings
+
+# The development ``.env`` sets DEBUG=true, which would create the SQLAlchemy
+# engine with ``echo=True`` and print every statement to stdout, corrupting the
+# JSON report (the engine's own StreamHandler bypasses logger levels). Clear
+# debug BEFORE ``app.database`` is imported so the engine is created without
+# echo and the report stays clean and valid JSON.
+get_settings().debug = False
+
+from app.bulk_queue.workers import drain_queue
 from app.database.connection import SessionLocal
 from app.database.models.document import Document
 from app.database.models.enums import DocumentProcessingStatus, DocumentType
@@ -432,10 +440,11 @@ def main() -> None:
     parser.add_argument("--no-real-probe", action="store_true")
     args = parser.parse_args()
 
-    # Keep the JSON report on stdout: mute the app's SQLAlchemy echo and INFO
-    # logs (they would otherwise interleave with the report).
-    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
-    logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)
+    # Keep the JSON report on stdout. The engine is created without echo (debug
+    # was cleared before ``app.database`` was imported above); belt-and-suspenders
+    # in case an echo engine already exists from an earlier import in this process.
+    logging.getLogger("sqlalchemy.engine").disabled = True
+    logging.getLogger("sqlalchemy.pool").disabled = True
 
     settings = get_settings()
     original_root = settings.upload_storage_root
