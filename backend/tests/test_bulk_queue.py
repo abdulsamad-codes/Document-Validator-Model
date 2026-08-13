@@ -790,7 +790,9 @@ def test_multiple_worker_processes_claim_disjoint_jobs(tmp_path):
     enqueue(application_id)
     record = tmp_path / "claims.txt"
 
-    context = multiprocessing.get_context("fork")
+    import sys
+    context_method = "fork" if sys.platform != "win32" else "spawn"
+    context = multiprocessing.get_context(context_method)
     processes = [
         context.Process(target=_drain_in_child_process, args=(str(record),))
         for _ in range(3)
