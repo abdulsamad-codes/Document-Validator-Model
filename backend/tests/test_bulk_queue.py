@@ -24,6 +24,9 @@ from app.database.repositories.application_repository import ApplicationReposito
 from app.database.repositories.document_repository import DocumentRepository
 from app.database.repositories.queue_job_repository import QueueJobRepository
 from app.document_processing.schemas import DocumentProcessingResult, ProcessingOutcome
+from app.document_processing.services import DocumentProcessingService
+from tests.test_bulk_upload_api import make_bulk_pdf, upload_bulk
+from tests.test_technical_validation_api import create_application
 
 API = "/api/v1"
 
@@ -843,3 +846,52 @@ def test_multiple_worker_processes_claim_disjoint_jobs(tmp_path):
     assert counts[JobStatus.COMPLETED] == 12
     assert counts.get(JobStatus.PROCESSING, 0) == 0
     assert counts.get(JobStatus.QUEUED, 0) == 0
+
+
+def test_bulk_upload_split_documents_are_enqueued_for_processing(client):
+    """Regression test: the queue worker's bulk-split path used to call a
+    nonexistent `QueueJobRepository.enqueue()`. The split itself succeeded
+    (documents were created) but the resulting per-document jobs were never
+    created, silently stalling every real bulk upload after the split with
+    no error surfaced anywhere -- a live application hit this in production
+    use before it was caught. Exercises the real `DocumentProcessingService`
+    (not a fake processor) so this path is actually covered.
+    """
+    application_id = create_application(client)
+    response = upload_bulk(
+        client,
+        application_id,
+        make_bulk_pdf([
+            "TRIPARTITE AGREEMENT\nFirst copy.",
+            "TRIPARTITE AGREEMENT\nSecond copy.",
+        ]),
+    )
+    assert response.status_code == 201, response.text
+
+    def processor_factory(db):
+        # No real OCR engine needed: the test PDF carries embedded text, so
+        # the splitter classifies pages from that directly.
+        return DocumentProcessingService(db, engine_factory=lambda: None)
+
+    summary = BulkQueueWorker(processor_factory=processor_factory).run_until_empty()
+    assert summary.failed == 0, summary
+
+    db = SessionLocal()
+    try:
+        documents = (
+            db.query(Document)
+            .filter(Document.application_id == application_id)
+            .all()
+        )
+        split_documents = [d for d in documents if d.document_type != DocumentType.BULK_UPLOAD]
+        assert len(split_documents) == 2
+
+        jobs = (
+            db.query(QueueJob)
+            .filter(QueueJob.document_id.in_([d.id for d in split_documents]))
+            .all()
+        )
+        assert len(jobs) == 2
+        assert {job.document_id for job in jobs} == {d.id for d in split_documents}
+    finally:
+        db.close()

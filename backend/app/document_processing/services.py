@@ -284,10 +284,11 @@ class DocumentProcessingService:
                 )
 
             self._documents.create_many(documents=created_documents)
-            
-            queue_repo = QueueJobRepository(self._db)
-            for new_doc in created_documents:
-                queue_repo.enqueue(application_id, new_doc.id)
+
+            QueueJobRepository(self._db).enqueue_uploaded_documents(
+                application_id=application_id,
+                max_attempts=get_settings().bulk_queue_max_attempts,
+            )
 
             self._documents.update_status(document, DocumentProcessingStatus.COMPLETED)
             logger.info("Successfully split bulk upload id=%s into %s documents", document.id, len(created_documents))
