@@ -1,0 +1,95 @@
+.heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.headingMeta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.percentage {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.detail {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.requiredList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.requiredRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.requiredLabel {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.copyCount {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.notice {
+  margin-top: 12px;
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-card);
+}
+
+.notice.danger {
+  border-left: 3px solid var(--color-danger);
+}
+
+.notice.warning {
+  border-left: 3px solid var(--color-warning);
+}
+
+.noticeTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+  margin: 0 0 6px;
+}
+
+.noticeList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.noticeList li {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}

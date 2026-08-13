@@ -6,18 +6,23 @@ import ApplicationDetailsPage from '../pages/ApplicationDetails/ApplicationDetai
 import ApplicationsPage from '../pages/Applications/ApplicationsPage';
 import CreateApplicationPage from '../pages/CreateApplication/CreateApplicationPage';
 import Dashboard from '../pages/Dashboard/Dashboard';
+import HumanReviewPage from '../pages/HumanReview/HumanReviewPage';
 import LoginPage from '../pages/Login/LoginPage';
 import OperatorDashboardPage from '../pages/OperatorDashboard/OperatorDashboardPage';
 import PlaceholderPage from '../pages/Placeholder/PlaceholderPage';
 import SettingsPage from '../pages/Settings/SettingsPage';
 import UploadDocumentsPage from '../pages/UploadDocuments/UploadDocumentsPage';
+import ValidationReportPage from '../pages/ValidationReport/ValidationReportPage';
 import VerificationPage from '../pages/Verification/VerificationPage';
 
 /**
  * Application route table.
  *
  * The applications module owns the list, create, details and upload pages.
- * Every other sidebar entry resolves to the shared PlaceholderPage so no path
+ * The Validation Report and Human Review pages are real operator workflows;
+ * the validation task queue (shipped previously at /human-review) stays
+ * reachable at /validation-tasks but is not exposed in the sidebar. Every
+ * other sidebar entry resolves to the shared PlaceholderPage so no path
  * returns a 404 and the sidebar active state matches the route. Internal
  * processing routes stay reachable as placeholders but are not exposed in the
  * sidebar. Admin-only routes (Feedback, Continuous Learning) are not sidebar
@@ -27,7 +32,8 @@ import VerificationPage from '../pages/Verification/VerificationPage';
  */
 const PLACEHOLDER_ITEMS = [
   ...NAV_ITEMS.filter(
-    ({ id }) => !['dashboard', 'applications', 'upload', 'settings', 'human-review'].includes(id)
+    ({ id }) =>
+      !['dashboard', 'applications', 'upload', 'settings', 'human-review', 'reports'].includes(id)
   ),
   ...ADMIN_NAV_ITEMS,
   ...INTERNAL_ROUTES,
@@ -46,7 +52,9 @@ function AppRoutes() {
         <Route path="applications/:applicationId" element={<ApplicationDetailsPage />} />
         <Route path="upload" element={<Navigate to="/applications" replace />} />
         <Route path="settings" element={<SettingsPage />} />
-        <Route path="human-review" element={<OperatorDashboardPage />} />
+        <Route path="reports" element={<ValidationReportPage />} />
+        <Route path="human-review" element={<HumanReviewPage />} />
+        <Route path="validation-tasks" element={<OperatorDashboardPage />} />
         {PLACEHOLDER_ITEMS.map(({ id, label, path }) => (
           <Route
             key={id}

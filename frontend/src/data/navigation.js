@@ -41,7 +41,7 @@ export const NAVIGATION = [
     id: 'verification',
     label: 'Verification',
     items: [
-      { id: 'reports', label: 'Validation Reports', path: '/reports', icon: FileText },
+      { id: 'reports', label: 'Validation Report', path: '/reports', icon: FileText },
       { id: 'human-review', label: 'Human Review', path: '/human-review', icon: UserCheck },
     ],
   },

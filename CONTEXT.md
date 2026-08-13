@@ -6,7 +6,7 @@ Last updated: 2026-08-13. This file is the single source of truth for project st
 
 A full-stack system for banks/KPITB to onboard merchants: upload financial onboarding documents, run them through OCR → field extraction → confidence scoring → normalization → a business-rule engine → human review, and curate corrected data into a versioned dataset for continuous learning. Backend: FastAPI + PostgreSQL (SQLAlchemy 2 + Alembic). Frontend: React 19 + Vite.
 
-## Current state: everything merged to `main`, test suite green, Operator Dashboard shipped
+## Current state: everything merged to `main`, test suite green, Operator Dashboard + Validation Report + Human Review + Settings shipped
 
 Three teammates' branches (`feature/samad-doc-splitter`, `feature/zarghuna-bulk-queue`, `feature/afsana-validation-logs`) are all merged into `main`. Work happens directly on `main`.
 
@@ -34,6 +34,28 @@ A prior session (different tool) had merged everything but left the suite at "89
 
 `/human-review` (nav slot already existed, was an unrouted placeholder) now has a real page: `frontend/src/pages/OperatorDashboard/OperatorDashboardPage.jsx`. Queue table + inline review panel driving the validation task lifecycle (start / complete / reject / request-correction) against Afsana's API, with stored check results and the audit log shown per task. New files: `services/validation.js`, `hooks/useValidationTasks.js` + `useValidationTask.js`, `components/validation/*`, `VALIDATION_TASK_STATUSES` in `data/statuses.js`. Follows existing conventions (CSS Modules, manual `useState`/`useEffect`, no new state library). `npm run build` passes clean. **Browser-verified end-to-end** with Playwright (login as `temp`/`1234` → create task via API → Start Review → Reject with reason → confirmed status/audit-log updates in the UI at every step).
 
+### 2026-08-13 frontend UI session (this session): Validation Report + Human Review + Settings
+
+Completes the operator-facing UI beyond the task queue (scope agreed by user: only these three areas; Dashboard/Application Details/Upload Documents untouched). All API contracts verified against backend source before wiring.
+
+- **Validation Report** at `/reports`: `pages/ValidationReport/ValidationReportPage.jsx` + 8 `components/report/*` sections (summary cards, documents, completeness, technical validation, fields, business rules, visual evidence, issues) fed in parallel by `hooks/useValidationReport.js` from 6 endpoints: `reports/validation-report` (422 → empty state), `completeness`, `technical-validation`, `validation-results`, `analysis-results`, `normalized-fields`. Printable link opens the backend HTML report in a new tab. Apps listed via shared `GET /applications` (default filter `PENDING_REVIEW`). New services: `services/{reports,technicalValidation,analysis,normalization}.js`.
+- **Human Review (final review)** at `/human-review`: `pages/HumanReview/HumanReviewPage.jsx` + `components/humanReview/*` (Summary, Documents, Fields w/ corrections, Detections, Checklist, Decision, History) against the **`human_verification` module only** (user decision: deliberately NOT `/confidence/review`). `GET /human-review` → ReviewScreen (15-item checklist default unchecked, confirmed via `_checklist_state`), `POST /human-review` (APPROVE/CORRECT/REJECT; CHECKLIST always sent for every decision; backend enforces approve=full checklist, reject=reason, correct=≥1 correction), `GET /human-review/history`. `hooks/useHumanReview.js` refetches screen+application+history after every submit; `alreadyReviewed` (previous_review or status APPROVED/REJECTED/CORRECTED) renders read-only + ReviewHistory. Reviewer name from `useAuth().user?.name`. 409/validation errors surface as `submitError` on the decision form.
+- **Settings** at `/settings`: rewritten `pages/Settings/SettingsPage.jsx` — Profile (name/email/employee_id/role from `useAuth()`/`/auth/me`), Account + functional Sign out (`POST /auth/logout`), Password/Preferences shown as informational "not available" (no backend endpoints — deliberately no fake controls), Administration section kept.
+- **Routing/nav**: task queue moved to internal `/validation-tasks` (still routed, not in sidebar); `reports` added to the `PLACEHOLDER_ITEMS` exclusion; nav label "Validation Reports" → "Validation Report". `npm run build` passes clean. Browser-verified in the e2e session below.
+
+### 2026-08-13 e2e verification session (this session): Playwright, 7/7 green
+
+Playwright suite (scratch, `/tmp/opencode/e2e`, not committed) covers login/sidebar/placeholders, `/reports` (sections, printable HTML popup, FAILED + empty states), `/human-review` (checklist defaults, APPROVE/CORRECT/REJECT flows, read-only already-reviewed + history, empty-app error state), `/validation-tasks`, `/settings` (profile data, sign-out, protected-route redirect). **7/7 pass, stable across 3 consecutive runs**, no console/page/API errors. Browser-verified end-to-end for the first time.
+
+Genuine issues found and fixed during the run:
+- **Dev DB was behind alembic head** — `GET /api/v1/validation/tasks` 500'd with `relation "validation_tasks" does not exist`. Fix: `cd backend && .venv/bin/alembic upgrade head` (applied `a3f9b7c1d4e2` validation tables + merge + `02ffa030b9e1` BULK_UPLOAD enum). **Ops note: any environment created before those migrations must run `alembic upgrade head` before the task queue works.**
+- **`ReviewFields.jsx` nested `<tr>` smell (previously documented below) is now FIXED**: the correction row is a sibling `<tr>` in a React `Fragment`; the browser now emits zero React DOM warnings.
+- **Operator dashboard page title was misleading**: `OperatorDashboardPage` h2 said "Human Review" (duplicating the final-review page at `/human-review`). Changed to "Validation Tasks".
+
+Remaining cosmetic limitation (left as-is): the navbar/breadcrumb label for `/validation-tasks` still falls back to "Dashboard" because it isn't in `data/navigation.js` (it's deliberately internal). Seeded demo data (apps 7504-7510, e2e-* created_by, PDFs in `storage/`) is left in the dev DB for manual browsing; re-seed via `/tmp/opencode/seed_e2e_data.py` (idempotent: wipes `created_by LIKE 'e2e-%'` + storage, restarts id sequence so IDs stay 7504-7510). Login for the seeded UI checks: `EMP-1001` / `employee@fintech.local` / `Welcome@123`.
+
+Note: `ReviewFields.jsx` correction inputs live in a sibling `<tr>` (see above) — any selector for the corrected-value input must target the row following the field row, not a child of it.
+
 ## Known gaps (verified 2026-08-13, don't re-discover from scratch)
 
 **Rule engine coverage vs. `docs/Master_Rules_Combined.md`** — no automated coverage for: blank-date enforcement on Tripartite/Bilateral preambles, PayMin/Digital Muhasil/Paymere BCX terminology matching, organization-name consistency across documents, per-page 1-Link signature requirement, document layout/point-numbering conformance, E-Stamp visual authentication, Notary Public stamp detection, Formal Request Letter subject-line check, CNIC expiry/completeness. (Schedule-of-Charges/BRD signature+stamp checks are deliberately handled via the human-verification manual checklist instead.) **None of these fields have any extraction/normalization support in the codebase today** — confirmed by grep. Do not add a rule for any of them without adding real extraction first: see the `CrossBranchCodeRule` incident above for exactly what goes wrong otherwise (`_CrossDocumentRule` hard-`FAIL`s on a missing field; `_FormatRule` only WARNs; `_VisualRule` degrades to `PENDING_MANUAL_REVIEW` — know which base class before wiring a new rule in).
@@ -45,8 +67,8 @@ A prior session (different tool) had merged everything but left the suite at "89
 ## What's actually left to build
 
 1. **Extraction support for the rule-engine gaps above**, if those checks are wanted — this is the real remaining scope, not UI work.
-2. **Human Verification workspace for field-level corrections** — the Operator Dashboard drives the *task* lifecycle and shows results/logs, but the per-field verify/correct endpoints (`POST /validation/fields/{id}/verify|correct`) aren't wired into the UI yet (no field-level review widget). Worth adding once there's a real application with extracted fields to review against.
-3. Whatever the team prioritizes next — the backend and this new frontend page are both stable and tested; there's no "broken foundation" blocking further work anymore.
+2. **Field-level review widget for the `validation` module** — the Operator Dashboard drives the *task* lifecycle and shows results/logs, and the final review now handles corrections via `human_verification`, but the per-field verify/correct endpoints (`POST /validation/fields/{id}/verify|correct`) still aren't wired into any UI. Worth adding once there's a real application with extracted fields to review against.
+3. Whatever the team prioritizes next — the backend and the frontend are both stable and tested; there's no "broken foundation" blocking further work anymore.
 
 ---
 
