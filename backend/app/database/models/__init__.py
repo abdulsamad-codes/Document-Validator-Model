@@ -19,7 +19,10 @@ from app.database.models.ocr_result import OCRResult
 from app.database.models.queue_job import QueueJob
 from app.database.models.refresh_token import RefreshToken
 from app.database.models.user import User
+from app.database.models.validation_log import ValidationLog
 from app.database.models.validation_result import ValidationResult
+from app.database.models.validation_run import ValidationRun
+from app.database.models.validation_task import ValidationTask
 from app.database.models.visual_detection import VisualDetection
 
 __all__ = [
@@ -36,6 +39,9 @@ __all__ = [
     "QueueJob",
     "RefreshToken",
     "User",
+    "ValidationLog",
     "ValidationResult",
+    "ValidationRun",
+    "ValidationTask",
     "VisualDetection",
 ]

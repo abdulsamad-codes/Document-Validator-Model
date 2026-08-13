@@ -3,7 +3,7 @@
 from collections.abc import Iterable, Sequence
 from datetime import datetime
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.database.models.enums import Severity, ValidationStatus
@@ -113,6 +113,20 @@ class ValidationRepository(BaseRepository[ValidationResult]):
             .limit(limit)
         )
         return self._db.scalars(statement).all()
+
+    def count_by_application(self, application_id: int) -> int:
+        """Return the number of validation results for an application.
+
+        Args:
+            application_id: Application id to look up.
+
+        Returns:
+            The number of validation results for the application.
+        """
+        statement = select(func.count(ValidationResult.id)).where(
+            ValidationResult.application_id == application_id
+        )
+        return self._db.execute(statement).scalar_one()
 
     def get_by_application_and_category(
         self,
