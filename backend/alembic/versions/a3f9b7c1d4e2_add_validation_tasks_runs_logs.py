@@ -33,12 +33,10 @@ def upgrade() -> None:
         'PENDING', 'IN_REVIEW', 'NEEDS_CORRECTION', 'VALIDATED', 'REJECTED',
         name='validationtaskstatus',
     )
-    validationtaskstatus.create(op.get_bind(), checkfirst=True)
     validationtaskpriority = sa.Enum(
         'LOW', 'NORMAL', 'HIGH', 'URGENT',
         name='validationtaskpriority',
     )
-    validationtaskpriority.create(op.get_bind(), checkfirst=True)
     validationlogaction = sa.Enum(
         'TASK_CREATED', 'TASK_STARTED', 'FIELD_VERIFIED', 'FIELD_CORRECTED',
         'BUSINESS_RULE_REVIEWED', 'SIGNATURE_REVIEWED', 'STAMP_REVIEWED',
@@ -46,20 +44,17 @@ def upgrade() -> None:
         'VALIDATION_COMPLETED', 'VALIDATION_REJECTED', 'REVALIDATION_STARTED',
         name='validationlogaction',
     )
-    validationlogaction.create(op.get_bind(), checkfirst=True)
     validationlogchecktype = sa.Enum(
         'ACCOUNT_NUMBER', 'NTN', 'BANK_NAME', 'ACCOUNT_TITLE', 'SIGNATURE',
         'STAMP', 'BUSINESS_RULE', 'BANK_MAINTENANCE_ORIGINALITY',
         'DOCUMENT_REVIEW', 'GENERAL',
         name='validationlogchecktype',
     )
-    validationlogchecktype.create(op.get_bind(), checkfirst=True)
     validationlogresult = sa.Enum(
         'PASS', 'FAIL', 'CONFIRMED', 'CORRECTED', 'REQUIRES_REVIEW', 'REJECTED',
         'REVIEWED', 'INFO',
         name='validationlogresult',
     )
-    validationlogresult.create(op.get_bind(), checkfirst=True)
 
     op.create_table('validation_runs',
     sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
