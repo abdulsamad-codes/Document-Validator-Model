@@ -20,7 +20,9 @@ print(f"Input: {PDF_PATH}")
 print()
 
 with open(PDF_PATH, "rb") as f:
-    results = DocumentSplitter.split_bulk_pdf(f)
+    content = f.read()
+
+results = DocumentSplitter.split_bulk_pdf(content)
 
 print(f"✅ Total documents detected: {len(results)}")
 print()
