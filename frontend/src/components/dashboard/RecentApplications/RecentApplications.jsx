@@ -129,6 +129,9 @@ function RecentApplications() {
                     <ApplicationStatusBadge status={application.status} />
                   </span>
                   <span className={styles.meta}>
+                    {application.name && (
+                      <span className={styles.name}>{application.name}</span>
+                    )}
                     <span className={styles.createdBy}>{application.created_by}</span>
                     <span className={styles.updated}>
                       Updated {formatDate(application.updated_at)}

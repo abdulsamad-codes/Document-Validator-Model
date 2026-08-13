@@ -17,6 +17,11 @@ class ApplicationBase(BaseModel):
 
     status: ApplicationStatus = ApplicationStatus.SUBMITTED
     created_by: str = Field(min_length=1, max_length=255)
+    name: str | None = Field(
+        default=None,
+        max_length=255,
+        description="Display name derived from the first uploaded PDF filename.",
+    )
     notes: str | None = None
 
 

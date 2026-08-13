@@ -83,6 +83,12 @@ function ApplicationDetailsPage() {
             <span className={styles.label}>Application ID</span>
             <span className={styles.value}>#{application.id}</span>
           </div>
+          {application.name && (
+            <div className={styles.field}>
+              <span className={styles.label}>Name</span>
+              <span className={styles.value}>{application.name}</span>
+            </div>
+          )}
           <div className={styles.field}>
             <span className={styles.label}>Submission Date</span>
             <span className={styles.value}>{formatDateTime(application.submitted_at)}</span>

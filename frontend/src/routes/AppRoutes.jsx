@@ -10,6 +10,7 @@ import HumanReviewPage from '../pages/HumanReview/HumanReviewPage';
 import LoginPage from '../pages/Login/LoginPage';
 import OperatorDashboardPage from '../pages/OperatorDashboard/OperatorDashboardPage';
 import PlaceholderPage from '../pages/Placeholder/PlaceholderPage';
+import ProcessingPage from '../pages/Processing/ProcessingPage';
 import SettingsPage from '../pages/Settings/SettingsPage';
 import UploadDocumentsPage from '../pages/UploadDocuments/UploadDocumentsPage';
 import ValidationReportPage from '../pages/ValidationReport/ValidationReportPage';
@@ -26,14 +27,13 @@ import VerificationPage from '../pages/Verification/VerificationPage';
  * returns a 404 and the sidebar active state matches the route. Internal
  * processing routes stay reachable as placeholders but are not exposed in the
  * sidebar. Admin-only routes (Feedback, Continuous Learning) are not sidebar
- * entries either; they are reached from the Settings page. The "/upload" menu
- * entry is redirected to the applications list because an upload needs an
- * application context. Unknown URLs are redirected to the dashboard.
+ * entries either; they are reached from the Settings page. Unknown URLs are
+ * redirected to the dashboard.
  */
 const PLACEHOLDER_ITEMS = [
   ...NAV_ITEMS.filter(
     ({ id }) =>
-      !['dashboard', 'applications', 'upload', 'settings', 'human-review', 'reports'].includes(id)
+      !['dashboard', 'applications', 'processing', 'settings', 'human-review', 'reports'].includes(id)
   ),
   ...ADMIN_NAV_ITEMS,
   ...INTERNAL_ROUTES,
@@ -50,7 +50,7 @@ function AppRoutes() {
         <Route path="applications/:applicationId/upload" element={<UploadDocumentsPage />} />
         <Route path="applications/:applicationId/verification" element={<VerificationPage />} />
         <Route path="applications/:applicationId" element={<ApplicationDetailsPage />} />
-        <Route path="upload" element={<Navigate to="/applications" replace />} />
+        <Route path="processing" element={<ProcessingPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="reports" element={<ValidationReportPage />} />
         <Route path="human-review" element={<HumanReviewPage />} />

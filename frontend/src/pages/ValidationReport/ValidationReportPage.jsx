@@ -104,7 +104,7 @@ function ValidationReportPage() {
             <option value="">Select an application</option>
             {applications.map((app) => (
               <option key={app.id} value={app.id}>
-                #{app.id} — {app.created_by} ({app.status})
+                #{app.id} — {app.name || app.created_by} ({app.status})
               </option>
             ))}
           </select>

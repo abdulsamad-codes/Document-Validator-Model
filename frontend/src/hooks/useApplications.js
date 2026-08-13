@@ -41,6 +41,7 @@ export function useApplications() {
       }
       return (
         String(application.id).includes(term) ||
+        (application.name ?? '').toLowerCase().includes(term) ||
         application.created_by.toLowerCase().includes(term) ||
         (application.notes ?? '').toLowerCase().includes(term)
       );

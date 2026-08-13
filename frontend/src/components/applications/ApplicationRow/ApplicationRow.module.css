@@ -8,6 +8,16 @@
 
 .idCell {
   font-weight: 600;
+  white-space: nowrap;
+}
+
+.nameCell {
+  font-weight: 600;
+}
+
+.noName {
+  color: var(--color-text-muted);
+  font-weight: 400;
 }
 
 .idLink {
