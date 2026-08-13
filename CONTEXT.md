@@ -6,6 +6,8 @@ Last updated: 2026-08-13. This file is the single source of truth for project st
 
 A full-stack system for banks/KPITB to onboard merchants: upload financial onboarding documents, run them through OCR → field extraction → confidence scoring → normalization → a business-rule engine → human review, and curate corrected data into a versioned dataset for continuous learning. Backend: FastAPI + PostgreSQL (SQLAlchemy 2 + Alembic). Frontend: React 19 + Vite.
 
+**⚠️ The GitHub repo (`abdulsamad-codes/Document-Validator-Model`) is public.** Real onboarding documents (real IBANs, CNICs, officer names) belong in `Confidential Data/` at the project root, which is gitignored — never loose in the repo. On 2026-08-13 a real onboarding PDF was found committed and pushed un-ignored (fixed by untracking + gitignoring it, commit `bc57cff`); git history was deliberately left as-is rather than rewritten, so that one file is still recoverable from an old commit if anyone goes looking. See `Confidential Data/` for the ~19 real documents already handled correctly.
+
 ## Current state: everything merged to `main`, test suite green, Operator Dashboard shipped
 
 Three teammates' branches (`feature/samad-doc-splitter`, `feature/zarghuna-bulk-queue`, `feature/afsana-validation-logs`) are all merged into `main`. Work happens directly on `main`.
