@@ -8,6 +8,8 @@ A full-stack system for banks/KPITB to onboard merchants: upload financial onboa
 
 **⚠️ The GitHub repo (`abdulsamad-codes/Document-Validator-Model`) is public.** Real onboarding documents (real IBANs, CNICs, officer names) belong in `Confidential Data/` at the project root, which is gitignored — never loose in the repo. On 2026-08-13 a real onboarding PDF was found committed and pushed un-ignored (fixed by untracking + gitignoring it, commit `bc57cff`); git history was deliberately left as-is rather than rewritten, so that one file is still recoverable from an old commit if anyone goes looking. See `Confidential Data/` for the ~19 real documents already handled correctly.
 
+**⚠️ Never run `pytest` while real data is loaded in the dev database.** `tests/conftest.py`'s autouse `isolated_database` fixture runs `DELETE FROM applications` (cascading to documents/queue_jobs) before AND after **every single test**, against whatever database `SessionLocal`/`DATABASE_URL` points at — which locally is the same Postgres database the running backend and queue worker use. On 2026-08-13 this wiped a real uploaded application while it was mid-processing (see below). Before running the suite locally, check the `applications` table is empty first, or point `DATABASE_URL` at a separate test database.
+
 ## Current state: everything merged to `main`, test suite green, Operator Dashboard shipped
 
 Three teammates' branches (`feature/samad-doc-splitter`, `feature/zarghuna-bulk-queue`, `feature/afsana-validation-logs`) are all merged into `main`. Work happens directly on `main`.
@@ -35,6 +37,12 @@ A prior session (different tool) had merged everything but left the suite at "89
 ### New this session: Operator Dashboard (frontend)
 
 `/human-review` (nav slot already existed, was an unrouted placeholder) now has a real page: `frontend/src/pages/OperatorDashboard/OperatorDashboardPage.jsx`. Queue table + inline review panel driving the validation task lifecycle (start / complete / reject / request-correction) against Afsana's API, with stored check results and the audit log shown per task. New files: `services/validation.js`, `hooks/useValidationTasks.js` + `useValidationTask.js`, `components/validation/*`, `VALIDATION_TASK_STATUSES` in `data/statuses.js`. Follows existing conventions (CSS Modules, manual `useState`/`useEffect`, no new state library). `npm run build` passes clean. **Browser-verified end-to-end** with Playwright (login as `temp`/`1234` → create task via API → Start Review → Reject with reason → confirmed status/audit-log updates in the UI at every step).
+
+### 2026-08-13, later same day: second `.enqueue()` bug + a data-loss incident
+
+While helping the user check on a real document they'd uploaded through the running app, found a **second instance** of the same nonexistent-method bug fixed earlier in `upload/services.py` — this one in `document_processing/services.py::_process_bulk_upload()`, which called `QueueJobRepository.enqueue()` (doesn't exist) instead of `enqueue_uploaded_documents(...)`. Effect: bulk uploads split into per-document records successfully, but those documents were never enqueued for OCR/extraction — the pipeline silently stalled forever with no error surfaced anywhere. Fixed in commit `7f3129d`, with a regression test (`test_bulk_upload_split_documents_are_enqueued_for_processing` in `test_bulk_queue.py`) asserting split documents get queue jobs.
+
+**While verifying that fix, running the new regression test wiped the user's real in-progress application** — see the `isolated_database` warning above. The application, its documents, and its queue job were permanently deleted (hard `DELETE`, no soft-delete/backup). The `users` table was unaffected in that instance (temp account still worked), but don't assume that generalizes — treat any pytest run against a database holding real data as destructive to all of `applications`/`documents`/`queue_jobs`/`users`. **User needs to re-upload the document from `Confidential Data/`** to exercise the now-fixed pipeline; no way to recover what was deleted.
 
 ## Known gaps (verified 2026-08-13, don't re-discover from scratch)
 
