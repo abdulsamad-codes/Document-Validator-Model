@@ -222,6 +222,12 @@ class ContinuousLearningService:
                 continue
             records.append(build_record(entry, document_types))
             reviewers.append(reviewer_label(entry))
+        ordered_records = sorted(
+            zip(records, reviewers),
+            key=lambda pair: pair[0]["human_corrected_value"],
+        )
+        records = [record for record, _ in ordered_records]
+        reviewers = [reviewer for _, reviewer in ordered_records]
         metadata = self._metadata(records)
         logger.info(
             "Continuous learning dataset validation: valid=%s excluded=%s duplicates=%s reasons=%s",
@@ -239,8 +245,16 @@ class ContinuousLearningService:
 
     def _metadata(self, records: list[dict]) -> DatasetMetadata:
         """Build deterministic dataset metadata from the curated records."""
+        response_records = [
+            LearningDatasetEntry(**record).model_dump(mode="json")
+            for record in records
+        ]
         content_hash = hashlib.sha256(
-            canonical_records_json(records).encode("utf-8")
+            json.dumps(
+                response_records,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
         ).hexdigest()
         return DatasetMetadata(
             dataset_version=(

@@ -29,7 +29,7 @@ from app.document_processing.exceptions import (
     OCRProcessingFailed,
     ProcessingTimeout,
 )
-from app.document_processing.utils import preprocess_image, render_pdf_pages
+from app.document_processing.utils import iter_pdf_pages, preprocess_image
 
 logger = logging.getLogger(__name__)
 
@@ -281,20 +281,30 @@ class ScannedPdfExtractor:
         self._deadline = deadline
 
     def extract(self) -> ExtractionResult:
-        """OCR every page and merge the resulting text."""
-        try:
-            pages = render_pdf_pages(self._path)
-        except Exception as exc:
-            raise CorruptedDocument(f"Cannot render PDF pages: {exc}") from exc
+        """OCR every page and merge the resulting text.
+
+        Pages are rendered lazily one at a time so a multi-page scan never holds
+        every page image in memory at once: each rendered page is preprocessed,
+        OCR'd and then released before the next page is rendered. Render errors
+        surface as ``CorruptedDocument`` while engine errors propagate as before.
+        """
+        pages = iter_pdf_pages(self._path)
         page_texts: list[str] = []
         scores: list[float] = []
-        for index, page_image in enumerate(pages):
+        index = 0
+        while True:
+            try:
+                page_image = next(pages)
+            except StopIteration:
+                break
+            except Exception as exc:
+                raise CorruptedDocument(f"Cannot render PDF pages: {exc}") from exc
+            index += 1
             if self._deadline is not None and time.monotonic() > self._deadline:
                 raise ProcessingTimeout()
             logger.info(
-                "OCR started for page %s of %s of PDF %r",
-                index + 1,
-                len(pages),
+                "OCR started for page %s of PDF %r",
+                index,
                 str(self._path),
             )
             preprocessed = preprocess_image(page_image)
@@ -303,9 +313,8 @@ class ScannedPdfExtractor:
                 scores.append(extraction.confidence)
             page_texts.append(extraction.text)
             logger.info(
-                "OCR completed for page %s of %s of PDF %r",
-                index + 1,
-                len(pages),
+                "OCR completed for page %s of PDF %r",
+                index,
                 str(self._path),
             )
         text = _join_pages(page_texts)
@@ -315,7 +324,7 @@ class ScannedPdfExtractor:
             ocr_engine=PADDLE_OCR_ENGINE,
             processing_method=ProcessingMethod.PADDLE_OCR,
             overall_confidence=confidence,
-            page_count=len(pages),
+            page_count=index,
             character_count=len(text),
         )
 

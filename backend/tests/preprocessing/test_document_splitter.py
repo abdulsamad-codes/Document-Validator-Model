@@ -1,86 +1,128 @@
-"""
-Unit tests for the DocumentSplitter module.
-Tests that bulk PDFs are correctly classified into document type segments.
-These tests are fully self-contained and require no database.
+"""Unit tests for the DocumentSplitter module.
+
+Tests that bulk PDFs are classified into logical document chunks. These tests
+are fully self-contained and require no database.
 """
 
 import io
+
 import pymupdf
 import pytest
 
 from app.database.models.enums import DocumentType
 from app.preprocessing.splitter import DocumentSplitter
+from app.upload.exceptions import FileTooLargeException, InvalidFileTypeException
 
 
-def _make_pdf_with_text(pages: list[str]) -> io.BytesIO:
-    """Helper: creates a minimal in-memory PDF with one text page per item."""
+def _make_pdf_with_text(pages: list[str]) -> bytes:
+    """Create a minimal in-memory PDF with one text page per item."""
     doc = pymupdf.open()
     for text in pages:
         page = doc.new_page()
         page.insert_text((50, 50), text, fontsize=14)
     buffer = io.BytesIO(doc.tobytes())
     doc.close()
-    buffer.seek(0)
-    return buffer
+    return buffer.getvalue()
+
+
+def _split(page_texts: list[str]) -> list[tuple[DocumentType, bytes]]:
+    return DocumentSplitter.split_bulk_pdf(_make_pdf_with_text(page_texts))
+
+
+def _doc_types(page_texts: list[str]) -> list[DocumentType]:
+    return [doc_type for doc_type, _ in _split(page_texts)]
+
+
+# --- Classification ---------------------------------------------------------
 
 
 def test_split_single_known_document():
     """A PDF with a clear header should return one categorized document."""
-    pdf_stream = _make_pdf_with_text(["TRIPARTITE AGREEMENT\nThis is an agreement."])
-    result = DocumentSplitter.split_bulk_pdf(pdf_stream)
+    result = _split(["TRIPARTITE AGREEMENT\nThis is an agreement."])
     assert len(result) == 1
     assert result[0][0] == DocumentType.TRIPARTITE_AGREEMENT
 
 
 def test_split_multiple_known_documents():
     """A PDF with multiple distinct headers should yield multiple documents."""
-    pdf_stream = _make_pdf_with_text([
+    types = _doc_types([
         "TRIPARTITE AGREEMENT\nContent here.",
         "AUTHORITY LETTER\nContent here.",
         "ACCOUNT MAINTENANCE CERTIFICATE\nContent here.",
     ])
-    result = DocumentSplitter.split_bulk_pdf(pdf_stream)
-    types = [r[0] for r in result]
-    assert DocumentType.TRIPARTITE_AGREEMENT in types
-    assert DocumentType.AUTHORITY_LETTER in types
-    assert DocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE in types
+    assert types == [
+        DocumentType.TRIPARTITE_AGREEMENT,
+        DocumentType.AUTHORITY_LETTER,
+        DocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    ]
 
 
 def test_split_unclassified_pages_become_other():
     """Pages with no matching keywords should be grouped as OTHER_SUPPORTING_DOCUMENT."""
-    pdf_stream = _make_pdf_with_text(["Random unrecognized document content."])
-    result = DocumentSplitter.split_bulk_pdf(pdf_stream)
+    result = _split(["Random unrecognized document content."])
     assert len(result) == 1
     assert result[0][0] == DocumentType.OTHER_SUPPORTING_DOCUMENT
 
 
-def test_split_empty_pdf():
-    """An empty PDF should produce no documents."""
-    # PyMuPDF's writer refuses to serialize a zero-page document ("cannot save
-    # with zero pages"), so the zero-page PDF is hand-crafted directly instead
-    # of built via `pymupdf.open()` + `.write()`. It reads back with 0 pages
-    # even though it can't be produced by PyMuPDF's own save path.
-    raw_pdf = (
-        b"%PDF-1.4\n"
-        b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"
-        b"2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n"
-        b"trailer\n<< /Root 1 0 R >>\n%%EOF\n"
-    )
-    buffer = io.BytesIO(raw_pdf)
-    result = DocumentSplitter.split_bulk_pdf(buffer)
-    assert result == []
+def test_split_repeated_same_type_copies():
+    """Repeated copies of the same type must each become their own document."""
+    types = _doc_types([
+        "TRIPARTITE AGREEMENT\nCopy one body.",
+        "TRIPARTITE AGREEMENT\nCopy two body.",
+        "TRIPARTITE AGREEMENT\nCopy three body.",
+    ])
+    assert [t for t in types if t == DocumentType.TRIPARTITE_AGREEMENT] == [
+        DocumentType.TRIPARTITE_AGREEMENT,
+        DocumentType.TRIPARTITE_AGREEMENT,
+        DocumentType.TRIPARTITE_AGREEMENT,
+    ]
+
+
+def test_split_mixed_repeated_copies_and_pairs():
+    """Multiple copies of 1-Link, Schedule of Charges and a CNIC pair."""
+    types = _doc_types([
+        "1LINK APPLICATION FORM\nFirst copy.",
+        "1LINK APPLICATION FORM\nSecond copy.",
+        "1LINK APPLICATION FORM\nThird copy.",
+        "SCHEDULE OF CHARGES\nSix copies include this one.",
+        "SCHEDULE OF CHARGES\nAnother.",
+        "NATIONAL IDENTITY CARD\nIdentity Number: 42101-0000000-0\nFather Name: Ali",
+        "ISLAMIC REPUBLIC OF PAKISTAN\nDate of Issue: 01-01-2010\nIssuing Authority: NADRA",
+    ])
+    assert types.count(DocumentType.ONE_LINK_LETTER) == 3
+    assert types.count(DocumentType.SCHEDULE_OF_CHARGES) == 2
+    assert types.count(DocumentType.CNIC_FRONT) == 1
+    assert types.count(DocumentType.CNIC_BACK) == 1
+    assert DocumentType.CNIC_BACK in types
+
+
+def test_split_cnic_back_is_not_front():
+    """A back face with issuing-authority fields must be CNIC_BACK, not FRONT."""
+    types = _doc_types([
+        "NATIONAL IDENTITY CARD\nIdentity Number: 42101-0000000-0\nFather Name: Ali",
+        "NATIONAL IDENTITY CARD\nDate of Issue: 01-01-2010\nIssuing Authority: NADRA",
+    ])
+    assert types == [DocumentType.CNIC_FRONT, DocumentType.CNIC_BACK]
+
+
+def test_split_continuation_page_does_not_split():
+    """Body keywords on a continuation page must not start a new document."""
+    types = _doc_types([
+        "TRIPARTITE AGREEMENT\nPage 1.",
+        "as per the 1LINK tripartite agreement and schedule of charges on page 2.",
+        "continued agreement text on page 3.",
+    ])
+    assert types == [DocumentType.TRIPARTITE_AGREEMENT]
 
 
 def test_split_consecutive_same_type_grouped():
-    """Multiple consecutive pages of the same type should be grouped into one document."""
-    pdf_stream = _make_pdf_with_text([
-        "TRIPARTITE AGREEMENT\nPage 1.",
-        "Continuation of the tripartite agreement on page 2.",
+    """A title page plus unclassified continuation pages stay one document."""
+    result = _split([
+        "SCHEDULE OF CHARGES\nPage 1.",
+        "Continuation of the schedule on page 2.",
     ])
-    result = DocumentSplitter.split_bulk_pdf(pdf_stream)
-    # First page starts the tripartite, second has no header so stays in same group
-    tripartite_docs = [r for r in result if r[0] == DocumentType.TRIPARTITE_AGREEMENT]
-    assert len(tripartite_docs) >= 1
+    assert len(result) == 1
+    assert result[0][0] == DocumentType.SCHEDULE_OF_CHARGES
 
 
 def test_classify_text_authority_letter():
@@ -91,5 +133,58 @@ def test_classify_text_authority_letter():
 
 def test_classify_text_none_for_unrecognized():
     """The classifier should return None for unrecognized text."""
-    doc_type = DocumentSplitter._classify_text("Random text with no match.")
-    assert doc_type is None
+    assert DocumentSplitter._classify_text("Random text with no match.") is None
+
+
+# --- Validation / error handling -------------------------------------------
+
+
+def test_split_empty_pdf_rejected():
+    """An empty PDF must be rejected with an UploadError, not returned as []."""
+    with pytest.raises(InvalidFileTypeException):
+        DocumentSplitter.split_bulk_pdf(b"")
+
+
+def test_split_zero_page_pdf_rejected():
+    """A valid PDF with no pages must be rejected (no logical documents)."""
+    zero_page_pdf = (
+        b"%PDF-1.4\n"
+        b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"
+        b"2 0 obj\n<< /Type /Pages /Count 0 /Kids [] >>\nendobj\n"
+        b"trailer\n<< /Root 1 0 R >>\n%%EOF\n"
+    )
+    with pytest.raises(InvalidFileTypeException) as excinfo:
+        DocumentSplitter.split_bulk_pdf(zero_page_pdf)
+    assert "no documents" in excinfo.value.detail.lower()
+
+
+def test_split_truncated_pdf_rejected():
+    """A truncated PDF (valid header, corrupt body) must map to a 400 error."""
+    with pytest.raises(InvalidFileTypeException):
+        DocumentSplitter.split_bulk_pdf(b"%PDF-1.4\n%%EOF")
+
+
+def test_split_non_pdf_bytes_rejected():
+    """Garbage bytes that are not a PDF must map to a 400 error."""
+    with pytest.raises(InvalidFileTypeException):
+        DocumentSplitter.split_bulk_pdf(b"\xff\xd8\xff\xe0\x00\x10JFIF not a pdf")
+
+
+def test_split_oversized_rejected():
+    """Content over the enforced ceiling must raise FileTooLargeException."""
+    content = _make_pdf_with_text(["TRIPARTITE AGREEMENT\nBody."])
+    with pytest.raises(FileTooLargeException):
+        DocumentSplitter.split_bulk_pdf(content, max_bytes=len(content) - 1)
+
+
+# --- Output integrity ------------------------------------------------------
+
+
+def test_split_output_is_valid_pdf():
+    """Every split chunk must be a readable single-page PDF."""
+    result = _split(["AUTHORITY LETTER\nBody.", "BILATERAL AGREEMENT\nBody."])
+    assert len(result) == 2
+    for doc_type, pdf_bytes in result:
+        with pymupdf.open(stream=pdf_bytes, filetype="pdf") as doc:
+            assert len(doc) == 1
+        assert doc_type in (DocumentType.AUTHORITY_LETTER, DocumentType.BILATERAL_AGREEMENT)

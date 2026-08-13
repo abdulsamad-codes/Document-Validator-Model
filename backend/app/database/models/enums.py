@@ -76,3 +76,21 @@ class ReviewDecision(str, Enum):
     APPROVE = "APPROVE"
     CORRECT = "CORRECT"
     REJECT = "REJECT"
+
+
+class JobStatus(str, Enum):
+    """Lifecycle state of a bulk processing queue job.
+
+    A job moves ``QUEUED -> PROCESSING -> COMPLETED`` when successful. A
+    recoverable failure schedules the job as ``RETRY_WAITING`` (claimable again
+    after ``retry_at``); a failure that exhausts the attempt budget, or a stale
+    ``PROCESSING`` job recovered after a worker crash, becomes ``FAILED``. The
+    unique document id on a job guarantees one job per document, so a document
+    can never be queued twice.
+    """
+
+    QUEUED = "QUEUED"
+    PROCESSING = "PROCESSING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    RETRY_WAITING = "RETRY_WAITING"

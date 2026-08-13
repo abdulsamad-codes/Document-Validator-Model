@@ -11,6 +11,7 @@ raise the module's domain exceptions; exception-raising checks live in
 from __future__ import annotations
 
 import logging
+from collections.abc import Generator
 from pathlib import Path
 
 import cv2
@@ -170,15 +171,21 @@ def preprocess_image(image: np.ndarray) -> np.ndarray:
     return adaptive_threshold(gray)
 
 
-def render_pdf_pages(path: str | Path, dpi: int = SCANNED_PDF_RENDER_DPI) -> list[np.ndarray]:
-    """Render every page of a PDF to a list of BGR images.
+def iter_pdf_pages(path: str | Path, dpi: int = SCANNED_PDF_RENDER_DPI) -> Generator[np.ndarray]:
+    """Render a PDF's pages one at a time, in page order.
+
+    Yielding pages lazily keeps only a single rendered page (plus its
+    preprocessed derivative) in memory at any moment, so OCR of a large scanned
+    PDF never materializes every page image at once. Errors surface on the first
+    ``next()`` call that hits them (``ValueError`` when the PDF is empty,
+    encrypted or a page cannot render).
 
     Args:
         path: Path of the PDF file.
         dpi: Resolution of the render (defaults to
             :data:`SCANNED_PDF_RENDER_DPI`).
 
-    Returns:
+    Yields:
         One BGR image per page, in page order.
 
     Raises:
@@ -192,12 +199,31 @@ def render_pdf_pages(path: str | Path, dpi: int = SCANNED_PDF_RENDER_DPI) -> lis
             raise ValueError("PDF is password protected")
         if document.page_count == 0:
             raise ValueError("PDF contains no pages")
-        pages: list[np.ndarray] = []
         for page in document:
             pixmap = page.get_pixmap(
                 matrix=pymupdf.Matrix(scale, scale),
                 alpha=False,
             )
             samples = np.frombuffer(pixmap.samples, dtype=np.uint8)
-            pages.append(samples.reshape(pixmap.height, pixmap.width, pixmap.n))
-    return pages
+            yield samples.reshape(pixmap.height, pixmap.width, pixmap.n)
+
+
+def render_pdf_pages(path: str | Path, dpi: int = SCANNED_PDF_RENDER_DPI) -> list[np.ndarray]:
+    """Render every page of a PDF to a list of BGR images.
+
+    Convenience wrapper around :func:`iter_pdf_pages` for callers that need the
+    whole document at once; processing code should prefer the lazy iterator to
+    bound peak memory.
+
+    Args:
+        path: Path of the PDF file.
+        dpi: Resolution of the render (defaults to
+            :data:`SCANNED_PDF_RENDER_DPI`).
+
+    Returns:
+        One BGR image per page, in page order.
+
+    Raises:
+        ValueError: When the PDF is empty, encrypted or a page cannot render.
+    """
+    return list(iter_pdf_pages(path, dpi))

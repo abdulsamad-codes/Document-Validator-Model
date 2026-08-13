@@ -1,6 +1,9 @@
-"""Preprocessing package: image enhancement and document splitting."""
+"""Preprocessing package: document splitting.
 
-from app.preprocessing.enhancer import ImageEnhancer
+Image enhancement intentionally lives in :mod:`app.document_processing.utils`
+(``deskew_image``, CLAHE, denoise) and is not duplicated here.
+"""
+
 from app.preprocessing.splitter import DocumentSplitter
 
-__all__ = ["ImageEnhancer", "DocumentSplitter"]
+__all__ = ["DocumentSplitter"]

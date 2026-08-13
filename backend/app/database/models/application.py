@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from app.database.models.feedback_dataset import FeedbackEntry
     from app.database.models.human_review import HumanReview
     from app.database.models.manual_checklist import ManualChecklist
+    from app.database.models.queue_job import QueueJob
     from app.database.models.validation_result import ValidationResult
 
 
@@ -83,6 +84,11 @@ class Application(Base):
     )
     feedback_entries: Mapped[list[FeedbackEntry]] = relationship(
         back_populates="application",
+        passive_deletes=True,
+    )
+    queue_jobs: Mapped[list[QueueJob]] = relationship(
+        back_populates="application",
+        cascade="all, delete-orphan",
         passive_deletes=True,
     )
 

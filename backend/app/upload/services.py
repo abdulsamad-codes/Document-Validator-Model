@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import BinaryIO
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -179,11 +180,20 @@ class UploadService:
         content_type: str,
         file: BinaryIO,
     ) -> list[Document]:
-        """Accept a single bulk PDF, split it into individual documents, and persist each.
+        """Accept a single bulk PDF, split it, and persist every document atomically.
 
-        Uses the DocumentSplitter to detect document boundaries using text
-        heuristics (PyMuPDF `get_text`), then persists each split sub-document
-        with its detected DocumentType.
+        The stream is read within the configured size limit, validated through
+        the shared upload validators (extension, MIME type, magic bytes, empty
+        content), split into logical documents by the
+        :class:`~app.preprocessing.splitter.DocumentSplitter` and persisted in
+        a single transaction. Copy numbers continue from the application's
+        existing database records, and the whole batch is rejected with
+        ``DuplicateDocumentException`` before anything is written when any
+        split type would exceed its ``MAX_COPIES_BY_DOCUMENT_TYPE`` allowance.
+
+        On any failure nothing is left behind: the transaction is rolled back
+        and every file written by this batch is removed, so no orphan database
+        rows or files can survive a partial persist.
 
         Args:
             application_id: Id of the owning application.
@@ -192,55 +202,83 @@ class UploadService:
             file: Stream of the bulk PDF.
 
         Returns:
-            A list of persisted Document records, one per detected document type.
+            The persisted Document records, one per detected logical document,
+            each ``UPLOADED`` and ready for the verification pipeline.
 
         Raises:
             ApplicationNotFoundException: When the application does not exist.
-            InvalidFileTypeException: When the file is not a PDF.
+            DuplicateDocumentException: When the batch would exceed a type's
+                copy allowance or a concurrent upload filled a copy slot.
+            InvalidFileTypeException / FileTooLargeException: When the file
+                fails validation or is not a readable, non-empty PDF.
         """
         from app.preprocessing.splitter import DocumentSplitter
 
         application = self._get_application(application_id)
 
-        # Validate that it's a PDF before we try to split it
-        validate_file_content(filename, content_type, file.read(8))
-        file.seek(0)
+        content = self._read_with_limit(file)
+        extension = validate_file_content(filename, content_type, content)
+        if extension != ".pdf":
+            raise InvalidFileTypeException("Bulk upload accepts only PDF files")
 
-        split_results = DocumentSplitter.split_bulk_pdf(file)
-        created_documents: list[Document] = []
-
-        logger.info(
-            "Bulk upload for application id=%s: splitting %s into %d documents",
-            application_id,
-            filename,
-            len(split_results),
+        split_results = DocumentSplitter.split_bulk_pdf(
+            content, max_bytes=self._max_bytes
         )
 
-        for doc_type, pdf_bytes in split_results:
-            # Track copy numbers per type for multi-copy document types
-            existing_copies = sum(
-                1 for d in created_documents if d.document_type == doc_type
-            )
-            copy_number = existing_copies + 1
+        batch_counts: dict[DocumentType, int] = {}
+        for doc_type, _ in split_results:
+            batch_counts[doc_type] = batch_counts.get(doc_type, 0) + 1
+        existing_max = self._existing_copy_maxes(application.id)
 
-            stored_path = self._storage.save(
-                application.id, doc_type, pdf_bytes, ".pdf"
-            )
-            try:
-                document = self._documents.create(
-                    application_id=application.id,
-                    document_type=doc_type,
-                    copy_number=copy_number,
-                    original_filename=f"{doc_type.value.lower()}_copy{copy_number}.pdf",
-                    stored_file_path=stored_path,
-                    file_type="application/pdf",
-                    processing_status=DocumentProcessingStatus.UPLOADED,
+        for doc_type, count in batch_counts.items():
+            max_copies = MAX_COPIES_BY_DOCUMENT_TYPE.get(doc_type, 1)
+            if existing_max.get(doc_type, 0) + count > max_copies:
+                noun = "copy" if max_copies == 1 else "copies"
+                raise DuplicateDocumentException(
+                    f"Cannot upload more than {max_copies} {noun} of "
+                    f"{doc_type.value} per application"
                 )
-                created_documents.append(document)
-            except Exception:
-                self._db.rollback()
-                self._storage.delete(stored_path)
-                raise
+
+        next_copy = {
+            doc_type: existing_max.get(doc_type, 0) + 1 for doc_type in batch_counts
+        }
+        created_documents: list[Document] = []
+        stored_paths: list[str] = []
+        try:
+            for doc_type, pdf_bytes in split_results:
+                copy_number = next_copy[doc_type]
+                next_copy[doc_type] += 1
+
+                stored_path = self._storage.save(
+                    application.id, doc_type, pdf_bytes, ".pdf"
+                )
+                stored_paths.append(stored_path)
+                created_documents.append(
+                    Document(
+                        application_id=application.id,
+                        document_type=doc_type,
+                        copy_number=copy_number,
+                        original_filename=f"{doc_type.value.lower()}_copy{copy_number}.pdf",
+                        stored_file_path=stored_path,
+                        file_type="application/pdf",
+                        processing_status=DocumentProcessingStatus.UPLOADED,
+                    )
+                )
+
+            self._documents.create_many(documents=created_documents)
+        except IntegrityError as exc:
+            self._db.rollback()
+            for stored_path in stored_paths:
+                self._delete_file(stored_path)
+            raise DuplicateDocumentException(
+                "A concurrent upload already filled one or more copy slots; "
+                "please review the uploaded documents and retry"
+            ) from exc
+        except Exception:
+            self._db.rollback()
+            for stored_path in stored_paths:
+                self._delete_file(stored_path)
+            raise
 
         logger.info(
             "Bulk upload complete: created %d documents for application id=%s",
@@ -425,6 +463,29 @@ class UploadService:
         if document is None or document.application_id != application_id:
             raise DocumentNotFoundException()
         return document
+
+    def _existing_copy_maxes(self, application_id: int) -> dict[DocumentType, int]:
+        """Return the highest persisted copy number per document type.
+
+        Copy numbering for bulk uploads must continue from records that already
+        exist in the database, never solely from the current batch.
+
+        Args:
+            application_id: Id of the owning application.
+
+        Returns:
+            A mapping of document type to its largest existing copy number
+            (or 0 when the application holds no copy of that type).
+        """
+        statement = (
+            select(Document.document_type, func.max(Document.copy_number))
+            .where(Document.application_id == application_id)
+            .group_by(Document.document_type)
+        )
+        return {
+            document_type: int(max_copy or 0)
+            for document_type, max_copy in self._db.execute(statement)
+        }
 
     def _ensure_slot_available(
         self,

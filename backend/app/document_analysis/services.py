@@ -11,6 +11,8 @@ never abort the run.
 
 import logging
 import time
+from collections.abc import Callable
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -20,7 +22,12 @@ from app.database.repositories.application_repository import ApplicationReposito
 from app.database.repositories.document_analysis_repository import DocumentAnalysisRepository
 from app.database.repositories.document_repository import DocumentRepository
 from app.database.repositories.ocr_repository import OCRRepository
-from app.document_analysis.constants import ANALYSIS_VERSION, AnalyzedDocumentType
+from app.core.config import get_settings
+from app.document_analysis.constants import (
+    ANALYSIS_VERSION,
+    EXPECTED_FIELDS,
+    AnalyzedDocumentType,
+)
 from app.document_analysis.exceptions import (
     ApplicationNotFound,
     DocumentAnalysisError,
@@ -28,6 +35,12 @@ from app.document_analysis.exceptions import (
     UnsupportedDocumentType,
 )
 from app.document_analysis.extractors import detect_document_type, extract_fields
+from app.document_analysis.fallbacks import (
+    AiFallbackMetrics,
+    FieldFallback,
+    fields_needing_ai,
+    merge_fallback_values,
+)
 from app.document_analysis.rules import RulesEngine, scoring_components
 from app.document_analysis.schemas import (
     AnalysisResultItem,
@@ -40,15 +53,34 @@ from app.document_analysis.validators import ValidatorEngine
 
 logger = logging.getLogger(__name__)
 
+#: Default AI fallback provider factory. Production wiring assigns a factory
+#: that returns a :class:`FieldFallback`; tests substitute a fake provider. The
+#: module-level reference keeps the route layer thin (mirroring the OCR engine
+#: factory pattern) while ``ai_fallback_enabled`` gates whether a provider is
+#: ever consulted.
+ai_fallback_factory: Callable[[], FieldFallback | None] | None = None
+
 
 class DocumentAnalysisService:
     """Runs the analysis pipeline over an application's documents.
 
     Args:
         db: SQLAlchemy session used for all database interaction.
+        fallback_factory: Optional factory producing an AI/VLM field fallback
+            provider. When provided (and ``ai_fallback_enabled`` is true) the
+            provider is consulted only for expected fields the rule pipeline
+            left missing or invalid; when absent, AI is never called.
+        metrics: Optional counter object recording AI fallback usage. Useful
+            for benchmarks and tests; defaults to a private instance.
     """
 
-    def __init__(self, db: Session) -> None:
+    def __init__(
+        self,
+        db: Session,
+        *,
+        fallback_factory: Callable[[], FieldFallback | None] | None = None,
+        metrics: AiFallbackMetrics | None = None,
+    ) -> None:
         self._db = db
         self._applications = ApplicationRepository(db)
         self._documents = DocumentRepository(db)
@@ -56,6 +88,18 @@ class DocumentAnalysisService:
         self._analysis_results = DocumentAnalysisRepository(db)
         self._validators = ValidatorEngine()
         self._rules = RulesEngine()
+        self._metrics = metrics or AiFallbackMetrics()
+        if fallback_factory is not None:
+            self._fallback = fallback_factory()
+        elif get_settings().ai_fallback_enabled and ai_fallback_factory is not None:
+            self._fallback = ai_fallback_factory()
+        else:
+            self._fallback = None
+
+    @property
+    def metrics(self) -> AiFallbackMetrics:
+        """AI fallback usage counters of this service instance."""
+        return self._metrics
 
     def analyze(self, *, application_id: int) -> AnalyzeDocumentsResponse:
         """Analyse every document of an application and persist the results.
@@ -168,6 +212,12 @@ class DocumentAnalysisService:
 
             fields = extract_fields(ocr_result.raw_ocr_text, document_type)
             validations = self._validators.run(document_type, fields)
+            fields, validations = self._resolve_low_confidence_fields(
+                document_type,
+                text=ocr_result.raw_ocr_text,
+                fields=fields,
+                validations=validations,
+            )
             consistency = self._rules.run(document_type, fields)
             (
                 field_coverage,
@@ -252,6 +302,81 @@ class DocumentAnalysisService:
                 application_id,
             )
             return self._fail_item(document, f"Unexpected analysis error: {exc}")
+
+    def _resolve_low_confidence_fields(
+        self,
+        document_type: AnalyzedDocumentType,
+        *,
+        text: str,
+        fields: dict[str, Any],
+        validations: list[dict[str, str]],
+    ) -> tuple[dict[str, Any], list[dict[str, str]]]:
+        """Consult the AI fallback for missing/invalid expected fields only.
+
+        The rule pipeline runs first and its results are kept. When a fallback
+        provider is configured (``ai_fallback_enabled`` and a factory), the
+        provider is invoked once per document with just the names of the fields
+        the rules left missing or invalid; resolved values are merged back and
+        the affected validations are recomputed so scoring reflects the merged
+        fields. With no provider configured the fields pass through untouched
+        and no AI call is ever made.
+
+        Args:
+            document_type: Analysed document type.
+            text: Raw document text (context for the provider).
+            fields: Rule-extracted fields.
+            validations: Per-field validation outcomes.
+
+        Returns:
+            The (possibly merged) fields and their recomputed validations.
+        """
+        needing = fields_needing_ai(
+            fields,
+            validations,
+            EXPECTED_FIELDS.get(document_type, frozenset()),
+        )
+        self._metrics.fields_requiring_ai += len(needing)
+        if not needing or self._fallback is None:
+            return fields, validations
+
+        self._metrics.ai_calls += 1
+        self._metrics.fields_requested += len(needing)
+        try:
+            resolved = self._fallback.resolve(
+                document_type=document_type,
+                text=text,
+                fields=fields,
+                field_names=needing,
+            )
+        except Exception as exc:  # defensive isolation: AI must never break analysis
+            self._metrics.failed_calls += 1
+            logger.warning(
+                "AI fallback failed for document type=%s fields=%s: %s",
+                document_type.value,
+                needing,
+                exc,
+            )
+            return fields, validations
+
+        merged = merge_fallback_values(fields, resolved or {}, needing)
+        # Count fields the provider actually resolved: ones it added or whose
+        # value it changed (an invalid-but-present field corrected by AI).
+        resolved_names = sorted(
+            name
+            for name in needing
+            if name in merged
+            and (name not in fields or fields[name] != merged[name])
+        )
+        self._metrics.fields_resolved += len(resolved_names)
+        if not resolved_names:
+            return fields, validations
+        logger.info(
+            "AI fallback resolved %s field(s) for document type=%s: %s",
+            len(resolved_names),
+            document_type.value,
+            resolved_names,
+        )
+        return merged, self._validators.run(document_type, merged)
 
     def _fail_item(self, document: Document, message: str) -> DocumentAnalysisItem:
         """Build a failed outcome for a document."""

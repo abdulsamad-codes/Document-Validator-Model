@@ -186,6 +186,33 @@ class DocumentProcessingService:
             total=len(items),
         )
 
+    def process_one(
+        self,
+        *,
+        application_id: int,
+        document_id: int,
+    ) -> DocumentProcessingResult:
+        """Run the existing extraction pipeline for one technically valid document.
+
+        Queue workers use this method to preserve the same routing hierarchy as
+        the application-wide endpoint: digital text first, OCR only when needed,
+        and AI/VLM fallbacks only where the existing pipeline elects to use them.
+        """
+        self._get_application(application_id)
+        document = self._documents.get_by_id(document_id)
+        if document is None or document.application_id != application_id:
+            raise DocumentProcessingError("Document not found")
+        reports = self._technical.get_reports(application_id=application_id)
+        statuses = {
+            report.document_id: report.validation_status for report in reports.items
+        }
+        if statuses.get(document.id) is not ValidationStatus.PASS:
+            return self._skipped_result(
+                document,
+                "Document did not pass technical validation",
+            )
+        return self._process_document(application_id, document)
+
     def _get_application(self, application_id: int):
         """Return the application or raise ``ApplicationNotFound``."""
         application = self._applications.get_by_id(application_id)
