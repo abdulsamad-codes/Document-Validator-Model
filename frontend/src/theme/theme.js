@@ -1,6 +1,8 @@
-export const THEME_OPTIONS = ['light', 'dark', 'system'];
+export const THEME_OPTIONS = ['light', 'dark', 'black', 'mint', 'cherry'];
 
 export const THEME_PREFERENCE_KEY = 'fintech-theme-preference';
+
+export const DEFAULT_THEME = 'light';
 
 export function getStoredPreference() {
   try {
@@ -9,17 +11,9 @@ export function getStoredPreference() {
       return stored;
     }
   } catch {
-    return 'system';
+    return DEFAULT_THEME;
   }
-  return 'system';
-}
-
-export function getSystemTheme() {
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-}
-
-export function resolveTheme(preference) {
-  return preference === 'system' ? getSystemTheme() : preference;
+  return DEFAULT_THEME;
 }
 
 export function applyTheme(resolvedTheme) {

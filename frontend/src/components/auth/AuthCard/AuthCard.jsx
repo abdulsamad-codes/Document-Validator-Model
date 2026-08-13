@@ -1,4 +1,4 @@
-import logo from '../../../assets/logo.svg';
+import Logo from '../../common/Logo/Logo';
 import styles from './AuthCard.module.css';
 
 /**
@@ -21,7 +21,7 @@ function AuthCard({ title, subtitle, children, footer, background = null }) {
       {background}
       <div className={styles.card}>
         <div className={styles.brand}>
-          <img className={styles.logo} src={logo} alt="FinTech logo" />
+          <Logo className={styles.logo} />
           <div className={styles.brandText}>
             <span className={styles.brandName}>FinTech</span>
             <span className={styles.brandSubtitle}>Financial Document Verification</span>
