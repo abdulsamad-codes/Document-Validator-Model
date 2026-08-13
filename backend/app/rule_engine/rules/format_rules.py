@@ -135,4 +135,19 @@ __all__ = [
     "FormatAccountNumberRule",
     "FormatAmountRule",
     "FormatDateShapeRule",
+    "FormatEStampRule",
 ]
+
+import re
+ESTAMP_PATTERN = re.compile(r"^STAMP-\\d{6}$", re.IGNORECASE)
+
+class FormatEStampRule(_FormatRule):
+    """E-Stamps must match the regex pattern STAMP-XXXXXX."""
+
+    id = "FMT_ESTAMP"
+    name = "E-Stamp has a valid format"
+    field_names = ("e_stamp_id",)
+    
+    @staticmethod
+    def predicate(value: str) -> bool:
+        return ESTAMP_PATTERN.fullmatch(value) is not None

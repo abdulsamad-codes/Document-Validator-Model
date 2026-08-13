@@ -303,4 +303,59 @@ __all__ = [
     "DateIssuePrecedesExpiryRule",
     "DatePaymentRecencyRule",
     "DateDobSanityRule",
+    "DateIssuePresenceRule",
+    "DateExpiryPresenceRule",
 ]
+
+
+class DateIssuePresenceRule(_DateRule):
+    """The issue date must be present."""
+
+    id = "DATE_ISSUE_PRESENT"
+    name = "Issue date is present"
+    field_name = "issue_date"
+
+    def evaluate(self, context: RuleContext) -> RuleResult:
+        valid_values = normalized_values(context, self.field_name)
+        if not valid_values and any(v for v in context.fields if v.field_name == self.field_name):
+            return self.result(
+                ValidationStatus.FAIL,
+                f"Required field {self.field_name} is missing or blank",
+                related_document_ids=sorted({v.document_id for v in context.fields if v.field_name == self.field_name}),
+                related_field_names=[self.field_name],
+            )
+        if not valid_values:
+            return self._nothing_to_validate()
+            
+        return self.result(
+            ValidationStatus.PASS,
+            "Issue dates are present",
+            related_document_ids=sorted({v.document_id for v in valid_values}),
+            related_field_names=[self.field_name],
+        )
+
+class DateExpiryPresenceRule(_DateRule):
+    """The expiry date must be present."""
+
+    id = "DATE_EXPIRY_PRESENT"
+    name = "Expiry date is present"
+    field_name = "expiry_date"
+
+    def evaluate(self, context: RuleContext) -> RuleResult:
+        valid_values = normalized_values(context, self.field_name)
+        if not valid_values and any(v for v in context.fields if v.field_name == self.field_name):
+            return self.result(
+                ValidationStatus.FAIL,
+                f"Required field {self.field_name} is missing or blank",
+                related_document_ids=sorted({v.document_id for v in context.fields if v.field_name == self.field_name}),
+                related_field_names=[self.field_name],
+            )
+        if not valid_values:
+            return self._nothing_to_validate()
+            
+        return self.result(
+            ValidationStatus.PASS,
+            "Expiry dates are present",
+            related_document_ids=sorted({v.document_id for v in valid_values}),
+            related_field_names=[self.field_name],
+        )

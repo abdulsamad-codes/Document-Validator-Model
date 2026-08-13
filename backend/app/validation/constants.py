@@ -8,6 +8,14 @@ validators``) before every state change.
 
 from app.database.models.enums import ValidationTaskStatus
 
+from enum import Enum
+
+class OperatorAction(str, Enum):
+    """Operator actions that can be performed on a validation task."""
+    APPROVE = "APPROVE"
+    REJECT = "REJECT"
+    REQUEST_CORRECTION = "REQUEST_CORRECTION"
+
 #: Version of the validation workflow logic. Bumped whenever the transition
 #: rules, the log vocabulary or the persistence behaviour changes so a stored
 #: task/log can be traced to the exact logic that produced it.
@@ -42,4 +50,5 @@ __all__ = [
     "MAX_PAGE_LIMIT",
     "MODULE_VERSION",
     "TRANSITIONS",
+    "OperatorAction",
 ]

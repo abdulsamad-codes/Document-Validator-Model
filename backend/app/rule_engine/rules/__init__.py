@@ -12,12 +12,15 @@ from app.rule_engine.rules.base import BaseRule
 from app.rule_engine.rules.cross_document_rules import (
     CrossAccountHolderRule,
     CrossAccountNumberRule,
+    CrossBranchCodeRule,
     CrossIbanRule,
     CrossPeriodRule,
 )
 from app.rule_engine.rules.date_rules import (
     DateDobSanityRule,
+    DateExpiryPresenceRule,
     DateIssuePrecedesExpiryRule,
+    DateIssuePresenceRule,
     DatePaymentRecencyRule,
     DatePeriodRangeRule,
     DatePeriodSequenceRule,
@@ -45,6 +48,7 @@ from app.rule_engine.rules.format_rules import (
     FormatAmountRule,
     FormatCnicRule,
     FormatDateShapeRule,
+    FormatEStampRule,
     FormatIbanRule,
 )
 from app.rule_engine.rules.policy_rules import (
@@ -96,23 +100,29 @@ class RuleRegistry:
                 FieldBankNamePresenceRule(),
                 FieldStatementPeriodPresenceRule(),
                 FieldBalancesPresenceRule(),
+
+
                 # Format (5).
                 FormatIbanRule(),
                 FormatCnicRule(),
                 FormatAccountNumberRule(),
                 FormatAmountRule(),
                 FormatDateShapeRule(),
+
                 # Cross-document consistency (4).
                 CrossAccountHolderRule(),
                 CrossAccountNumberRule(),
                 CrossIbanRule(),
                 CrossPeriodRule(),
+
                 # Date and period (5).
                 DatePeriodSequenceRule(),
                 DatePeriodRangeRule(),
                 DateIssuePrecedesExpiryRule(),
                 DatePaymentRecencyRule(),
                 DateDobSanityRule(),
+                DateIssuePresenceRule(),
+                DateExpiryPresenceRule(),
                 # Visual verification (11).
                 VisualSignatureTripartiteRule(),
                 VisualSignatureAmcRule(),
@@ -120,8 +130,8 @@ class RuleRegistry:
                 VisualSignatureAuthorityLetterRule(),
                 VisualSignatureBilateralRule(),
                 VisualSignatureFormalRequestRule(),
-                VisualStampTripartiteRule(),
-                VisualStampAmcRule(),
+                # VisualStampTripartiteRule(),
+                # VisualStampAmcRule(),
                 VisualStampOneLinkRule(),
                 VisualStampAuthorityLetterRule(),
                 VisualStampBilateralRule(),

@@ -22,6 +22,7 @@ DOCUMENT_TYPE_SLUGS: dict[DocumentType, str] = {
     DocumentType.OTHER_SUPPORTING_DOCUMENT: "other",
     DocumentType.CNIC_FRONT: "cnic_front",
     DocumentType.CNIC_BACK: "cnic_back",
+    DocumentType.BULK_UPLOAD: "bulk",
 }
 
 #: Maximum number of copies an application may hold per document type. Types

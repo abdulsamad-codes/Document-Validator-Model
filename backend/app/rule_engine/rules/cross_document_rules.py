@@ -147,4 +147,20 @@ __all__ = [
     "CrossAccountNumberRule",
     "CrossIbanRule",
     "CrossPeriodRule",
+    "CrossBranchCodeRule",
 ]
+
+
+class CrossBranchCodeRule(_CrossDocumentRule):
+    """The branch code must agree on the 1LINK Form, Tripartite Agreement, and Authority Letter."""
+
+    id = "CROSS_BRANCH_CODE_MATCH"
+    name = "Branch code is consistent across documents"
+    field_name = "branch_code"
+    participants = frozenset(
+        {
+            DocumentType.ONE_LINK_LETTER,
+            DocumentType.TRIPARTITE_AGREEMENT,
+            DocumentType.AUTHORITY_LETTER,
+        }
+    )

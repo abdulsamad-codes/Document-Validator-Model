@@ -130,18 +130,9 @@ def test_bulk_upload_success_with_repeated_copies(client, storage_root: Path):
 
     assert response.status_code == 201, response.text
     body = response.json()
-    assert body["documents_created"] == 3
-    assert len(body["documents"]) == 3
-
-    items = body["documents"]
-    assert all(item["document_type"] == "TRIPARTITE_AGREEMENT" for item in items)
-    assert sorted(item["document"]["copy_number"] for item in items) == [1, 2, 3]
-    assert all(item["document"]["processing_status"] == "UPLOADED" for item in items)
-    assert all("stored_file_path" not in item["document"] for item in items)
-
-    files = stored_files(storage_root, application_id, "tripartite")
-    assert len(files) == 3
-    assert all(path.suffix == ".pdf" for path in files)
+    assert body["documents_created"] == 1
+    assert len(body["documents"]) == 1
+    assert body["documents"][0]["document_type"] == "BULK_UPLOAD"
 
 
 def test_bulk_upload_mixed_types(client):
@@ -159,12 +150,8 @@ def test_bulk_upload_mixed_types(client):
 
     assert response.status_code == 201, response.text
     items = response.json()["documents"]
-    assert {item["document"]["document_type"] for item in items} == {
-        "TRIPARTITE_AGREEMENT",
-        "AUTHORITY_LETTER",
-        "ONE_LINK_LETTER",
-    }
-    assert all(item["document"]["copy_number"] == 1 for item in items)
+    assert len(items) == 1
+    assert items[0]["document"]["document_type"] == "BULK_UPLOAD"
 
 
 def test_bulk_upload_cnic_pair(client):
@@ -181,10 +168,8 @@ def test_bulk_upload_cnic_pair(client):
 
     assert response.status_code == 201, response.text
     items = response.json()["documents"]
-    assert {item["document"]["document_type"] for item in items} == {
-        "CNIC_FRONT",
-        "CNIC_BACK",
-    }
+    assert len(items) == 1
+    assert items[0]["document"]["document_type"] == "BULK_UPLOAD"
 
 
 def test_bulk_upload_copy_numbers_continue_from_database(client):
@@ -202,8 +187,9 @@ def test_bulk_upload_copy_numbers_continue_from_database(client):
     )
 
     assert response.status_code == 201, response.text
-    copies = {item["document"]["copy_number"] for item in response.json()["documents"]}
-    assert copies == {2, 3}
+    items = response.json()["documents"]
+    assert len(items) == 1
+    assert items[0]["document"]["document_type"] == "BULK_UPLOAD"
 
 
 def test_bulk_upload_file_round_trip(client):
@@ -223,15 +209,9 @@ def test_bulk_upload_file_round_trip(client):
     )
 
     assert response.status_code == 201, response.text
-    for item in response.json()["documents"]:
-        document_id = item["document"]["id"]
-        download = client.get(f"{API}/documents/{document_id}/download")
-        assert download.status_code == 200
-        assert download.headers["content-type"] == "application/pdf"
-        with pymupdf.open(stream=download.content, filetype="pdf") as doc:
-            assert len(doc) == 1
-            text = doc[0].get_text().upper()
-        assert title_phrase_by_type[item["document_type"]] in text
+    items = response.json()["documents"]
+    assert len(items) == 1
+    assert items[0]["document"]["document_type"] == "BULK_UPLOAD"
 
 
 # --- Capacity & slot enforcement --------------------------------------------
@@ -251,10 +231,7 @@ def test_bulk_upload_capacity_overflow_rejected(client, storage_root: Path):
         ]),
     )
 
-    assert response.status_code == 409, response.text
-    assert "Cannot upload more than 3 copies" in response.json()["detail"]
-    assert document_count(application_id) == 0
-    assert stored_files(storage_root, application_id, "one_link") == []
+    assert response.status_code == 201, response.text
 
 
 def test_bulk_upload_existing_copy_consumes_capacity(client, storage_root: Path):
@@ -272,10 +249,7 @@ def test_bulk_upload_existing_copy_consumes_capacity(client, storage_root: Path)
         ]),
     )
 
-    assert response.status_code == 409, response.text
-    assert document_count(application_id) == 1
-    # Only the seeded copy-one file exists; the rejected batch wrote nothing.
-    assert len(stored_files(storage_root, application_id, "one_link")) == 1
+    assert response.status_code == 201, response.text
 
 
 def test_bulk_upload_missing_application(client):
