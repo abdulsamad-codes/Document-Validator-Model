@@ -23,7 +23,10 @@ if TYPE_CHECKING:
     from app.database.models.feedback_dataset import FeedbackEntry
     from app.database.models.human_review import HumanReview
     from app.database.models.manual_checklist import ManualChecklist
+    from app.database.models.validation_log import ValidationLog
     from app.database.models.validation_result import ValidationResult
+    from app.database.models.validation_run import ValidationRun
+    from app.database.models.validation_task import ValidationTask
 
 
 class Application(Base):
@@ -82,6 +85,20 @@ class Application(Base):
         passive_deletes=True,
     )
     feedback_entries: Mapped[list[FeedbackEntry]] = relationship(
+        back_populates="application",
+        passive_deletes=True,
+    )
+    validation_runs: Mapped[list[ValidationRun]] = relationship(
+        back_populates="application",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    validation_tasks: Mapped[list[ValidationTask]] = relationship(
+        back_populates="application",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    validation_logs: Mapped[list[ValidationLog]] = relationship(
         back_populates="application",
         passive_deletes=True,
     )

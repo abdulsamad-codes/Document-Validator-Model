@@ -15,7 +15,16 @@ from app.database.repositories.manual_checklist_repository import (
     ManualChecklistRepository,
 )
 from app.database.repositories.ocr_repository import OCRRepository
+from app.database.repositories.validation_log_repository import (
+    ValidationLogRepository,
+)
 from app.database.repositories.validation_repository import ValidationRepository
+from app.database.repositories.validation_run_repository import (
+    ValidationRunRepository,
+)
+from app.database.repositories.validation_task_repository import (
+    ValidationTaskRepository,
+)
 
 __all__ = [
     "ApplicationRepository",
@@ -25,5 +34,8 @@ __all__ = [
     "HumanReviewRepository",
     "ManualChecklistRepository",
     "OCRRepository",
+    "ValidationLogRepository",
     "ValidationRepository",
+    "ValidationRunRepository",
+    "ValidationTaskRepository",
 ]

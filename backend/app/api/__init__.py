@@ -22,6 +22,7 @@ from app.reports.routes import router as reports_router
 from app.rule_engine.routes import router as rule_engine_router
 from app.technical_validation.routes import router as technical_validation_router
 from app.upload.routes import router as upload_router
+from app.validation.routes import router as validation_router
 
 api_router = APIRouter()
 api_router.include_router(health_router)
@@ -38,5 +39,6 @@ api_router.include_router(reports_router)
 api_router.include_router(human_verification_router)
 api_router.include_router(feedback_router)
 api_router.include_router(continuous_learning_router)
+api_router.include_router(validation_router)
 
 __all__ = ["api_router"]
