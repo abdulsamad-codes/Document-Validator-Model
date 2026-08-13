@@ -23,19 +23,19 @@ for page_num in range(num_pages):
     page = doc.load_page(page_num)
     
     print(f"## Page {page_num + 1}")
-    text = page.get_text().strip().upper()
     
-    if len(text) < 30:
-        print("*(Image-based page detected. Running PaddleOCR...)*\n")
-        text = DocumentSplitter._ocr_page(page)
+    # Use the new PyMuPDF-based text extractor from Zarghuna's rewrite
+    from app.preprocessing.splitter import _extract_lines
+    lines = _extract_lines(page)
+    text = " ".join(text for _, text in lines)
     
     print("### Extracted Text (First 1000 chars)")
     print("```text")
     print(text[:1000] if text else "[No text extracted]")
     print("```\n")
     
-    detected_type = DocumentSplitter._classify_text(text)
-    print(f"**Classification Result**: `{detected_type.name if detected_type else 'OTHER_SUPPORTING_DOCUMENT'}`\n")
+    detected_type, strong_evidence = DocumentSplitter._classify_page(page)
+    print(f"**Classification Result**: `{detected_type.name if detected_type else 'OTHER_SUPPORTING_DOCUMENT'}` (Strong Evidence: {strong_evidence})\n")
     print("---")
 
 doc.close()
