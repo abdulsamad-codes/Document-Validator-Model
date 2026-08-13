@@ -62,6 +62,9 @@ logs/
 data/samples/*.pdf
 data/samples/*.docx
 data/*.db
+/demo/
+/backend/test_*.txt
+/backend/*_out.txt
 
 # Pytest
 .pytest_cache/
