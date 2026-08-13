@@ -47,6 +47,15 @@ function ProcessingProgress({ applicationId }) {
               <RefreshCw aria-hidden="true" /> Retry Documents
             </button>
           )}
+          <button
+            className={styles.secondaryButton}
+            type="button"
+            onClick={reload}
+            disabled={actionLoading}
+            aria-label="Refresh processing status"
+          >
+            <RefreshCw aria-hidden="true" /> Refresh
+          </button>
         </div>
       </div>
       <div className={styles.progressTrack} role="progressbar" aria-valuenow={progress.progress_percentage} aria-valuemin="0" aria-valuemax="100">

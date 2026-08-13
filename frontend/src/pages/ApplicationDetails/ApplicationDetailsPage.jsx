@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import { ArrowLeft, History, ShieldCheck, UploadCloud } from 'lucide-react';
@@ -7,6 +8,7 @@ import DocumentsSection from '../../components/documents/DocumentsSection/Docume
 import ProcessingProgress from '../../components/processing/ProcessingProgress/ProcessingProgress';
 import ErrorState from '../../components/common/ErrorState/ErrorState';
 import { useApplication } from '../../hooks/useApplication';
+import { useLastOpenedApplication } from '../../hooks/useLastOpenedApplication';
 import { formatDate, formatDateTime } from '../../utils/format';
 import styles from './ApplicationDetailsPage.module.css';
 
@@ -37,6 +39,13 @@ function PlaceholderCard({ icon: Icon, title, message }) {
 function ApplicationDetailsPage() {
   const { applicationId } = useParams();
   const { application, loading, error, reload } = useApplication(applicationId);
+  const { recordOpened } = useLastOpenedApplication();
+
+  useEffect(() => {
+    if (application) {
+      recordOpened(application.id);
+    }
+  }, [application, recordOpened]);
 
   if (loading) {
     return (

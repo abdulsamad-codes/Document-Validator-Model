@@ -62,3 +62,27 @@
   color: var(--color-text-muted);
   white-space: nowrap;
 }
+
+.resumeChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--color-primary-light);
+  color: var(--color-primary-dark);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color var(--transition), color var(--transition);
+}
+
+.resumeChip:hover {
+  background: color-mix(in srgb, var(--color-primary-light) 70%, var(--color-primary) 30%);
+}
+
+.resumeChip svg {
+  width: 15px;
+  height: 15px;
+}

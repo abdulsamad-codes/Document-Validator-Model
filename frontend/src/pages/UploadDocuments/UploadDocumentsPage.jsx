@@ -11,6 +11,8 @@ import BulkUploadZone from '../../components/documents/BulkUploadZone/BulkUpload
 import DocumentList from '../../components/documents/DocumentList/DocumentList';
 import SummaryPanel from '../../components/documents/SummaryPanel/SummaryPanel';
 import { useDocuments } from '../../hooks/useDocuments';
+import { getPreference } from '../../utils/preferences';
+import { startProcessing } from '../../services/processing';
 import { REQUIRED_DOCUMENT_TYPES } from '../../data/documents';
 import { getApiErrorMessage } from '../../utils/apiError';
 import styles from './UploadDocumentsPage.module.css';
@@ -53,6 +55,7 @@ function UploadDocumentsPage() {
     const result = await uploadBulk(file);
     if (result.ok) {
       toast.success('Bulk PDF uploaded and split successfully.');
+      maybeAutoStartProcessing();
     } else {
       toast.error(result.error);
     }
@@ -70,24 +73,45 @@ function UploadDocumentsPage() {
     if (result.ok) {
       setSessionTally((prev) => ({ ...prev, uploaded: prev.uploaded + 1 }));
       toast.success(`Copy ${copyNumber} uploaded successfully.`);
+      maybeAutoStartProcessing();
     } else {
       setSessionTally((prev) => ({ ...prev, failed: prev.failed + 1 }));
       toast.error(result.error);
     }
   };
 
-  const handleDeleteConfirmed = async () => {
-    const document = deleteConfirmDocument;
-    setDeleteConfirmDocument(null);
-    if (!document) {
-      return;
-    }
+  const deleteDocument = async (document) => {
     const result = await removeDocument(document);
     if (result.ok) {
       toast.success('Document deleted successfully.');
     } else {
       toast.error(result.error);
     }
+  };
+
+  const handleDeleteConfirmed = () => {
+    const document = deleteConfirmDocument;
+    setDeleteConfirmDocument(null);
+    if (document) {
+      void deleteDocument(document);
+    }
+  };
+
+  const handleDeleteRequest = (document) => {
+    if (getPreference('confirmBeforeDeleteDocument', true)) {
+      setDeleteConfirmDocument(document);
+      return;
+    }
+    void deleteDocument(document);
+  };
+
+  const maybeAutoStartProcessing = () => {
+    if (!getPreference('autoStartProcessingAfterUpload', false)) {
+      return;
+    }
+    startProcessing(applicationId).catch(() => {
+      // Best effort: a processing failure should never surface as an upload error.
+    });
   };
 
   if (loading) {
@@ -133,7 +157,7 @@ function UploadDocumentsPage() {
               findDocument={findDocument}
               pending={pending}
               onUpload={handleUpload}
-              onDelete={setDeleteConfirmDocument}
+              onDelete={handleDeleteRequest}
             />
           </div>
 

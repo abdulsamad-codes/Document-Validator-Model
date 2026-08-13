@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { getApplication, listApplications } from '../services/applications';
 import { getReviewHistory, getReviewScreen, submitHumanReview } from '../services/humanReview';
@@ -24,6 +24,11 @@ export function useHumanReview() {
   const [statusFilter, setStatusFilter] = useState(DEFAULT_STATUS);
   const [selectedId, setSelectedId] = useState(null);
 
+  // Guards against out-of-order responses: overlapping list fetches (StrictMode
+  // double-effects, rapid filter changes) must not let a stale response overwrite
+  // the latest one, otherwise the app dropdown briefly (or permanently) empties.
+  const appsRequestIdRef = useRef(0);
+
   const [reviewScreen, setReviewScreen] = useState(null);
   const [application, setApplication] = useState(null);
   const [history, setHistory] = useState([]);
@@ -33,6 +38,7 @@ export function useHumanReview() {
   const [submitError, setSubmitError] = useState(null);
 
   const loadApplications = useCallback(async () => {
+    const requestId = ++appsRequestIdRef.current;
     setAppsLoading(true);
     setAppsError(null);
     try {
@@ -40,12 +46,18 @@ export function useHumanReview() {
         status: statusFilter || undefined,
         limit: 100,
       });
-      setApplications(items ?? []);
+      if (requestId === appsRequestIdRef.current) {
+        setApplications(items ?? []);
+      }
     } catch (err) {
-      setAppsError(getApiErrorMessage(err));
-      setApplications([]);
+      if (requestId === appsRequestIdRef.current) {
+        setAppsError(getApiErrorMessage(err));
+        setApplications([]);
+      }
     } finally {
-      setAppsLoading(false);
+      if (requestId === appsRequestIdRef.current) {
+        setAppsLoading(false);
+      }
     }
   }, [statusFilter]);
 

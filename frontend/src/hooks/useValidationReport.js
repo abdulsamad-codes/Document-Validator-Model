@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import { getAnalysisResults } from '../services/analysis';
 import { listApplications } from '../services/applications';
@@ -37,11 +38,18 @@ async function fetchSection(request) {
  * are computed client-side from the stored data.
  */
 export function useValidationReport() {
+  const [searchParams] = useSearchParams();
   const [applications, setApplications] = useState([]);
   const [appsLoading, setAppsLoading] = useState(true);
   const [appsError, setAppsError] = useState(null);
   const [statusFilter, setStatusFilter] = useState(DEFAULT_STATUS);
-  const [selectedId, setSelectedId] = useState(null);
+  const [selectedId, setSelectedId] = useState(() => {
+    const fromQuery = searchParams.get('application');
+    if (fromQuery != null && Number.isFinite(Number(fromQuery))) {
+      return Number(fromQuery);
+    }
+    return null;
+  });
 
   const [report, setReport] = useState(null);
   const [completeness, setCompleteness] = useState(null);

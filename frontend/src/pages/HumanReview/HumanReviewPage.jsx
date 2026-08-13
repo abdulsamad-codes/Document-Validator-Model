@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { Info, RefreshCw } from 'lucide-react';
 
+import ConfirmDialog from '../../components/common/ConfirmDialog/ConfirmDialog';
 import EmptyState from '../../components/common/EmptyState/EmptyState';
 import ErrorState from '../../components/common/ErrorState/ErrorState';
 import { useToast } from '../../components/common/Toast/ToastContext';
@@ -15,6 +16,7 @@ import ReviewSummary from '../../components/humanReview/ReviewSummary/ReviewSumm
 import { APPLICATION_STATUSES } from '../../data/statuses';
 import { useAuth } from '../../hooks/useAuth';
 import { useHumanReview } from '../../hooks/useHumanReview';
+import { getPreference } from '../../utils/preferences';
 import styles from './HumanReviewPage.module.css';
 
 function Section({ title, children, note }) {
@@ -77,6 +79,7 @@ function HumanReviewPage() {
   const [rejectionReason, setRejectionReason] = useState('');
   const [checklist, setChecklist] = useState({});
   const [corrections, setCorrections] = useState([]);
+  const [pendingRejectPayload, setPendingRejectPayload] = useState(null);
 
   useEffect(() => {
     setDecision('');
@@ -105,6 +108,14 @@ function HumanReviewPage() {
   };
 
   const handleSubmit = async (payload) => {
+    if (payload.decision === 'REJECT' && getPreference('confirmBeforeRejectApplication', true)) {
+      setPendingRejectPayload(payload);
+      return;
+    }
+    await submitReview(payload);
+  };
+
+  const submitReview = async (payload) => {
     const result = await submit(payload);
     if (result) {
       toast.success('Final review submitted successfully.');
@@ -112,6 +123,14 @@ function HumanReviewPage() {
       setComments('');
       setRejectionReason('');
       setCorrections([]);
+    }
+  };
+
+  const handleRejectConfirmed = () => {
+    const payload = pendingRejectPayload;
+    setPendingRejectPayload(null);
+    if (payload) {
+      void submitReview(payload);
     }
   };
 
@@ -264,6 +283,16 @@ function HumanReviewPage() {
           )}
         </>
       )}
+
+      <ConfirmDialog
+        open={pendingRejectPayload != null}
+        title="Reject this application?"
+        message={`Application #${selectedId} will be rejected. The rejection reason will be recorded permanently and the application cannot be approved afterwards.`}
+        confirmLabel="Reject application"
+        tone="danger"
+        onConfirm={handleRejectConfirmed}
+        onCancel={() => setPendingRejectPayload(null)}
+      />
     </div>
   );
 }
