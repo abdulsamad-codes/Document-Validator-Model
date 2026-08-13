@@ -221,71 +221,34 @@ class UploadService:
         if extension != ".pdf":
             raise InvalidFileTypeException("Bulk upload accepts only PDF files")
 
-        split_results = DocumentSplitter.split_bulk_pdf(
-            content, max_bytes=self._max_bytes
-        )
-
-        batch_counts: dict[DocumentType, int] = {}
-        for doc_type, _ in split_results:
-            batch_counts[doc_type] = batch_counts.get(doc_type, 0) + 1
-        existing_max = self._existing_copy_maxes(application.id)
-
-        for doc_type, count in batch_counts.items():
-            max_copies = MAX_COPIES_BY_DOCUMENT_TYPE.get(doc_type, 1)
-            if existing_max.get(doc_type, 0) + count > max_copies:
-                noun = "copy" if max_copies == 1 else "copies"
-                raise DuplicateDocumentException(
-                    f"Cannot upload more than {max_copies} {noun} of "
-                    f"{doc_type.value} per application"
-                )
-
-        next_copy = {
-            doc_type: existing_max.get(doc_type, 0) + 1 for doc_type in batch_counts
-        }
-        created_documents: list[Document] = []
-        stored_paths: list[str] = []
+        safe_filename = sanitize_filename(filename)
+        stored_path = self._storage.save(application.id, DocumentType.BULK_UPLOAD, content, ".pdf")
+        
         try:
-            for doc_type, pdf_bytes in split_results:
-                copy_number = next_copy[doc_type]
-                next_copy[doc_type] += 1
-
-                stored_path = self._storage.save(
-                    application.id, doc_type, pdf_bytes, ".pdf"
-                )
-                stored_paths.append(stored_path)
-                created_documents.append(
-                    Document(
-                        application_id=application.id,
-                        document_type=doc_type,
-                        copy_number=copy_number,
-                        original_filename=f"{doc_type.value.lower()}_copy{copy_number}.pdf",
-                        stored_file_path=stored_path,
-                        file_type="application/pdf",
-                        processing_status=DocumentProcessingStatus.UPLOADED,
-                    )
-                )
-
-            self._documents.create_many(documents=created_documents)
-        except IntegrityError as exc:
-            self._db.rollback()
-            for stored_path in stored_paths:
-                self._delete_file(stored_path)
-            raise DuplicateDocumentException(
-                "A concurrent upload already filled one or more copy slots; "
-                "please review the uploaded documents and retry"
-            ) from exc
+            document = self._documents.create(
+                application_id=application.id,
+                document_type=DocumentType.BULK_UPLOAD,
+                copy_number=1,
+                original_filename=safe_filename,
+                stored_file_path=stored_path,
+                file_type="application/pdf",
+                processing_status=DocumentProcessingStatus.UPLOADED,
+            )
+            
+            from app.database.repositories.queue_job_repository import QueueJobRepository
+            QueueJobRepository(self._db).enqueue(application.id, document.id)
+            
         except Exception:
             self._db.rollback()
-            for stored_path in stored_paths:
-                self._delete_file(stored_path)
+            self._delete_file(stored_path)
             raise
 
         logger.info(
-            "Bulk upload complete: created %d documents for application id=%s",
-            len(created_documents),
+            "Bulk upload queued: created BULK_UPLOAD document id=%s for application id=%s",
+            document.id,
             application_id,
         )
-        return created_documents
+        return [document]
 
     def replace(
         self,

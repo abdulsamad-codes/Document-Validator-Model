@@ -111,6 +111,7 @@ class DocumentSplitter:
         content: bytes,
         *,
         max_bytes: int | None = None,
+        ocr_engine: object | None = None,
     ) -> list[tuple[DocumentType, bytes]]:
         """Split in-memory PDF ``content`` into categorized document bytes.
 
@@ -158,7 +159,7 @@ class DocumentSplitter:
         try:
             for page_num in range(len(document)):
                 page = document.load_page(page_num)
-                detected_type, strong_evidence = cls._classify_page(page)
+                detected_type, strong_evidence = cls._classify_page(page, ocr_engine)
 
                 if strong_evidence:
                     # Strong header/title evidence marks a fresh document —
@@ -193,7 +194,7 @@ class DocumentSplitter:
         return split_documents
 
     @classmethod
-    def _classify_page(cls, page: fitz.Page) -> tuple[DocumentType | None, bool]:
+    def _classify_page(cls, page: fitz.Page, ocr_engine: object | None = None) -> tuple[DocumentType | None, bool]:
         """Classify one page, returning ``(type, strong_evidence)``.
 
         ``strong_evidence`` is only ever ``True`` for anchored title phrases in
@@ -204,6 +205,25 @@ class DocumentSplitter:
         lines = _extract_lines(page)
         page_height = page.rect.height or 0
         full_text = " ".join(text for _, text in lines)
+
+        if len(full_text.strip()) < 10 and ocr_engine:
+            try:
+                import numpy as np
+                import cv2
+                pix = page.get_pixmap(dpi=150)
+                img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
+                if pix.n == 4:
+                    img = cv2.cvtColor(img, cv2.COLOR_RGBA2RGB)
+                
+                result = ocr_engine.extract(img)
+                full_text = result.text
+                
+                lines = []
+                for idx, line_text in enumerate(full_text.splitlines()):
+                    lines.append((float(idx * 10), line_text))
+            except Exception as exc:
+                import logging
+                logging.getLogger(__name__).warning("PaddleOCR fallback failed during split: %s", exc)
 
         for y_position, text in lines:
             if page_height and y_position >= page_height * _HEADER_ZONE_RATIO:

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { ArrowLeft } from 'lucide-react';
@@ -7,6 +7,7 @@ import ConfirmDialog from '../../components/common/ConfirmDialog/ConfirmDialog';
 import ErrorState from '../../components/common/ErrorState/ErrorState';
 import Spinner from '../../components/common/Spinner/Spinner';
 import { useToast } from '../../components/common/Toast/ToastContext';
+import BulkUploadZone from '../../components/documents/BulkUploadZone/BulkUploadZone';
 import DocumentList from '../../components/documents/DocumentList/DocumentList';
 import SummaryPanel from '../../components/documents/SummaryPanel/SummaryPanel';
 import { useDocuments } from '../../hooks/useDocuments';
@@ -29,11 +30,33 @@ function UploadDocumentsPage() {
   const navigate = useNavigate();
   const toast = useToast();
 
-  const { documents, loading, error, reload, pending, findDocument, uploadToSlot, removeDocument } =
+  const { documents, loading, error, reload, pending, findDocument, uploadToSlot, removeDocument, uploadBulk } =
     useDocuments(applicationId);
 
   const [deleteConfirmDocument, setDeleteConfirmDocument] = useState(null);
   const [sessionTally, setSessionTally] = useState({ uploaded: 0, failed: 0 });
+
+  const pendingBulkDocument = documents?.find(
+    (d) => d.document_type === 'BULK_UPLOAD' && d.processing_status !== 'COMPLETED'
+  );
+
+  useEffect(() => {
+    if (pendingBulkDocument) {
+      const timer = setInterval(() => {
+        reload();
+      }, 5000);
+      return () => clearInterval(timer);
+    }
+  }, [pendingBulkDocument, reload]);
+
+  const handleBulkUpload = async (file) => {
+    const result = await uploadBulk(file);
+    if (result.ok) {
+      toast.success('Bulk PDF uploaded and split successfully.');
+    } else {
+      toast.error(result.error);
+    }
+  };
 
   const handleUpload = async (documentType, copyNumber, file, validationError) => {
     if (!file) {
@@ -94,6 +117,17 @@ function UploadDocumentsPage() {
       ) : (
         <div className={styles.layout}>
           <div className={styles.main}>
+            {pendingBulkDocument ? (
+              <div className={styles.processingBanner}>
+                <Spinner size="small" />
+                <p>Your combined PDF is being split and analyzed in the background. This may take a few minutes...</p>
+              </div>
+            ) : (
+              <BulkUploadZone
+                onUpload={handleBulkUpload}
+                pending={pending['upload-bulk']}
+              />
+            )}
             <DocumentList
               requiredTypes={REQUIRED_DOCUMENT_TYPES}
               findDocument={findDocument}

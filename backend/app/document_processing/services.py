@@ -12,11 +12,12 @@ import time
 from collections.abc import Callable
 from datetime import datetime, timezone
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.database.models.document import Document
-from app.database.models.enums import DocumentProcessingStatus, ValidationStatus
+from app.database.models.enums import DocumentProcessingStatus, ValidationStatus, DocumentType
 from app.database.models.ocr_result import OCRResult
 from app.database.repositories.application_repository import ApplicationRepository
 from app.database.repositories.document_repository import DocumentRepository
@@ -44,6 +45,7 @@ from app.document_processing.schemas import (
     OcrResultsResponse,
     ProcessDocumentsResponse,
     ProcessingOutcome,
+    ProcessingMethod,
 )
 from app.document_processing.validators import (
     assert_non_empty_text,
@@ -202,6 +204,9 @@ class DocumentProcessingService:
         document = self._documents.get_by_id(document_id)
         if document is None or document.application_id != application_id:
             raise DocumentProcessingError("Document not found")
+        if document.document_type == DocumentType.BULK_UPLOAD:
+            return self._process_bulk_upload(application_id, document)
+            
         reports = self._technical.get_reports(application_id=application_id)
         statuses = {
             report.document_id: report.validation_status for report in reports.items
@@ -219,6 +224,84 @@ class DocumentProcessingService:
         if application is None:
             raise ApplicationNotFound()
         return application
+
+    def _process_bulk_upload(self, application_id: int, document: Document) -> DocumentProcessingResult:
+        from app.upload.constants import MAX_COPIES_BY_DOCUMENT_TYPE
+        from app.database.repositories.queue_job_repository import QueueJobRepository
+        from app.preprocessing.splitter import DocumentSplitter
+        
+        self._documents.update_status(document, DocumentProcessingStatus.PROCESSING)
+        
+        try:
+            path = resolve_document_file(self._storage, document.stored_file_path)
+            with open(path, "rb") as f:
+                content = f.read()
+
+            split_results = DocumentSplitter.split_bulk_pdf(
+                content, 
+                max_bytes=get_settings().max_upload_size_mb * 1024 * 1024,
+                ocr_engine=self._engine_factory()
+            )
+
+            batch_counts: dict[DocumentType, int] = {}
+            for doc_type, _ in split_results:
+                batch_counts[doc_type] = batch_counts.get(doc_type, 0) + 1
+
+            statement = (
+                select(Document.document_type, func.max(Document.copy_number))
+                .where(Document.application_id == application_id)
+                .group_by(Document.document_type)
+            )
+            existing_max = {
+                document_type: int(max_copy or 0)
+                for document_type, max_copy in self._db.execute(statement)
+            }
+
+            for doc_type, count in batch_counts.items():
+                max_copies = MAX_COPIES_BY_DOCUMENT_TYPE.get(doc_type, 1)
+                if existing_max.get(doc_type, 0) + count > max_copies:
+                    raise DocumentProcessingError(
+                        f"Cannot upload more than {max_copies} copies of {doc_type.value}"
+                    )
+
+            next_copy = {doc_type: existing_max.get(doc_type, 0) + 1 for doc_type in batch_counts}
+            created_documents: list[Document] = []
+            
+            for doc_type, pdf_bytes in split_results:
+                copy_number = next_copy[doc_type]
+                next_copy[doc_type] += 1
+                stored_path = self._storage.save(application_id, doc_type, pdf_bytes, ".pdf")
+                created_documents.append(
+                    Document(
+                        application_id=application_id,
+                        document_type=doc_type,
+                        copy_number=copy_number,
+                        original_filename=f"{doc_type.value.lower()}_copy{copy_number}.pdf",
+                        stored_file_path=stored_path,
+                        file_type="application/pdf",
+                        processing_status=DocumentProcessingStatus.UPLOADED,
+                    )
+                )
+
+            self._documents.create_many(documents=created_documents)
+            
+            queue_repo = QueueJobRepository(self._db)
+            for new_doc in created_documents:
+                queue_repo.enqueue(application_id, new_doc.id)
+
+            self._documents.update_status(document, DocumentProcessingStatus.COMPLETED)
+            logger.info("Successfully split bulk upload id=%s into %s documents", document.id, len(created_documents))
+
+            return DocumentProcessingResult(
+                document_id=document.id,
+                file_name=document.original_filename,
+                outcome=ProcessingOutcome.PROCESSED,
+                processing_method=ProcessingMethod.OCR,
+                raw_text="",
+            )
+        except Exception as exc:
+            logger.exception("Bulk split failed for document id=%s", document.id)
+            return self._fail_document(document, str(exc))
 
     def _process_document(
         self,

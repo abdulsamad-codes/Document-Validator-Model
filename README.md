@@ -36,6 +36,7 @@ applications, while AI/dataset management is intentionally hidden under
 ## Key features
 
 **Employee workflow (finance/compliance focus)**
+
 - **Dashboard** — recent applications, document-upload progress, quick actions.
   No AI metrics leak into the employee view.
 - **Applications** — searchable, filterable, sortable list of verification
@@ -51,6 +52,7 @@ applications, while AI/dataset management is intentionally hidden under
   dataset management, marked as restricted/admin-only.
 
 **Document verification pipeline (backend)**
+
 - **Upload & storage** — type-aware, extension + MIME + magic-byte validated
   uploads streamed to a filesystem storage root.
 - **Document completeness** — verifies the full fixed checklist is present.
@@ -75,16 +77,16 @@ applications, while AI/dataset management is intentionally hidden under
 
 ## Technology stack
 
-| Layer     | Technology                                                                                     |
-| --------- | ---------------------------------------------------------------------------------------------- |
-| Backend   | Python 3.12, FastAPI, SQLAlchemy 2, Alembic, Pydantic v2, Uvicorn                              |
-| Database  | PostgreSQL (native ENUM types, full-text search, `UNIQUE` constraints)                          |
-| OCR/ML    | PaddleOCR, PaddlePaddle, PyMuPDF, OpenCV                                                       |
-| Frontend  | React 19, React Router 7, Axios, Vite 8, lucide-react icons                                    |
-| Styling   | CSS Modules + design tokens (sky/light/dark blue FinTech palette), dark/light/system themes     |
-| Auth      | Cookie-based sessions (short-lived access JWT + rotating refresh token), bcrypt password hashing |
-| Tests     | pytest (backend), Playwright-style headless Chrome/CDP checks (manual verification scripts)     |
-| Tooling   | Alembic migrations, `python-dotenv`, ESLint-free Vite build, git                                 |
+| Layer    | Technology                                                                                       |
+| -------- | ------------------------------------------------------------------------------------------------ |
+| Backend  | Python 3.12, FastAPI, SQLAlchemy 2, Alembic, Pydantic v2, Uvicorn                                |
+| Database | PostgreSQL (native ENUM types, full-text search,`UNIQUE` constraints)                          |
+| OCR/ML   | PaddleOCR, PaddlePaddle, PyMuPDF, OpenCV                                                         |
+| Frontend | React 19, React Router 7, Axios, Vite 8, lucide-react icons                                      |
+| Styling  | CSS Modules + design tokens (sky/light/dark blue FinTech palette), dark/light/system themes      |
+| Auth     | Cookie-based sessions (short-lived access JWT + rotating refresh token), bcrypt password hashing |
+| Tests    | pytest (backend), Playwright-style headless Chrome/CDP checks (manual verification scripts)      |
+| Tooling  | Alembic migrations,`python-dotenv`, ESLint-free Vite build, git                                |
 
 ---
 
@@ -205,25 +207,24 @@ finance-verification-system/
 All domain enums (`ApplicationStatus`, `DocumentType`, `DocumentProcessingStatus`,
 `ValidationStatus`, `Severity`, `ReviewDecision`) are native PostgreSQL ENUMs.
 
-| Table                      | Purpose                                                              |
-| -------------------------- | -------------------------------------------------------------------- |
-| `users`                    | Employee accounts (employee_id, email, role, bcrypt password hash).  |
-| `refresh_tokens`           | Rotating, revocable session tokens.                                  |
-| `applications`             | Verification cases and their lifecycle status.                       |
-| `audit_logs`               | Action history.                                                      |
-| `documents`                | Uploaded files; unique `(application_id, document_type, copy_number)`. |
-| `ocr_results`              | Raw OCR text per document.                                           |
-| `visual_detection_results` | Visual/object detection output.                                      |
-| `document_analysis_results`| Analysis summary per document.                                       |
-| `extracted_fields`         | Extracted field values + confidence inputs.                          |
-| `validation_results`       | Rule-engine outcomes (rule, status, severity, message).              |
-| `manual_checklists`        | Manual checklist state.                                              |
-| `human_reviews`            | Review decisions per application/document.                           |
-| `human_corrections`        | Original → corrected value pairs.                                    |
-| `feedback_dataset`         | Human-corrected field data (OCR value vs trusted value).             |
+| Table                         | Purpose                                                                 |
+| ----------------------------- | ----------------------------------------------------------------------- |
+| `users`                     | Employee accounts (employee_id, email, role, bcrypt password hash).     |
+| `refresh_tokens`            | Rotating, revocable session tokens.                                     |
+| `applications`              | Verification cases and their lifecycle status.                          |
+| `audit_logs`                | Action history.                                                         |
+| `documents`                 | Uploaded files; unique`(application_id, document_type, copy_number)`. |
+| `ocr_results`               | Raw OCR text per document.                                              |
+| `visual_detection_results`  | Visual/object detection output.                                         |
+| `document_analysis_results` | Analysis summary per document.                                          |
+| `extracted_fields`          | Extracted field values + confidence inputs.                             |
+| `validation_results`        | Rule-engine outcomes (rule, status, severity, message).                 |
+| `manual_checklists`         | Manual checklist state.                                                 |
+| `human_reviews`             | Review decisions per application/document.                              |
+| `human_corrections`         | Original → corrected value pairs.                                      |
+| `feedback_dataset`          | Human-corrected field data (OCR value vs trusted value).                |
 
-> `documents` enforces a unique index on `(application_id, document_type,
-> copy_number)` so each numbered slot can hold exactly one file. The per-type
+> `documents` enforces a unique index on `(application_id, document_type, copy_number)` so each numbered slot can hold exactly one file. The per-type
 > copy cap lives in `backend/app/upload/constants.py`
 > (`MAX_COPIES_BY_DOCUMENT_TYPE`: 1-Link 3, Tripartite 3, Schedule of Charges 6,
 > everything else 1).
@@ -291,17 +292,17 @@ the FastAPI backend on `http://localhost:8000`.
 Backend settings are defined in `backend/app/core/config.py` and loaded from
 environment variables / `.env` (see `backend/.env.example`):
 
-| Variable                | Default                                            | Purpose                              |
-| ----------------------- | -------------------------------------------------- | ------------------------------------ |
-| `ENVIRONMENT`           | `development`                                      | dev/testing/production               |
-| `DEBUG`                 | `false`                                            | Never enable in production           |
-| `SECRET_KEY`            | dev placeholder (rejected in prod)                 | Token signing & crypto derivation    |
-| `DATABASE_URL`          | `postgresql+psycopg://postgres:postgres@localhost:5432/finance_verification` | DB connection  |
-| `LOG_LEVEL`             | `INFO`                                             | Root log level                       |
-| `API_PREFIX`            | `/api/v1`                                          | URL prefix for all routers           |
-| `MAX_UPLOAD_SIZE_MB`    | `25`                                               | Per-file upload limit                |
-| `CONFIDENCE_THRESHOLD`  | `0.85`                                             | Critical fields below this force review |
-| `DEFAULT_EMPLOYEE_*`    | `EMP-1001` etc.                                    | Seeded account credentials           |
+| Variable                 | Default                                                                        | Purpose                                 |
+| ------------------------ | ------------------------------------------------------------------------------ | --------------------------------------- |
+| `ENVIRONMENT`          | `development`                                                                | dev/testing/production                  |
+| `DEBUG`                | `false`                                                                      | Never enable in production              |
+| `SECRET_KEY`           | dev placeholder (rejected in prod)                                             | Token signing & crypto derivation       |
+| `DATABASE_URL`         | `postgresql+psycopg://postgres:postgres@localhost:5432/finance_verification` | DB connection                           |
+| `LOG_LEVEL`            | `INFO`                                                                       | Root log level                          |
+| `API_PREFIX`           | `/api/v1`                                                                    | URL prefix for all routers              |
+| `MAX_UPLOAD_SIZE_MB`   | `25`                                                                         | Per-file upload limit                   |
+| `CONFIDENCE_THRESHOLD` | `0.85`                                                                       | Critical fields below this force review |
+| `DEFAULT_EMPLOYEE_*`   | `EMP-1001` etc.                                                              | Seeded account credentials              |
 
 > The seed script **refuses to run** with the development default password when
 > `ENVIRONMENT=production`.
@@ -357,22 +358,22 @@ themes, responsive behavior and the upload-slot workflow end-to-end.
 
 All endpoints are mounted under `/api/v1`. Interactive docs at `/docs`.
 
-| Module                | Endpoints                                                              |
-| --------------------- | ---------------------------------------------------------------------- |
-| Health                | `GET /health`                                                          |
-| Auth                  | `POST /auth/login`, `GET /auth/me`, `POST /auth/refresh`, `POST /auth/logout` |
+| Module                | Endpoints                                                                                                                                                                                                          |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Health                | `GET /health`                                                                                                                                                                                                    |
+| Auth                  | `POST /auth/login`, `GET /auth/me`, `POST /auth/refresh`, `POST /auth/logout`                                                                                                                              |
 | Upload / Applications | `POST/GET /applications`, `GET /applications/{id}`, `POST /applications/{id}/documents`, `GET/PUT/DELETE /applications/{id}/documents/{doc_id}`, `GET /documents/{id}`, `GET /documents/{id}/download` |
-| Completeness          | `GET/POST /applications/{id}/completeness[/verify]`                    |
-| Technical validation  | `GET/POST /applications/{id}/technical-validation[/validate]`          |
-| Document processing   | `POST /applications/{id}/process-documents`, `GET .../ocr-results`     |
-| Document analysis     | `POST .../analyze-documents`, `GET .../analysis-results`               |
-| Confidence            | `POST .../confidence/evaluate`, `POST .../confidence/review`           |
-| Normalization         | `POST .../normalize`, `GET .../normalized-fields`                      |
-| Rule engine           | `POST .../validate`, `GET .../validation-results`                      |
-| Reports               | `GET .../validation-report`, `GET .../validation-report/html`, `GET .../validation-summary` |
-| Human verification    | `GET/POST .../human-review`, `GET .../human-review/history`            |
-| Feedback              | `GET /feedback`, `GET /feedback/{id}`, `GET /feedback/statistics`, `GET /feedback/export/json`, `GET /feedback/export/csv` |
-| Continuous learning   | `GET /continuous-learning/dataset`, `/statistics`, `/version`, `/export/json`, `/export/csv` |
+| Completeness          | `GET/POST /applications/{id}/completeness[/verify]`                                                                                                                                                              |
+| Technical validation  | `GET/POST /applications/{id}/technical-validation[/validate]`                                                                                                                                                    |
+| Document processing   | `POST /applications/{id}/process-documents`, `GET .../ocr-results`                                                                                                                                             |
+| Document analysis     | `POST .../analyze-documents`, `GET .../analysis-results`                                                                                                                                                       |
+| Confidence            | `POST .../confidence/evaluate`, `POST .../confidence/review`                                                                                                                                                   |
+| Normalization         | `POST .../normalize`, `GET .../normalized-fields`                                                                                                                                                              |
+| Rule engine           | `POST .../validate`, `GET .../validation-results`                                                                                                                                                              |
+| Reports               | `GET .../validation-report`, `GET .../validation-report/html`, `GET .../validation-summary`                                                                                                                  |
+| Human verification    | `GET/POST .../human-review`, `GET .../human-review/history`                                                                                                                                                    |
+| Feedback              | `GET /feedback`, `GET /feedback/{id}`, `GET /feedback/statistics`, `GET /feedback/export/json`, `GET /feedback/export/csv`                                                                               |
+| Continuous learning   | `GET /continuous-learning/dataset`, `/statistics`, `/version`, `/export/json`, `/export/csv`                                                                                                             |
 
 ---
 
@@ -429,18 +430,18 @@ drawer with backdrop on mobile.
 
 Per-module design docs live in `backend/docs/`:
 
-| File                  | Phase / topic                                   |
-| --------------------- | ----------------------------------------------- |
-| `technical_validation.md` | Phase 5 — technical validation              |
-| `document_processing.md`  | Phase 6 — OCR & text extraction             |
+| File                        | Phase / topic                                  |
+| --------------------------- | ---------------------------------------------- |
+| `technical_validation.md` | Phase 5 — technical validation                |
+| `document_processing.md`  | Phase 6 — OCR & text extraction               |
 | `document_analysis.md`    | Phase 7 — visual detection & field extraction |
-| `confidence.md`           | Phase 8 — confidence scoring                 |
-| `normalization.md`        | Phase 9 — normalization                      |
-| `rule_engine.md`          | Phase 10 — business rules                    |
-| `validation_reports.md`   | Phase 11 — validation reports                |
-| `human_verification.md`   | Phase 12 — human verification                |
-| `feedback.md`             | Phase 13 — feedback dataset                  |
-| `continuous_learning.md`  | Phase 14 — curated ML dataset                |
+| `confidence.md`           | Phase 8 — confidence scoring                  |
+| `normalization.md`        | Phase 9 — normalization                       |
+| `rule_engine.md`          | Phase 10 — business rules                     |
+| `validation_reports.md`   | Phase 11 — validation reports                 |
+| `human_verification.md`   | Phase 12 — human verification                 |
+| `feedback.md`             | Phase 13 — feedback dataset                   |
+| `continuous_learning.md`  | Phase 14 — curated ML dataset                 |
 
 ---
 

@@ -55,6 +55,30 @@ export function uploadDocument({ applicationId, documentType, copyNumber, file, 
 }
 
 /**
+ * Upload a bulk PDF to be split into individual documents.
+ *
+ * @param {object} params
+ * @param {number|string} params.applicationId Application id.
+ * @param {File} params.file The selected bulk PDF file.
+ * @param {Function} [params.onUploadProgress] Axios upload progress callback.
+ * @returns {Promise<object>} The bulk upload response (including extracted documents).
+ */
+export function uploadBulkDocument({ applicationId, file, onUploadProgress }) {
+  const formData = new FormData();
+  formData.append('file', file);
+  return api
+    .post(
+      `/applications/${applicationId}/bulk-upload`,
+      formData,
+      {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress,
+      }
+    )
+    .then((response) => response.data);
+}
+
+/**
  * Replace an existing document for an application.
  *
  * @param {object} params

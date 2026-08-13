@@ -138,6 +138,40 @@ export function useDocuments(applicationId) {
     [documents]
   );
 
+  const uploadBulk = useCallback(
+    async (file) => {
+      const operationKey = 'upload-bulk';
+      setPending((prev) => ({
+        ...prev,
+        [operationKey]: { phase: 'upload', progress: 0 },
+      }));
+
+      const onUploadProgress = (event) => {
+        if (event.total) {
+          setPendingProgress(operationKey, Math.round((event.loaded / event.total) * 100));
+        }
+      };
+
+      try {
+        const { uploadBulkDocument } = await import('../services/documents');
+        const response = await uploadBulkDocument({
+          applicationId,
+          file,
+          onUploadProgress,
+        });
+
+        clearPending(operationKey);
+        // We reload all documents so the newly extracted copies appear in the list.
+        await reload();
+        return { ok: true, data: response };
+      } catch (err) {
+        clearPending(operationKey);
+        return { ok: false, error: getApiErrorMessage(err) };
+      }
+    },
+    [applicationId, reload]
+  );
+
   return useMemo(
     () => ({
       documents,
@@ -149,7 +183,8 @@ export function useDocuments(applicationId) {
       documentsOfType,
       uploadToSlot,
       removeDocument,
+      uploadBulk,
     }),
-    [documents, loading, error, reload, pending, findDocument, documentsOfType, uploadToSlot, removeDocument]
+    [documents, loading, error, reload, pending, findDocument, documentsOfType, uploadToSlot, removeDocument, uploadBulk]
   );
 }
