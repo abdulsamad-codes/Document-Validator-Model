@@ -44,8 +44,10 @@ MIN_DIGITAL_TEXT_CHARS: int = 10
 #: Resolution used when rendering scanned PDF pages for OCR input (dots per inch).
 SCANNED_PDF_RENDER_DPI: int = 200
 
-#: Per-document wall-clock budget in seconds for the whole extraction.
-PROCESSING_TIMEOUT_SECONDS: float = 60.0
+#: Per-document wall-clock budget in seconds for the whole extraction. Must
+#: comfortably cover multi-page PaddleOCR fallback on CPU-only hardware, where
+#: a single scanned page has been observed to take 90-150s.
+PROCESSING_TIMEOUT_SECONDS: float = 600.0
 
 #: Separator inserted between the text of consecutive pages so merged output
 #: keeps page boundaries visible and page order preserved.

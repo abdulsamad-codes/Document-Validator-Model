@@ -300,7 +300,7 @@ class DocumentProcessingService:
                 document_id=document.id,
                 file_name=document.original_filename,
                 outcome=ProcessingOutcome.PROCESSED,
-                processing_method=ProcessingMethod.OCR,
+                processing_method=ProcessingMethod.PADDLE_OCR,
                 raw_text="",
             )
         except Exception as exc:
