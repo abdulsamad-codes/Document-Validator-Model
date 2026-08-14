@@ -153,8 +153,8 @@ def run_validation(client, application_id: int, *, method: str = "post") -> dict
 # --- Valid documents ---------------------------------------------------------
 
 
-def test_valid_pdf(client, storage_root):
-    application_id = create_application(client)
+def test_valid_pdf(authenticated_client, storage_root):
+    application_id = create_application(authenticated_client)
     add_document(
         storage_root,
         application_id,
@@ -164,7 +164,7 @@ def test_valid_pdf(client, storage_root):
         "application/pdf",
     )
 
-    report = run_validation(client, application_id)
+    report = run_validation(authenticated_client, application_id)
 
     assert report["total"] == 1
     item = report["items"][0]
@@ -183,8 +183,8 @@ def test_valid_pdf(client, storage_root):
     assert "suitable for processing" in item["recommendations"][0]
 
 
-def test_valid_image(client, storage_root):
-    application_id = create_application(client)
+def test_valid_image(authenticated_client, storage_root):
+    application_id = create_application(authenticated_client)
     add_document(
         storage_root,
         application_id,
@@ -194,7 +194,7 @@ def test_valid_image(client, storage_root):
         "image/png",
     )
 
-    item = run_validation(client, application_id)["items"][0]
+    item = run_validation(authenticated_client, application_id)["items"][0]
 
     assert item["validation_status"] == "PASS"
     assert item["file_type"] == "PNG"
@@ -206,8 +206,8 @@ def test_valid_image(client, storage_root):
     assert item["failed_checks"] == []
 
 
-def test_unsupported_format(client, storage_root):
-    application_id = create_application(client)
+def test_unsupported_format(authenticated_client, storage_root):
+    application_id = create_application(authenticated_client)
     add_document(
         storage_root,
         application_id,
@@ -217,7 +217,7 @@ def test_unsupported_format(client, storage_root):
         "image/tiff",
     )
 
-    item = run_validation(client, application_id)["items"][0]
+    item = run_validation(authenticated_client, application_id)["items"][0]
 
     assert item["validation_status"] == "FAIL"
     assert item["file_type"] == "TIFF"
@@ -230,8 +230,8 @@ def test_unsupported_format(client, storage_root):
 # --- File accessibility ------------------------------------------------------
 
 
-def test_empty_file(client, storage_root):
-    application_id = create_application(client)
+def test_empty_file(authenticated_client, storage_root):
+    application_id = create_application(authenticated_client)
     add_document(
         storage_root,
         application_id,
@@ -241,7 +241,7 @@ def test_empty_file(client, storage_root):
         "application/pdf",
     )
 
-    item = run_validation(client, application_id)["items"][0]
+    item = run_validation(authenticated_client, application_id)["items"][0]
 
     assert item["validation_status"] == "FAIL"
     assert item["file_accessible"] is False
@@ -250,8 +250,8 @@ def test_empty_file(client, storage_root):
     assert item["readability_status"] == "UNREADABLE"
 
 
-def test_missing_file(client, storage_root):
-    application_id = create_application(client)
+def test_missing_file(authenticated_client, storage_root):
+    application_id = create_application(authenticated_client)
     add_document(
         storage_root,
         application_id,
@@ -262,7 +262,7 @@ def test_missing_file(client, storage_root):
         write_file=False,
     )
 
-    item = run_validation(client, application_id)["items"][0]
+    item = run_validation(authenticated_client, application_id)["items"][0]
 
     assert item["validation_status"] == "FAIL"
     assert item["file_accessible"] is False
@@ -273,8 +273,8 @@ def test_missing_file(client, storage_root):
 # --- Corrupted / protected PDFs ---------------------------------------------
 
 
-def test_corrupted_pdf(client, storage_root):
-    application_id = create_application(client)
+def test_corrupted_pdf(authenticated_client, storage_root):
+    application_id = create_application(authenticated_client)
     add_document(
         storage_root,
         application_id,
@@ -284,7 +284,7 @@ def test_corrupted_pdf(client, storage_root):
         "application/pdf",
     )
 
-    item = run_validation(client, application_id)["items"][0]
+    item = run_validation(authenticated_client, application_id)["items"][0]
 
     assert item["validation_status"] == "FAIL"
     assert item["pdf_valid"] is False
@@ -292,8 +292,8 @@ def test_corrupted_pdf(client, storage_root):
     assert item["readability_status"] == "UNREADABLE"
 
 
-def test_password_protected_pdf(client, storage_root):
-    application_id = create_application(client)
+def test_password_protected_pdf(authenticated_client, storage_root):
+    application_id = create_application(authenticated_client)
     add_document(
         storage_root,
         application_id,
@@ -303,7 +303,7 @@ def test_password_protected_pdf(client, storage_root):
         "application/pdf",
     )
 
-    item = run_validation(client, application_id)["items"][0]
+    item = run_validation(authenticated_client, application_id)["items"][0]
 
     assert item["validation_status"] == "FAIL"
     assert item["pdf_valid"] is False
@@ -315,8 +315,8 @@ def test_password_protected_pdf(client, storage_root):
 # --- Blur / rotation ---------------------------------------------------------
 
 
-def test_blurry_image(client, storage_root):
-    application_id = create_application(client)
+def test_blurry_image(authenticated_client, storage_root):
+    application_id = create_application(authenticated_client)
     sharp = make_document_image(lines=10)
     blurred = cv2.GaussianBlur(sharp, (15, 15), 0)
     add_document(
@@ -328,7 +328,7 @@ def test_blurry_image(client, storage_root):
         "image/png",
     )
 
-    item = run_validation(client, application_id)["items"][0]
+    item = run_validation(authenticated_client, application_id)["items"][0]
 
     assert item["validation_status"] == "FAIL"
     assert item["blur_score"] < BLUR_THRESHOLD
@@ -336,8 +336,8 @@ def test_blurry_image(client, storage_root):
     assert item["readability_status"] == "UNREADABLE"
 
 
-def test_low_resolution_image(client, storage_root):
-    application_id = create_application(client)
+def test_low_resolution_image(authenticated_client, storage_root):
+    application_id = create_application(authenticated_client)
     small = make_document_image(lines=4, size=(400, 500))
     add_document(
         storage_root,
@@ -348,7 +348,7 @@ def test_low_resolution_image(client, storage_root):
         "image/png",
     )
 
-    item = run_validation(client, application_id)["items"][0]
+    item = run_validation(authenticated_client, application_id)["items"][0]
 
     assert item["validation_status"] == "FAIL"
     assert item["image_valid"] is False
@@ -357,8 +357,8 @@ def test_low_resolution_image(client, storage_root):
     assert any(str(MIN_IMAGE_WIDTH) in rec for rec in item["recommendations"])
 
 
-def test_rotated_image(client, storage_root):
-    application_id = create_application(client)
+def test_rotated_image(authenticated_client, storage_root):
+    application_id = create_application(authenticated_client)
     rotated = make_document_image(lines=20, angle=10.0)
     add_document(
         storage_root,
@@ -369,7 +369,7 @@ def test_rotated_image(client, storage_root):
         "image/png",
     )
 
-    item = run_validation(client, application_id)["items"][0]
+    item = run_validation(authenticated_client, application_id)["items"][0]
 
     assert item["validation_status"] == "WARNING"
     assert item["rotation_status"] == "ROTATED"
@@ -381,8 +381,8 @@ def test_rotated_image(client, storage_root):
 # --- Application-level behaviour --------------------------------------------
 
 
-def test_multiple_documents_in_one_application(client, storage_root):
-    application_id = create_application(client)
+def test_multiple_documents_in_one_application(authenticated_client, storage_root):
+    application_id = create_application(authenticated_client)
     add_document(
         storage_root,
         application_id,
@@ -409,7 +409,7 @@ def test_multiple_documents_in_one_application(client, storage_root):
         "image/png",
     )
 
-    report = run_validation(client, application_id)
+    report = run_validation(authenticated_client, application_id)
 
     assert report["application_id"] == application_id
     assert report["total"] == 3
@@ -419,19 +419,19 @@ def test_multiple_documents_in_one_application(client, storage_root):
     assert "FAIL" in statuses
 
 
-def test_empty_application(client):
-    application_id = create_application(client)
+def test_empty_application(authenticated_client):
+    application_id = create_application(authenticated_client)
 
-    report = run_validation(client, application_id)
+    report = run_validation(authenticated_client, application_id)
 
     assert report["total"] == 0
     assert report["items"] == []
 
 
-def test_application_not_found(client):
-    assert client.get(f"{API}/applications/999999/technical-validation").status_code == 404
+def test_application_not_found(authenticated_client):
+    assert authenticated_client.get(f"{API}/applications/999999/technical-validation").status_code == 404
     assert (
-        client.post(f"{API}/applications/999999/technical-validation/validate").status_code
+        authenticated_client.post(f"{API}/applications/999999/technical-validation/validate").status_code
         == 404
     )
 
@@ -439,8 +439,8 @@ def test_application_not_found(client):
 # --- Storage and reconstruction ---------------------------------------------
 
 
-def test_get_returns_stored_reports(client, storage_root):
-    application_id = create_application(client)
+def test_get_returns_stored_reports(authenticated_client, storage_root):
+    application_id = create_application(authenticated_client)
     add_document(
         storage_root,
         application_id,
@@ -458,10 +458,10 @@ def test_get_returns_stored_reports(client, storage_root):
         "image/png",
     )
 
-    assert run_validation(client, application_id, method="get")["total"] == 0
+    assert run_validation(authenticated_client, application_id, method="get")["total"] == 0
 
-    posted = run_validation(client, application_id)
-    stored = run_validation(client, application_id, method="get")
+    posted = run_validation(authenticated_client, application_id)
+    stored = run_validation(authenticated_client, application_id, method="get")
 
     assert stored["total"] == 2
     posted_by_document_id = {item["document_id"]: item for item in posted["items"]}
@@ -474,8 +474,8 @@ def test_get_returns_stored_reports(client, storage_root):
         assert item["rotation_angle"] == posted_by_document_id[document_id]["rotation_angle"]
 
 
-def test_report_never_exposes_storage_path(client, storage_root):
-    application_id = create_application(client)
+def test_report_never_exposes_storage_path(authenticated_client, storage_root):
+    application_id = create_application(authenticated_client)
     add_document(
         storage_root,
         application_id,
@@ -485,7 +485,7 @@ def test_report_never_exposes_storage_path(client, storage_root):
         "application/pdf",
     )
 
-    report = run_validation(client, application_id)
+    report = run_validation(authenticated_client, application_id)
     serialized = repr(report)
 
     assert "stored_file_path" not in serialized

@@ -99,8 +99,8 @@ def make_scanned_pdf_bytes(*images) -> bytes:
 # --- Digital PDF extraction --------------------------------------------------
 
 
-def test_digital_pdf_extraction(client, storage_root, monkeypatch):
-    application_id = create_application(client)
+def test_digital_pdf_extraction(authenticated_client, storage_root, monkeypatch):
+    application_id = create_application(authenticated_client)
     add_document(
         storage_root,
         application_id,
@@ -109,10 +109,10 @@ def test_digital_pdf_extraction(client, storage_root, monkeypatch):
         make_valid_pdf_bytes(pages=2, lines_per_page=10),
         "application/pdf",
     )
-    run_validation(client, application_id)
+    run_validation(authenticated_client, application_id)
     engine = patch_ocr_engine(monkeypatch)
 
-    result = process_documents(client, application_id)
+    result = process_documents(authenticated_client, application_id)
 
     assert result["total_processed"] == 1
     assert result["total_skipped"] == 0
@@ -133,8 +133,8 @@ def test_digital_pdf_extraction(client, storage_root, monkeypatch):
 # --- Scanned PDF extraction --------------------------------------------------
 
 
-def test_scanned_pdf_extraction(client, storage_root, monkeypatch):
-    application_id = create_application(client)
+def test_scanned_pdf_extraction(authenticated_client, storage_root, monkeypatch):
+    application_id = create_application(authenticated_client)
     add_document(
         storage_root,
         application_id,
@@ -143,10 +143,10 @@ def test_scanned_pdf_extraction(client, storage_root, monkeypatch):
         make_scanned_pdf_bytes(make_document_image(lines=6)),
         "application/pdf",
     )
-    run_validation(client, application_id)
+    run_validation(authenticated_client, application_id)
     engine = patch_ocr_engine(monkeypatch, texts=["scanned page text"])
 
-    result = process_documents(client, application_id)
+    result = process_documents(authenticated_client, application_id)
 
     item = result["items"][0]
     assert item["outcome"] == "PROCESSED"
@@ -161,8 +161,8 @@ def test_scanned_pdf_extraction(client, storage_root, monkeypatch):
 # --- Image extraction --------------------------------------------------------
 
 
-def test_image_extraction(client, storage_root, monkeypatch):
-    application_id = create_application(client)
+def test_image_extraction(authenticated_client, storage_root, monkeypatch):
+    application_id = create_application(authenticated_client)
     add_document(
         storage_root,
         application_id,
@@ -171,10 +171,10 @@ def test_image_extraction(client, storage_root, monkeypatch):
         encode_png(make_document_image(lines=10)),
         "image/png",
     )
-    run_validation(client, application_id)
+    run_validation(authenticated_client, application_id)
     engine = patch_ocr_engine(monkeypatch, texts=["image page text"])
 
-    result = process_documents(client, application_id)
+    result = process_documents(authenticated_client, application_id)
 
     item = result["items"][0]
     assert item["outcome"] == "PROCESSED"
@@ -188,8 +188,8 @@ def test_image_extraction(client, storage_root, monkeypatch):
 # --- Multi-page PDF ----------------------------------------------------------
 
 
-def test_multi_page_scanned_pdf_preserves_page_order(client, storage_root, monkeypatch):
-    application_id = create_application(client)
+def test_multi_page_scanned_pdf_preserves_page_order(authenticated_client, storage_root, monkeypatch):
+    application_id = create_application(authenticated_client)
     first_page = make_document_image(lines=4)
     second_page = make_document_image(lines=4)
     add_document(
@@ -200,10 +200,10 @@ def test_multi_page_scanned_pdf_preserves_page_order(client, storage_root, monke
         make_scanned_pdf_bytes(first_page, second_page),
         "application/pdf",
     )
-    run_validation(client, application_id)
+    run_validation(authenticated_client, application_id)
     patch_ocr_engine(monkeypatch, texts=["first page content", "second page content"])
 
-    result = process_documents(client, application_id)
+    result = process_documents(authenticated_client, application_id)
 
     item = result["items"][0]
     assert item["outcome"] == "PROCESSED"
@@ -216,8 +216,8 @@ def test_multi_page_scanned_pdf_preserves_page_order(client, storage_root, monke
     assert "--- Page 2 ---" in item["raw_text"]
 
 
-def test_multi_page_digital_pdf(client, storage_root, monkeypatch):
-    application_id = create_application(client)
+def test_multi_page_digital_pdf(authenticated_client, storage_root, monkeypatch):
+    application_id = create_application(authenticated_client)
     add_document(
         storage_root,
         application_id,
@@ -226,10 +226,10 @@ def test_multi_page_digital_pdf(client, storage_root, monkeypatch):
         make_valid_pdf_bytes(pages=3, lines_per_page=5),
         "application/pdf",
     )
-    run_validation(client, application_id)
+    run_validation(authenticated_client, application_id)
     engine = patch_ocr_engine(monkeypatch)
 
-    item = process_documents(client, application_id)["items"][0]
+    item = process_documents(authenticated_client, application_id)["items"][0]
 
     assert item["page_count"] == 3
     assert item["raw_text"].index("Page 1 line") < item["raw_text"].index("Page 3 line")
@@ -239,8 +239,8 @@ def test_multi_page_digital_pdf(client, storage_root, monkeypatch):
 # --- Empty extraction --------------------------------------------------------
 
 
-def test_ocr_empty_extraction_fails_document(client, storage_root, monkeypatch):
-    application_id = create_application(client)
+def test_ocr_empty_extraction_fails_document(authenticated_client, storage_root, monkeypatch):
+    application_id = create_application(authenticated_client)
     add_document(
         storage_root,
         application_id,
@@ -249,10 +249,10 @@ def test_ocr_empty_extraction_fails_document(client, storage_root, monkeypatch):
         make_scanned_pdf_bytes(make_document_image(lines=6)),
         "application/pdf",
     )
-    run_validation(client, application_id)
+    run_validation(authenticated_client, application_id)
     patch_ocr_engine(monkeypatch, texts=[""])
 
-    result = process_documents(client, application_id)
+    result = process_documents(authenticated_client, application_id)
 
     assert result["total_processed"] == 0
     assert result["total_failed"] == 1
@@ -261,8 +261,8 @@ def test_ocr_empty_extraction_fails_document(client, storage_root, monkeypatch):
     assert "no text" in item["message"]
 
 
-def test_blank_pdf_is_skipped(client, storage_root, monkeypatch):
-    application_id = create_application(client)
+def test_blank_pdf_is_skipped(authenticated_client, storage_root, monkeypatch):
+    application_id = create_application(authenticated_client)
     blank = pymupdf.open()
     blank.new_page(width=400, height=566)
     content = blank.tobytes()
@@ -275,11 +275,11 @@ def test_blank_pdf_is_skipped(client, storage_root, monkeypatch):
         content,
         "application/pdf",
     )
-    report = run_validation(client, application_id)
+    report = run_validation(authenticated_client, application_id)
     assert report["items"][0]["validation_status"] == "FAIL"
     engine = patch_ocr_engine(monkeypatch)
 
-    result = process_documents(client, application_id)
+    result = process_documents(authenticated_client, application_id)
 
     assert result["total_processed"] == 0
     assert result["total_skipped"] == 1
@@ -290,8 +290,8 @@ def test_blank_pdf_is_skipped(client, storage_root, monkeypatch):
 # --- OCR failure -------------------------------------------------------------
 
 
-def test_ocr_failure_is_captured_per_document(client, storage_root, monkeypatch):
-    application_id = create_application(client)
+def test_ocr_failure_is_captured_per_document(authenticated_client, storage_root, monkeypatch):
+    application_id = create_application(authenticated_client)
     add_document(
         storage_root,
         application_id,
@@ -300,10 +300,10 @@ def test_ocr_failure_is_captured_per_document(client, storage_root, monkeypatch)
         encode_png(make_document_image(lines=10)),
         "image/png",
     )
-    run_validation(client, application_id)
+    run_validation(authenticated_client, application_id)
     patch_ocr_engine(monkeypatch, fail=True)
 
-    result = process_documents(client, application_id)
+    result = process_documents(authenticated_client, application_id)
 
     assert result["total_processed"] == 0
     assert result["total_failed"] == 1
@@ -316,8 +316,8 @@ def test_ocr_failure_is_captured_per_document(client, storage_root, monkeypatch)
 # --- Technical validation gate ------------------------------------------------
 
 
-def test_technically_invalid_document_is_skipped(client, storage_root, monkeypatch):
-    application_id = create_application(client)
+def test_technically_invalid_document_is_skipped(authenticated_client, storage_root, monkeypatch):
+    application_id = create_application(authenticated_client)
     import cv2
 
     blurred = cv2.GaussianBlur(make_document_image(lines=10), (15, 15), 0)
@@ -329,11 +329,11 @@ def test_technically_invalid_document_is_skipped(client, storage_root, monkeypat
         encode_png(blurred),
         "image/png",
     )
-    report = run_validation(client, application_id)
+    report = run_validation(authenticated_client, application_id)
     assert report["items"][0]["validation_status"] == "FAIL"
     engine = patch_ocr_engine(monkeypatch)
 
-    result = process_documents(client, application_id)
+    result = process_documents(authenticated_client, application_id)
 
     assert result["total_processed"] == 0
     assert result["total_skipped"] == 1
@@ -343,8 +343,8 @@ def test_technically_invalid_document_is_skipped(client, storage_root, monkeypat
     assert engine.calls == 0
 
 
-def test_processing_requires_technical_validation(client, storage_root, monkeypatch):
-    application_id = create_application(client)
+def test_processing_requires_technical_validation(authenticated_client, storage_root, monkeypatch):
+    application_id = create_application(authenticated_client)
     add_document(
         storage_root,
         application_id,
@@ -355,7 +355,7 @@ def test_processing_requires_technical_validation(client, storage_root, monkeypa
     )
     patch_ocr_engine(monkeypatch)
 
-    response = client.post(f"{API}/applications/{application_id}{OCR_URL}")
+    response = authenticated_client.post(f"{API}/applications/{application_id}{OCR_URL}")
 
     assert response.status_code == 400
     assert "technical validation" in response.json()["detail"].lower()
@@ -364,8 +364,8 @@ def test_processing_requires_technical_validation(client, storage_root, monkeypa
 # --- Mixed application -------------------------------------------------------
 
 
-def test_mixed_application(client, storage_root, monkeypatch):
-    application_id = create_application(client)
+def test_mixed_application(authenticated_client, storage_root, monkeypatch):
+    application_id = create_application(authenticated_client)
     add_document(
         storage_root,
         application_id,
@@ -390,10 +390,10 @@ def test_mixed_application(client, storage_root, monkeypatch):
         encode_png(make_document_image(lines=10)),
         "image/png",
     )
-    run_validation(client, application_id)
+    run_validation(authenticated_client, application_id)
     engine = patch_ocr_engine(monkeypatch, texts=["ocr text"])
 
-    result = process_documents(client, application_id)
+    result = process_documents(authenticated_client, application_id)
 
     assert result["total_processed"] == 3
     assert result["total_skipped"] == 0
@@ -406,18 +406,18 @@ def test_mixed_application(client, storage_root, monkeypatch):
 # --- Application-level behaviour ---------------------------------------------
 
 
-def test_application_not_found(client):
+def test_application_not_found(authenticated_client):
     assert (
-        client.post(f"{API}/applications/999999{OCR_URL}").status_code == 404
+        authenticated_client.post(f"{API}/applications/999999{OCR_URL}").status_code == 404
     )
-    assert client.get(f"{API}/applications/999999{RESULTS_URL}").status_code == 404
+    assert authenticated_client.get(f"{API}/applications/999999{RESULTS_URL}").status_code == 404
 
 
-def test_empty_application_processes_nothing(client, monkeypatch):
-    application_id = create_application(client)
+def test_empty_application_processes_nothing(authenticated_client, monkeypatch):
+    application_id = create_application(authenticated_client)
     patch_ocr_engine(monkeypatch)
 
-    result = process_documents(client, application_id)
+    result = process_documents(authenticated_client, application_id)
 
     assert result["total_processed"] == 0
     assert result["total_skipped"] == 0
@@ -428,8 +428,8 @@ def test_empty_application_processes_nothing(client, monkeypatch):
 # --- Stored results ----------------------------------------------------------
 
 
-def test_get_ocr_results_returns_stored_extractions(client, storage_root, monkeypatch):
-    application_id = create_application(client)
+def test_get_ocr_results_returns_stored_extractions(authenticated_client, storage_root, monkeypatch):
+    application_id = create_application(authenticated_client)
     add_document(
         storage_root,
         application_id,
@@ -446,13 +446,13 @@ def test_get_ocr_results_returns_stored_extractions(client, storage_root, monkey
         encode_png(make_document_image(lines=10)),
         "image/png",
     )
-    run_validation(client, application_id)
+    run_validation(authenticated_client, application_id)
     patch_ocr_engine(monkeypatch, texts=["ocr stored text"])
 
-    assert get_ocr_results(client, application_id)["total"] == 0
+    assert get_ocr_results(authenticated_client, application_id)["total"] == 0
 
-    processed = process_documents(client, application_id)
-    stored = get_ocr_results(client, application_id)
+    processed = process_documents(authenticated_client, application_id)
+    stored = get_ocr_results(authenticated_client, application_id)
 
     assert stored["total"] == 2
     stored_by_document = {item["document_id"]: item for item in stored["items"]}
@@ -469,8 +469,8 @@ def test_get_ocr_results_returns_stored_extractions(client, storage_root, monkey
     assert stored["items"][1]["file_name"] == "scan.png"
 
 
-def test_reprocessing_updates_the_stored_result(client, storage_root, monkeypatch):
-    application_id = create_application(client)
+def test_reprocessing_updates_the_stored_result(authenticated_client, storage_root, monkeypatch):
+    application_id = create_application(authenticated_client)
     add_document(
         storage_root,
         application_id,
@@ -479,17 +479,17 @@ def test_reprocessing_updates_the_stored_result(client, storage_root, monkeypatc
         encode_png(make_document_image(lines=10)),
         "image/png",
     )
-    run_validation(client, application_id)
+    run_validation(authenticated_client, application_id)
     patch_ocr_engine(monkeypatch, texts=["first run text"])
 
-    process_documents(client, application_id)
-    first = get_ocr_results(client, application_id)
+    process_documents(authenticated_client, application_id)
+    first = get_ocr_results(authenticated_client, application_id)
     assert first["total"] == 1
     assert first["items"][0]["raw_ocr_text"] == "first run text"
 
     patch_ocr_engine(monkeypatch, texts=["second run text"])
-    process_documents(client, application_id)
-    second = get_ocr_results(client, application_id)
+    process_documents(authenticated_client, application_id)
+    second = get_ocr_results(authenticated_client, application_id)
 
     assert second["total"] == 1
     assert second["items"][0]["raw_ocr_text"] == "second run text"

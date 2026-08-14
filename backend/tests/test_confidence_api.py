@@ -152,10 +152,10 @@ def _verified_decisions(flagged: list[dict], exclude: set[str]) -> list[tuple[st
 # --- High confidence ---------------------------------------------------------
 
 
-def test_evaluate_high_confidence_is_ready(client, storage_root):
-    application_id = add_digital_statement(client, storage_root)
+def test_evaluate_high_confidence_is_ready(authenticated_client, storage_root):
+    application_id = add_digital_statement(authenticated_client, storage_root)
 
-    result = evaluate(client, application_id)
+    result = evaluate(authenticated_client, application_id)
 
     assert result["application_id"] == application_id
     assert result["processing_status"] == "READY_FOR_NORMALIZATION"
@@ -173,9 +173,9 @@ def test_evaluate_high_confidence_is_ready(client, storage_root):
     assert "confidence.evaluated" in audit_actions(application_id)
 
 
-def test_digital_pdf_fields_renormalize_without_ocr(client, storage_root):
-    application_id = add_digital_statement(client, storage_root)
-    result = evaluate(client, application_id)
+def test_digital_pdf_fields_renormalize_without_ocr(authenticated_client, storage_root):
+    application_id = add_digital_statement(authenticated_client, storage_root)
+    result = evaluate(authenticated_client, application_id)
     assert result["processing_status"] == "READY_FOR_NORMALIZATION"
     assert all(
         field.confidence_score == 1.0
@@ -186,10 +186,10 @@ def test_digital_pdf_fields_renormalize_without_ocr(client, storage_root):
 # --- Low confidence ----------------------------------------------------------
 
 
-def test_evaluate_low_confidence_requires_review(client, storage_root, monkeypatch):
-    application_id = add_scanned_statement(client, storage_root, monkeypatch)
+def test_evaluate_low_confidence_requires_review(authenticated_client, storage_root, monkeypatch):
+    application_id = add_scanned_statement(authenticated_client, storage_root, monkeypatch)
 
-    result = evaluate(client, application_id)
+    result = evaluate(authenticated_client, application_id)
 
     assert result["processing_status"] == "REQUIRES_HUMAN_REVIEW"
     assert result["overall_confidence"] == pytest.approx(0.84)
@@ -210,10 +210,10 @@ def test_evaluate_low_confidence_requires_review(client, storage_root, monkeypat
     assert fields["account_number"].confidence_source == "regex"
 
 
-def test_evaluate_returns_only_low_fields_for_review(client, storage_root, monkeypatch):
-    application_id = add_scanned_statement(client, storage_root, monkeypatch)
+def test_evaluate_returns_only_low_fields_for_review(authenticated_client, storage_root, monkeypatch):
+    application_id = add_scanned_statement(authenticated_client, storage_root, monkeypatch)
 
-    result = evaluate(client, application_id)
+    result = evaluate(authenticated_client, application_id)
 
     reviewable = {
         field["field_name"] for field in result["fields_requiring_review"]
@@ -228,14 +228,14 @@ def test_evaluate_returns_only_low_fields_for_review(client, storage_root, monke
 # --- Human review workflows --------------------------------------------------
 
 
-def test_review_verify_all_fields_ready(client, storage_root, monkeypatch):
-    application_id = add_scanned_statement(client, storage_root, monkeypatch)
-    flagged = evaluate(client, application_id)["fields_requiring_review"]
+def test_review_verify_all_fields_ready(authenticated_client, storage_root, monkeypatch):
+    application_id = add_scanned_statement(authenticated_client, storage_root, monkeypatch)
+    flagged = evaluate(authenticated_client, application_id)["fields_requiring_review"]
 
     decisions = [
         (field["field_name"], "VERIFIED", None) for field in flagged
     ]
-    result = review(client, application_id, _decisions(decisions))
+    result = review(authenticated_client, application_id, _decisions(decisions))
 
     assert result["processing_status"] == "READY_FOR_NORMALIZATION"
 
@@ -251,13 +251,13 @@ def test_review_verify_all_fields_ready(client, storage_root, monkeypatch):
     assert "confidence.reviewed" in actions
 
 
-def test_review_correct_field_updates_value_and_feedback(client, storage_root, monkeypatch):
-    application_id = add_scanned_statement(client, storage_root, monkeypatch)
-    flagged = evaluate(client, application_id)["fields_requiring_review"]
+def test_review_correct_field_updates_value_and_feedback(authenticated_client, storage_root, monkeypatch):
+    application_id = add_scanned_statement(authenticated_client, storage_root, monkeypatch)
+    flagged = evaluate(authenticated_client, application_id)["fields_requiring_review"]
 
     decisions = _verified_decisions(flagged, {"account_number"})
     decisions.append(("account_number", "CORRECTED", "9999999999"))
-    result = review(client, application_id, _decisions(decisions))
+    result = review(authenticated_client, application_id, _decisions(decisions))
     assert result["processing_status"] == "READY_FOR_NORMALIZATION"
 
     fields = stored_fields(application_id)
@@ -284,13 +284,13 @@ def test_review_correct_field_updates_value_and_feedback(client, storage_root, m
     assert "confidence.field_corrected" in actions
 
 
-def test_review_cannot_verify_halts_processing(client, storage_root, monkeypatch):
-    application_id = add_scanned_statement(client, storage_root, monkeypatch)
-    flagged = evaluate(client, application_id)["fields_requiring_review"]
+def test_review_cannot_verify_halts_processing(authenticated_client, storage_root, monkeypatch):
+    application_id = add_scanned_statement(authenticated_client, storage_root, monkeypatch)
+    flagged = evaluate(authenticated_client, application_id)["fields_requiring_review"]
 
     decisions = _verified_decisions(flagged, {"iban"})
     decisions.append(("iban", "CANNOT_VERIFY", None))
-    result = review(client, application_id, _decisions(decisions))
+    result = review(authenticated_client, application_id, _decisions(decisions))
 
     assert result["processing_status"] == "PROCESSING_HALTED"
 
@@ -304,11 +304,11 @@ def test_review_cannot_verify_halts_processing(client, storage_root, monkeypatch
 # --- Re-evaluation -----------------------------------------------------------
 
 
-def test_reevaluate_upserts_single_row_per_field(client, storage_root, monkeypatch):
-    application_id = add_scanned_statement(client, storage_root, monkeypatch)
+def test_reevaluate_upserts_single_row_per_field(authenticated_client, storage_root, monkeypatch):
+    application_id = add_scanned_statement(authenticated_client, storage_root, monkeypatch)
 
-    first = evaluate(client, application_id)
-    second = evaluate(client, application_id)
+    first = evaluate(authenticated_client, application_id)
+    second = evaluate(authenticated_client, application_id)
 
     assert first["processing_status"] == "REQUIRES_HUMAN_REVIEW"
     assert second["processing_status"] == "REQUIRES_HUMAN_REVIEW"
@@ -316,14 +316,14 @@ def test_reevaluate_upserts_single_row_per_field(client, storage_root, monkeypat
     assert len(fields) == 11
 
 
-def test_reevaluate_preserves_human_review(client, storage_root, monkeypatch):
-    application_id = add_scanned_statement(client, storage_root, monkeypatch)
-    flagged = evaluate(client, application_id)["fields_requiring_review"]
+def test_reevaluate_preserves_human_review(authenticated_client, storage_root, monkeypatch):
+    application_id = add_scanned_statement(authenticated_client, storage_root, monkeypatch)
+    flagged = evaluate(authenticated_client, application_id)["fields_requiring_review"]
     decisions = _verified_decisions(flagged, {"account_number"})
     decisions.append(("account_number", "CORRECTED", "9999999999"))
-    review(client, application_id, _decisions(decisions))
+    review(authenticated_client, application_id, _decisions(decisions))
 
-    re_evaluated = evaluate(client, application_id)
+    re_evaluated = evaluate(authenticated_client, application_id)
 
     assert re_evaluated["processing_status"] == "READY_FOR_NORMALIZATION"
     assert re_evaluated["fields_requiring_review"] == []
@@ -339,12 +339,12 @@ def test_reevaluate_preserves_human_review(client, storage_root, monkeypatch):
 # --- Threshold boundary ------------------------------------------------------
 
 
-def test_threshold_boundary_uses_settings(client, storage_root, monkeypatch):
+def test_threshold_boundary_uses_settings(authenticated_client, storage_root, monkeypatch):
     settings = get_settings()
     monkeypatch.setattr(settings, "confidence_threshold", 0.84)
-    application_id = add_scanned_statement(client, storage_root, monkeypatch)
+    application_id = add_scanned_statement(authenticated_client, storage_root, monkeypatch)
 
-    result = evaluate(client, application_id)
+    result = evaluate(authenticated_client, application_id)
 
     assert result["threshold"] == 0.84
     assert result["processing_status"] == "READY_FOR_NORMALIZATION"
@@ -353,24 +353,24 @@ def test_threshold_boundary_uses_settings(client, storage_root, monkeypatch):
 # --- Error paths -------------------------------------------------------------
 
 
-def test_evaluate_application_not_found(client):
-    response = client.post(f"{API}/applications/999999{EVALUATE_URL}")
+def test_evaluate_application_not_found(authenticated_client):
+    response = authenticated_client.post(f"{API}/applications/999999{EVALUATE_URL}")
     assert response.status_code == 404
     assert response.json()["detail"] == "Application not found"
 
 
-def test_evaluate_no_analysis_results(client, storage_root):
-    application_id = create_application(client)
-    response = client.post(f"{API}/applications/{application_id}{EVALUATE_URL}")
+def test_evaluate_no_analysis_results(authenticated_client, storage_root):
+    application_id = create_application(authenticated_client)
+    response = authenticated_client.post(f"{API}/applications/{application_id}{EVALUATE_URL}")
     assert response.status_code == 422
     assert "analysis" in response.json()["detail"].lower()
 
 
-def test_review_after_ready_evaluation_conflicts(client, storage_root):
-    application_id = add_digital_statement(client, storage_root)
-    evaluate(client, application_id)
+def test_review_after_ready_evaluation_conflicts(authenticated_client, storage_root):
+    application_id = add_digital_statement(authenticated_client, storage_root)
+    evaluate(authenticated_client, application_id)
 
-    response = client.post(
+    response = authenticated_client.post(
         f"{API}/applications/{application_id}{REVIEW_URL}",
         json={
             "reviewer_name": "reviewer",
@@ -381,9 +381,9 @@ def test_review_after_ready_evaluation_conflicts(client, storage_root):
     assert "already" in response.json()["detail"]
 
 
-def test_review_without_evaluation_rejected(client, storage_root):
-    application_id = add_digital_statement(client, storage_root)
-    response = client.post(
+def test_review_without_evaluation_rejected(authenticated_client, storage_root):
+    application_id = add_digital_statement(authenticated_client, storage_root)
+    response = authenticated_client.post(
         f"{API}/applications/{application_id}{REVIEW_URL}",
         json={
             "reviewer_name": "reviewer",
@@ -393,11 +393,11 @@ def test_review_without_evaluation_rejected(client, storage_root):
     assert response.status_code == 422
 
 
-def test_review_unknown_field_rejected(client, storage_root, monkeypatch):
-    application_id = add_scanned_statement(client, storage_root, monkeypatch)
-    evaluate(client, application_id)
+def test_review_unknown_field_rejected(authenticated_client, storage_root, monkeypatch):
+    application_id = add_scanned_statement(authenticated_client, storage_root, monkeypatch)
+    evaluate(authenticated_client, application_id)
 
-    response = client.post(
+    response = authenticated_client.post(
         f"{API}/applications/{application_id}{REVIEW_URL}",
         json={
             "reviewer_name": "reviewer",
@@ -408,15 +408,15 @@ def test_review_unknown_field_rejected(client, storage_root, monkeypatch):
     assert "not flagged" in response.json()["detail"]
 
 
-def test_review_missing_field_rejected(client, storage_root, monkeypatch):
-    application_id = add_scanned_statement(client, storage_root, monkeypatch)
-    flagged = evaluate(client, application_id)["fields_requiring_review"]
+def test_review_missing_field_rejected(authenticated_client, storage_root, monkeypatch):
+    application_id = add_scanned_statement(authenticated_client, storage_root, monkeypatch)
+    flagged = evaluate(authenticated_client, application_id)["fields_requiring_review"]
     decisions = [
         (field["field_name"], "VERIFIED", None)
         for field in flagged
         if field["field_name"] != "iban"
     ]
-    response = client.post(
+    response = authenticated_client.post(
         f"{API}/applications/{application_id}{REVIEW_URL}",
         json={"reviewer_name": "reviewer", "decisions": _decisions(decisions)},
     )
@@ -424,13 +424,13 @@ def test_review_missing_field_rejected(client, storage_root, monkeypatch):
     assert "missing decisions" in response.json()["detail"].lower()
 
 
-def test_review_corrected_without_value_rejected(client, storage_root, monkeypatch):
-    application_id = add_scanned_statement(client, storage_root, monkeypatch)
-    flagged = evaluate(client, application_id)["fields_requiring_review"]
+def test_review_corrected_without_value_rejected(authenticated_client, storage_root, monkeypatch):
+    application_id = add_scanned_statement(authenticated_client, storage_root, monkeypatch)
+    flagged = evaluate(authenticated_client, application_id)["fields_requiring_review"]
     decisions = _verified_decisions(flagged, {"iban"})
     decisions.append(("iban", "CORRECTED", None))
 
-    response = client.post(
+    response = authenticated_client.post(
         f"{API}/applications/{application_id}{REVIEW_URL}",
         json={"reviewer_name": "reviewer", "decisions": _decisions(decisions)},
     )
@@ -438,15 +438,15 @@ def test_review_corrected_without_value_rejected(client, storage_root, monkeypat
     assert "corrected value" in response.json()["detail"].lower()
 
 
-def test_review_already_applied_conflict(client, storage_root, monkeypatch):
-    application_id = add_scanned_statement(client, storage_root, monkeypatch)
-    flagged = evaluate(client, application_id)["fields_requiring_review"]
+def test_review_already_applied_conflict(authenticated_client, storage_root, monkeypatch):
+    application_id = add_scanned_statement(authenticated_client, storage_root, monkeypatch)
+    flagged = evaluate(authenticated_client, application_id)["fields_requiring_review"]
     decisions = [
         (field["field_name"], "VERIFIED", None) for field in flagged
     ]
-    review(client, application_id, _decisions(decisions))
+    review(authenticated_client, application_id, _decisions(decisions))
 
-    response = client.post(
+    response = authenticated_client.post(
         f"{API}/applications/{application_id}{REVIEW_URL}",
         json={
             "reviewer_name": "reviewer",
@@ -459,13 +459,13 @@ def test_review_already_applied_conflict(client, storage_root, monkeypatch):
 # --- Persistence & audit -----------------------------------------------------
 
 
-def test_audit_log_records_full_flow(client, storage_root, monkeypatch):
-    application_id = add_scanned_statement(client, storage_root, monkeypatch)
-    evaluate(client, application_id)
-    flagged = evaluate(client, application_id)["fields_requiring_review"]
+def test_audit_log_records_full_flow(authenticated_client, storage_root, monkeypatch):
+    application_id = add_scanned_statement(authenticated_client, storage_root, monkeypatch)
+    evaluate(authenticated_client, application_id)
+    flagged = evaluate(authenticated_client, application_id)["fields_requiring_review"]
     decisions = _verified_decisions(flagged, {"iban"})
     decisions.append(("iban", "CANNOT_VERIFY", None))
-    review(client, application_id, _decisions(decisions))
+    review(authenticated_client, application_id, _decisions(decisions))
 
     actions = audit_actions(application_id)
     assert actions.count("confidence.evaluated") == 2

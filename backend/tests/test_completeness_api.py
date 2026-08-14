@@ -91,11 +91,11 @@ def verify(client, application_id: int, *, method: str = "get"):
 # --- Complete application ---------------------------------------------------
 
 
-def test_complete_application(client):
-    application_id = create_application(client)
+def test_complete_application(authenticated_client):
+    application_id = create_application(authenticated_client)
     add_required_documents(application_id)
 
-    report = verify(client, application_id)
+    report = verify(authenticated_client, application_id)
 
     assert report["application_id"] == application_id
     assert report["status"] == "COMPLETE"
@@ -112,14 +112,14 @@ def test_complete_application(client):
 # --- Missing documents ------------------------------------------------------
 
 
-def test_missing_required_document(client):
-    application_id = create_application(client)
+def test_missing_required_document(authenticated_client):
+    application_id = create_application(authenticated_client)
     missing_type = REQUIRED[0]
     for document_type in REQUIRED:
         if document_type != missing_type:
             insert_document(application_id, document_type)
 
-    report = verify(client, application_id)
+    report = verify(authenticated_client, application_id)
 
     assert report["status"] == "INCOMPLETE"
     assert report["missing_documents"] == [missing_type.value]
@@ -128,12 +128,12 @@ def test_missing_required_document(client):
     assert report["unexpected_documents"] == []
 
 
-def test_multiple_missing_documents(client):
-    application_id = create_application(client)
+def test_multiple_missing_documents(authenticated_client):
+    application_id = create_application(authenticated_client)
     for document_type in REQUIRED[2:]:
         insert_document(application_id, document_type)
 
-    report = verify(client, application_id)
+    report = verify(authenticated_client, application_id)
 
     assert report["status"] == "INCOMPLETE"
     assert set(report["missing_documents"]) == {
@@ -143,10 +143,10 @@ def test_multiple_missing_documents(client):
     assert report["completion_percentage"] == round(100.0 * 5 / 7, 2)
 
 
-def test_empty_application(client):
-    application_id = create_application(client)
+def test_empty_application(authenticated_client):
+    application_id = create_application(authenticated_client)
 
-    report = verify(client, application_id)
+    report = verify(authenticated_client, application_id)
 
     assert report["status"] == "INCOMPLETE"
     assert report["completion_percentage"] == 0.0
@@ -157,12 +157,12 @@ def test_empty_application(client):
 # --- Duplicates -------------------------------------------------------------
 
 
-def test_duplicate_mandatory_document(client):
-    application_id = create_application(client)
+def test_duplicate_mandatory_document(authenticated_client):
+    application_id = create_application(authenticated_client)
     add_required_documents(application_id)
     insert_document(application_id, DocumentType.TRIPARTITE_AGREEMENT, "scan2.pdf")
 
-    report = verify(client, application_id)
+    report = verify(authenticated_client, application_id)
 
     assert report["status"] == "DUPLICATE_DOCUMENTS"
     assert report["duplicate_documents"] == [
@@ -174,13 +174,13 @@ def test_duplicate_mandatory_document(client):
     assert report["missing_documents"] == []
 
 
-def test_duplicate_optional_document(client):
-    application_id = create_application(client)
+def test_duplicate_optional_document(authenticated_client):
+    application_id = create_application(authenticated_client)
     add_required_documents(application_id)
     insert_document(application_id, DocumentType.BILATERAL_AGREEMENT)
     insert_document(application_id, DocumentType.BILATERAL_AGREEMENT, "bilateral2.pdf")
 
-    report = verify(client, application_id)
+    report = verify(authenticated_client, application_id)
 
     assert report["status"] == "DUPLICATE_DOCUMENTS"
     assert report["duplicate_documents"] == [
@@ -191,8 +191,8 @@ def test_duplicate_optional_document(client):
     ]
 
 
-def test_duplicate_takes_precedence_over_incomplete(client):
-    application_id = create_application(client)
+def test_duplicate_takes_precedence_over_incomplete(authenticated_client):
+    application_id = create_application(authenticated_client)
     missing_type = REQUIRED[0]
     for document_type in REQUIRED:
         if document_type != missing_type:
@@ -200,7 +200,7 @@ def test_duplicate_takes_precedence_over_incomplete(client):
     insert_document(application_id, DocumentType.TRIPARTITE_AGREEMENT)
     insert_document(application_id, DocumentType.TRIPARTITE_AGREEMENT, "scan2.pdf")
 
-    report = verify(client, application_id)
+    report = verify(authenticated_client, application_id)
 
     assert report["status"] == "DUPLICATE_DOCUMENTS"
     assert report["missing_documents"] == [missing_type.value]
@@ -215,12 +215,12 @@ def test_duplicate_takes_precedence_over_incomplete(client):
 # --- Optional documents -----------------------------------------------------
 
 
-def test_optional_documents_only(client):
-    application_id = create_application(client)
+def test_optional_documents_only(authenticated_client):
+    application_id = create_application(authenticated_client)
     for document_type in OPTIONAL:
         insert_document(application_id, document_type)
 
-    report = verify(client, application_id)
+    report = verify(authenticated_client, application_id)
 
     assert report["status"] == "INCOMPLETE"
     assert report["completion_percentage"] == 0.0
@@ -232,13 +232,13 @@ def test_optional_documents_only(client):
     }
 
 
-def test_optional_documents_with_complete_set(client):
-    application_id = create_application(client)
+def test_optional_documents_with_complete_set(authenticated_client):
+    application_id = create_application(authenticated_client)
     add_required_documents(application_id)
     insert_document(application_id, DocumentType.BILATERAL_AGREEMENT)
     insert_document(application_id, DocumentType.OTHER_SUPPORTING_DOCUMENT)
 
-    report = verify(client, application_id)
+    report = verify(authenticated_client, application_id)
 
     assert report["status"] == "COMPLETE"
     assert len(report["uploaded_documents"]) == 9
@@ -247,7 +247,7 @@ def test_optional_documents_with_complete_set(client):
 # --- Unexpected documents ---------------------------------------------------
 
 
-def test_unexpected_document_type(client, monkeypatch):
+def test_unexpected_document_type(authenticated_client, monkeypatch):
     monkeypatch.setattr(
         "app.completeness.services.OPTIONAL_DOCUMENT_TYPES",
         frozenset({DocumentType.OTHER_SUPPORTING_DOCUMENT}),
@@ -256,11 +256,11 @@ def test_unexpected_document_type(client, monkeypatch):
         "app.completeness.services.ALL_CONFIGURED_DOCUMENT_TYPES",
         frozenset(REQUIRED_DOCUMENT_TYPES) | frozenset({DocumentType.OTHER_SUPPORTING_DOCUMENT}),
     )
-    application_id = create_application(client)
+    application_id = create_application(authenticated_client)
     add_required_documents(application_id)
     insert_document(application_id, DocumentType.BILATERAL_AGREEMENT)
 
-    report = verify(client, application_id)
+    report = verify(authenticated_client, application_id)
 
     assert report["status"] == "INVALID_DOCUMENT_SET"
     assert report["unexpected_documents"] == [
@@ -272,7 +272,7 @@ def test_unexpected_document_type(client, monkeypatch):
     assert report["missing_documents"] == []
 
 
-def test_invalid_document_set_takes_precedence(client, monkeypatch):
+def test_invalid_document_set_takes_precedence(authenticated_client, monkeypatch):
     monkeypatch.setattr(
         "app.completeness.services.OPTIONAL_DOCUMENT_TYPES",
         frozenset({DocumentType.OTHER_SUPPORTING_DOCUMENT}),
@@ -281,12 +281,12 @@ def test_invalid_document_set_takes_precedence(client, monkeypatch):
         "app.completeness.services.ALL_CONFIGURED_DOCUMENT_TYPES",
         frozenset(REQUIRED_DOCUMENT_TYPES) | frozenset({DocumentType.OTHER_SUPPORTING_DOCUMENT}),
     )
-    application_id = create_application(client)
+    application_id = create_application(authenticated_client)
     add_required_documents(application_id)
     insert_document(application_id, DocumentType.TRIPARTITE_AGREEMENT, "scan2.pdf")
     insert_document(application_id, DocumentType.BILATERAL_AGREEMENT)
 
-    report = verify(client, application_id)
+    report = verify(authenticated_client, application_id)
 
     assert report["status"] == "INVALID_DOCUMENT_SET"
     assert report["duplicate_documents"] == [
@@ -300,9 +300,9 @@ def test_invalid_document_set_takes_precedence(client, monkeypatch):
 # --- Application not found --------------------------------------------------
 
 
-def test_application_not_found(client):
+def test_application_not_found(authenticated_client):
     for method in ("get", "post"):
-        response = client.request(
+        response = authenticated_client.request(
             method,
             f"{API}/applications/999999/completeness"
             + ("/verify" if method == "post" else ""),
@@ -314,12 +314,12 @@ def test_application_not_found(client):
 # --- Endpoint behaviour -----------------------------------------------------
 
 
-def test_get_and_verify_return_same_report(client):
-    application_id = create_application(client)
+def test_get_and_verify_return_same_report(authenticated_client):
+    application_id = create_application(authenticated_client)
     add_required_documents(application_id)
 
-    get_report = verify(client, application_id, method="get")
-    post_report = verify(client, application_id, method="post")
+    get_report = verify(authenticated_client, application_id, method="get")
+    post_report = verify(authenticated_client, application_id, method="post")
 
     for field in (
         "application_id",
@@ -333,11 +333,11 @@ def test_get_and_verify_return_same_report(client):
         assert get_report[field] == post_report[field], field
 
 
-def test_uploaded_documents_expose_no_storage_path(client):
-    application_id = create_application(client)
+def test_uploaded_documents_expose_no_storage_path(authenticated_client):
+    application_id = create_application(authenticated_client)
     insert_document(application_id, DocumentType.TRIPARTITE_AGREEMENT)
 
-    report = verify(client, application_id)
+    report = verify(authenticated_client, application_id)
 
     assert "stored_file_path" not in report["uploaded_documents"][0]
 
@@ -345,19 +345,19 @@ def test_uploaded_documents_expose_no_storage_path(client):
 # --- Configuration ----------------------------------------------------------
 
 
-def test_invalid_configuration_raises(client, monkeypatch):
+def test_invalid_configuration_raises(authenticated_client, monkeypatch):
     monkeypatch.setattr(
         "app.completeness.validators.REQUIRED_DOCUMENT_TYPES",
         frozenset(),
     )
 
-    response = client.get(f"{API}/applications/1/completeness")
+    response = authenticated_client.get(f"{API}/applications/1/completeness")
 
     assert response.status_code == 500
     assert "must be configured" in response.json()["detail"]
 
 
-def test_overlapping_configuration_raises(client, monkeypatch):
+def test_overlapping_configuration_raises(authenticated_client, monkeypatch):
     monkeypatch.setattr(
         "app.completeness.validators.REQUIRED_DOCUMENT_TYPES",
         frozenset(
@@ -365,7 +365,7 @@ def test_overlapping_configuration_raises(client, monkeypatch):
         ),
     )
 
-    response = client.get(f"{API}/applications/1/completeness")
+    response = authenticated_client.get(f"{API}/applications/1/completeness")
 
     assert response.status_code == 500
     assert "both required and optional" in response.json()["detail"]

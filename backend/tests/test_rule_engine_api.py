@@ -118,12 +118,12 @@ def document_ids_by_type(application_id: int) -> dict[str, int]:
 # --- Full chain ---------------------------------------------------------------
 
 
-def test_validate_digital_statement_full_chain(client, storage_root):
-    application_id = add_digital_statement(client, storage_root)
-    evaluate(client, application_id)
-    normalize(client, application_id)
+def test_validate_digital_statement_full_chain(authenticated_client, storage_root):
+    application_id = add_digital_statement(authenticated_client, storage_root)
+    evaluate(authenticated_client, application_id)
+    normalize(authenticated_client, application_id)
 
-    result = validate(client, application_id)
+    result = validate(authenticated_client, application_id)
 
     assert result["application_id"] == application_id
     assert result["rule_engine_version"] == RULE_ENGINE_VERSION
@@ -153,13 +153,13 @@ def test_validate_digital_statement_full_chain(client, storage_root):
     assert result["validation_status"] == "FAIL"
 
 
-def test_validate_persists_rule_results(client, storage_root):
-    application_id = add_digital_statement(client, storage_root)
-    evaluate(client, application_id)
-    normalize(client, application_id)
-    validate(client, application_id)
+def test_validate_persists_rule_results(authenticated_client, storage_root):
+    application_id = add_digital_statement(authenticated_client, storage_root)
+    evaluate(authenticated_client, application_id)
+    normalize(authenticated_client, application_id)
+    validate(authenticated_client, application_id)
 
-    stored = get_validation_results(client, application_id)
+    stored = get_validation_results(authenticated_client, application_id)
 
     assert stored["application_id"] == application_id
     assert stored["total"] == 50
@@ -173,15 +173,15 @@ def test_validate_persists_rule_results(client, storage_root):
     assert by_rule["DOC_AMC_PRESENT"]["related_document_ids"]
 
 
-def test_validate_is_idempotent_in_storage(client, storage_root):
-    application_id = add_digital_statement(client, storage_root)
-    evaluate(client, application_id)
-    normalize(client, application_id)
+def test_validate_is_idempotent_in_storage(authenticated_client, storage_root):
+    application_id = add_digital_statement(authenticated_client, storage_root)
+    evaluate(authenticated_client, application_id)
+    normalize(authenticated_client, application_id)
 
-    validate(client, application_id)
-    first = get_validation_results(client, application_id)
-    validate(client, application_id)
-    second = get_validation_results(client, application_id)
+    validate(authenticated_client, application_id)
+    first = get_validation_results(authenticated_client, application_id)
+    validate(authenticated_client, application_id)
+    second = get_validation_results(authenticated_client, application_id)
 
     assert first["total"] == second["total"] == 50
     assert [item["rule_id"] for item in first["results"]] == [
@@ -189,40 +189,40 @@ def test_validate_is_idempotent_in_storage(client, storage_root):
     ]
 
 
-def test_validate_is_audited(client, storage_root):
-    application_id = add_digital_statement(client, storage_root)
-    evaluate(client, application_id)
-    normalize(client, application_id)
-    validate(client, application_id)
+def test_validate_is_audited(authenticated_client, storage_root):
+    application_id = add_digital_statement(authenticated_client, storage_root)
+    evaluate(authenticated_client, application_id)
+    normalize(authenticated_client, application_id)
+    validate(authenticated_client, application_id)
 
     actions = audit_actions(application_id)
     assert actions.count("rule_engine.validated") == 1
 
 
-def test_get_validation_results_excludes_technical_rows(client, storage_root):
-    application_id = create_application(client)
+def test_get_validation_results_excludes_technical_rows(authenticated_client, storage_root):
+    application_id = create_application(authenticated_client)
     add_digital_pdf(storage_root, application_id, BANK_STATEMENT_TEXT)
-    run_validation(client, application_id)
-    run_processing(client, application_id)
-    analyze_documents(client, application_id)
-    evaluate(client, application_id)
-    normalize(client, application_id)
-    validate(client, application_id)
+    run_validation(authenticated_client, application_id)
+    run_processing(authenticated_client, application_id)
+    analyze_documents(authenticated_client, application_id)
+    evaluate(authenticated_client, application_id)
+    normalize(authenticated_client, application_id)
+    validate(authenticated_client, application_id)
 
-    stored = get_validation_results(client, application_id)
+    stored = get_validation_results(authenticated_client, application_id)
     assert stored["total"] == 50
     assert all(
         item["rule_category"] != "technical_validation" for item in stored["results"]
     )
 
 
-def test_get_validation_results_filters_by_category(client, storage_root):
-    application_id = add_digital_statement(client, storage_root)
-    evaluate(client, application_id)
-    normalize(client, application_id)
-    validate(client, application_id)
+def test_get_validation_results_filters_by_category(authenticated_client, storage_root):
+    application_id = add_digital_statement(authenticated_client, storage_root)
+    evaluate(authenticated_client, application_id)
+    normalize(authenticated_client, application_id)
+    validate(authenticated_client, application_id)
 
-    stored = get_validation_results(client, application_id, category="visual")
+    stored = get_validation_results(authenticated_client, application_id, category="visual")
 
     assert stored["total"] == 11
     assert all(item["rule_category"] == "visual" for item in stored["results"])
@@ -232,29 +232,29 @@ def test_get_validation_results_filters_by_category(client, storage_root):
 # --- Visual detections -------------------------------------------------------
 
 
-def test_validate_visual_rules_pass_with_detections(client, storage_root):
-    application_id = add_digital_statement(client, storage_root)
-    evaluate(client, application_id)
-    normalize(client, application_id)
+def test_validate_visual_rules_pass_with_detections(authenticated_client, storage_root):
+    application_id = add_digital_statement(authenticated_client, storage_root)
+    evaluate(authenticated_client, application_id)
+    normalize(authenticated_client, application_id)
     amc_id = document_ids_by_type(application_id)["ACCOUNT_MAINTENANCE_CERTIFICATE"]
     add_visual_detection(document_id=amc_id, detection_type="SIGNATURE", is_present=True)
     add_visual_detection(document_id=amc_id, detection_type="STAMP", is_present=True)
 
-    result = validate(client, application_id)
+    result = validate(authenticated_client, application_id)
 
     by_rule = {item["rule_id"]: item for item in result["results"]}
     assert by_rule["VIS_SIGNATURE_AMC"]["status"] == "PASS"
     assert by_rule["VIS_STAMP_AMC"]["status"] == "PASS"
 
 
-def test_validate_visual_rules_fail_when_absent(client, storage_root):
-    application_id = add_digital_statement(client, storage_root)
-    evaluate(client, application_id)
-    normalize(client, application_id)
+def test_validate_visual_rules_fail_when_absent(authenticated_client, storage_root):
+    application_id = add_digital_statement(authenticated_client, storage_root)
+    evaluate(authenticated_client, application_id)
+    normalize(authenticated_client, application_id)
     amc_id = document_ids_by_type(application_id)["ACCOUNT_MAINTENANCE_CERTIFICATE"]
     add_visual_detection(document_id=amc_id, detection_type="SIGNATURE", is_present=False)
 
-    result = validate(client, application_id)
+    result = validate(authenticated_client, application_id)
 
     by_rule = {item["rule_id"]: item for item in result["results"]}
     assert by_rule["VIS_SIGNATURE_AMC"]["status"] == "FAIL"
@@ -264,30 +264,30 @@ def test_validate_visual_rules_fail_when_absent(client, storage_root):
 # --- Cross-document consistency ----------------------------------------------
 
 
-def test_validate_cross_document_rules_pass(client, storage_root):
-    application_id = create_application(client)
+def test_validate_cross_document_rules_pass(authenticated_client, storage_root):
+    application_id = create_application(authenticated_client)
     add_statement_with_type(
-        client,
+        authenticated_client,
         storage_root,
         application_id,
         document_type=DocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
     )
     add_statement_with_type(
-        client,
+        authenticated_client,
         storage_root,
         application_id,
         document_type=DocumentType.BILATERAL_AGREEMENT,
     )
     add_statement_with_type(
-        client,
+        authenticated_client,
         storage_root,
         application_id,
         document_type=DocumentType.TRIPARTITE_AGREEMENT,
     )
-    evaluate(client, application_id)
-    normalize(client, application_id)
+    evaluate(authenticated_client, application_id)
+    normalize(authenticated_client, application_id)
 
-    result = validate(client, application_id)
+    result = validate(authenticated_client, application_id)
 
     by_rule = {item["rule_id"]: item for item in result["results"]}
     assert by_rule["CROSS_ACCOUNT_HOLDER_MATCH"]["status"] == "PASS"
@@ -299,31 +299,31 @@ def test_validate_cross_document_rules_pass(client, storage_root):
     assert by_rule["DOC_TRIPARTITE_PRESENT"]["status"] == "PASS"
 
 
-def test_validate_cross_document_rules_fail_on_mismatch(client, storage_root):
-    application_id = create_application(client)
+def test_validate_cross_document_rules_fail_on_mismatch(authenticated_client, storage_root):
+    application_id = create_application(authenticated_client)
     add_statement_with_type(
-        client,
+        authenticated_client,
         storage_root,
         application_id,
         document_type=DocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
     )
     add_statement_with_type(
-        client,
+        authenticated_client,
         storage_root,
         application_id,
         document_type=DocumentType.BILATERAL_AGREEMENT,
     )
     add_statement_with_type(
-        client,
+        authenticated_client,
         storage_root,
         application_id,
         document_type=DocumentType.TRIPARTITE_AGREEMENT,
         text=MISMATCH_STATEMENT_TEXT,
     )
-    evaluate(client, application_id)
-    normalize(client, application_id)
+    evaluate(authenticated_client, application_id)
+    normalize(authenticated_client, application_id)
 
-    result = validate(client, application_id)
+    result = validate(authenticated_client, application_id)
 
     by_rule = {item["rule_id"]: item for item in result["results"]}
     assert by_rule["CROSS_ACCOUNT_HOLDER_MATCH"]["status"] == "FAIL"
@@ -334,10 +334,10 @@ def test_validate_cross_document_rules_fail_on_mismatch(client, storage_root):
 # --- Pipeline robustness -----------------------------------------------------
 
 
-def test_validate_runs_without_extracted_fields(client, storage_root):
-    application_id = create_application(client)
+def test_validate_runs_without_extracted_fields(authenticated_client, storage_root):
+    application_id = create_application(authenticated_client)
 
-    result = validate(client, application_id)
+    result = validate(authenticated_client, application_id)
 
     assert result["summary"]["total"] == 50
     assert result["validation_status"] == "FAIL"
@@ -346,23 +346,23 @@ def test_validate_runs_without_extracted_fields(client, storage_root):
     assert by_rule["FLD_IBAN_PRESENT"]["status"] == "FAIL"
 
 
-def test_validate_skipped_fields_warn(client, storage_root, monkeypatch):
-    application_id = add_scanned_statement(client, storage_root, monkeypatch)
-    flagged = evaluate(client, application_id)["fields_requiring_review"]
+def test_validate_skipped_fields_warn(authenticated_client, storage_root, monkeypatch):
+    application_id = add_scanned_statement(authenticated_client, storage_root, monkeypatch)
+    flagged = evaluate(authenticated_client, application_id)["fields_requiring_review"]
     decisions = [
         {"field_name": field["field_name"], "decision": "VERIFIED"}
         for field in flagged
         if field["field_name"] != "iban"
     ]
     decisions.append({"field_name": "iban", "decision": "CANNOT_VERIFY"})
-    review_response = client.post(
+    review_response = authenticated_client.post(
         f"{API}/applications/{application_id}/confidence/review",
         json={"reviewer_name": "reviewer", "decisions": decisions},
     )
     assert review_response.status_code == 200, review_response.text
-    normalize(client, application_id)
+    normalize(authenticated_client, application_id)
 
-    result = validate(client, application_id)
+    result = validate(authenticated_client, application_id)
 
     by_rule = {item["rule_id"]: item for item in result["results"]}
     assert by_rule["FLD_IBAN_PRESENT"]["status"] == "FAIL"
@@ -372,13 +372,13 @@ def test_validate_skipped_fields_warn(client, storage_root, monkeypatch):
 # --- Error paths -------------------------------------------------------------
 
 
-def test_validate_application_not_found(client):
-    response = client.post(f"{API}/applications/999999{VALIDATE_URL}")
+def test_validate_application_not_found(authenticated_client):
+    response = authenticated_client.post(f"{API}/applications/999999{VALIDATE_URL}")
     assert response.status_code == 404
     assert response.json()["detail"] == "Application not found"
 
 
-def test_get_validation_results_application_not_found(client):
-    response = client.get(f"{API}/applications/999999{VALIDATION_RESULTS_URL}")
+def test_get_validation_results_application_not_found(authenticated_client):
+    response = authenticated_client.get(f"{API}/applications/999999{VALIDATION_RESULTS_URL}")
     assert response.status_code == 404
     assert response.json()["detail"] == "Application not found"

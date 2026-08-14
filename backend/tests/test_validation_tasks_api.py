@@ -128,10 +128,10 @@ def add_validation_result(application_id: int) -> int:
 # --- Creation ---------------------------------------------------------------
 
 
-def test_create_task_creates_run_and_log(client):
-    application_id = create_application(client)
+def test_create_task_creates_run_and_log(authenticated_client):
+    application_id = create_application(authenticated_client)
 
-    response = create_task(client, application_id)
+    response = create_task(authenticated_client, application_id)
 
     task = response.json()
     assert task["status"] == "PENDING"
@@ -150,38 +150,38 @@ def test_create_task_creates_run_and_log(client):
     assert logs[0].action.value == "TASK_CREATED"
 
 
-def test_create_task_with_priority(client):
-    application_id = create_application(client)
+def test_create_task_with_priority(authenticated_client):
+    application_id = create_application(authenticated_client)
 
-    response = create_task(client, application_id, priority="URGENT")
+    response = create_task(authenticated_client, application_id, priority="URGENT")
 
     assert response.status_code == 201
     assert response.json()["priority"] == "URGENT"
 
 
-def test_create_task_application_not_found(client):
-    response = create_task(client, application_id=999999, expected_status=404)
+def test_create_task_application_not_found(authenticated_client):
+    response = create_task(authenticated_client, application_id=999999, expected_status=404)
 
     assert response.status_code == 404
     assert "Application not found" in response.json()["detail"]
 
 
-def test_create_task_rejects_active_task_conflict(client):
-    application_id = create_application(client)
-    create_task(client, application_id)
+def test_create_task_rejects_active_task_conflict(authenticated_client):
+    application_id = create_application(authenticated_client)
+    create_task(authenticated_client, application_id)
 
-    response = create_task(client, application_id, expected_status=409)
+    response = create_task(authenticated_client, application_id, expected_status=409)
 
     assert "active validation task" in response.json()["detail"]
 
 
-def test_create_task_revalidation_allowed_after_terminal(client):
-    application_id = create_application(client)
-    first = create_task(client, application_id).json()
-    start(client, first["id"])
-    complete(client, first["id"])
+def test_create_task_revalidation_allowed_after_terminal(authenticated_client):
+    application_id = create_application(authenticated_client)
+    first = create_task(authenticated_client, application_id).json()
+    start(authenticated_client, first["id"])
+    complete(authenticated_client, first["id"])
 
-    second = create_task(client, application_id).json()
+    second = create_task(authenticated_client, application_id).json()
 
     assert second["status"] == "PENDING"
     assert second["validation_run_id"] != first["validation_run_id"]
@@ -192,11 +192,11 @@ def test_create_task_revalidation_allowed_after_terminal(client):
 # --- Retrieval and listing --------------------------------------------------
 
 
-def test_get_task(client):
-    application_id = create_application(client)
-    task_id = create_task(client, application_id).json()["id"]
+def test_get_task(authenticated_client):
+    application_id = create_application(authenticated_client)
+    task_id = create_task(authenticated_client, application_id).json()["id"]
 
-    response = client.get(f"{API}/validation/tasks/{task_id}")
+    response = authenticated_client.get(f"{API}/validation/tasks/{task_id}")
 
     assert response.status_code == 200
     body = response.json()
@@ -204,21 +204,21 @@ def test_get_task(client):
     assert body["application_id"] == application_id
 
 
-def test_get_task_not_found(client):
-    response = client.get(f"{API}/validation/tasks/999999")
+def test_get_task_not_found(authenticated_client):
+    response = authenticated_client.get(f"{API}/validation/tasks/999999")
 
     assert response.status_code == 404
     assert "Validation task not found" in response.json()["detail"]
 
 
-def test_list_tasks_filter_and_paginate(client):
+def test_list_tasks_filter_and_paginate(authenticated_client):
     # One task per application: only one active task is allowed per
     # application, so the queue-wide listing is exercised across three
     # separate applications instead of three tasks on one.
-    ids = [create_task(client, create_application(client)).json()["id"] for _ in range(3)]
-    start(client, ids[0])
+    ids = [create_task(authenticated_client, create_application(authenticated_client)).json()["id"] for _ in range(3)]
+    start(authenticated_client, ids[0])
 
-    response = client.get(f"{API}/validation/tasks")
+    response = authenticated_client.get(f"{API}/validation/tasks")
 
     assert response.status_code == 200
     body = response.json()
@@ -227,21 +227,21 @@ def test_list_tasks_filter_and_paginate(client):
     assert body["limit"] == 50
     assert body["offset"] == 0
 
-    pending = client.get(
+    pending = authenticated_client.get(
         f"{API}/validation/tasks", params={"status": "PENDING"}
     ).json()
     assert pending["total"] == 2
     assert all(t["status"] == "PENDING" for t in pending["tasks"])
 
-    page = client.get(
+    page = authenticated_client.get(
         f"{API}/validation/tasks", params={"offset": 1, "limit": 1}
     ).json()
     assert page["total"] == 3
     assert len(page["tasks"]) == 1
 
 
-def test_list_tasks_rejects_invalid_status(client):
-    response = client.get(f"{API}/validation/tasks", params={"status": "BOGUS"})
+def test_list_tasks_rejects_invalid_status(authenticated_client):
+    response = authenticated_client.get(f"{API}/validation/tasks", params={"status": "BOGUS"})
 
     assert response.status_code == 422
 
@@ -249,11 +249,11 @@ def test_list_tasks_rejects_invalid_status(client):
 # --- State machine ----------------------------------------------------------
 
 
-def test_start_task(client):
-    application_id = create_application(client)
-    task_id = create_task(client, application_id).json()["id"]
+def test_start_task(authenticated_client):
+    application_id = create_application(authenticated_client)
+    task_id = create_task(authenticated_client, application_id).json()["id"]
 
-    response = start(client, task_id)
+    response = start(authenticated_client, task_id)
 
     assert response.status_code == 200
     body = response.json()
@@ -262,38 +262,38 @@ def test_start_task(client):
     assert stored_task(task_id).status is ValidationTaskStatus.IN_REVIEW
 
 
-def test_start_task_twice_conflicts(client):
-    application_id = create_application(client)
-    task_id = create_task(client, application_id).json()["id"]
-    start(client, task_id)
+def test_start_task_twice_conflicts(authenticated_client):
+    application_id = create_application(authenticated_client)
+    task_id = create_task(authenticated_client, application_id).json()["id"]
+    start(authenticated_client, task_id)
 
-    response = start(client, task_id)
+    response = start(authenticated_client, task_id)
 
     assert response.status_code == 409
 
 
-def test_start_task_not_found(client):
-    response = start(client, 999999)
+def test_start_task_not_found(authenticated_client):
+    response = start(authenticated_client, 999999)
 
     assert response.status_code == 404
 
 
-def test_complete_requires_started(client):
-    application_id = create_application(client)
-    task_id = create_task(client, application_id).json()["id"]
+def test_complete_requires_started(authenticated_client):
+    application_id = create_application(authenticated_client)
+    task_id = create_task(authenticated_client, application_id).json()["id"]
 
-    response = complete(client, task_id)
+    response = complete(authenticated_client, task_id)
 
     assert response.status_code == 400
     assert "not been started" in response.json()["detail"]
 
 
-def test_complete_flow(client):
-    application_id = create_application(client)
-    task_id = create_task(client, application_id).json()["id"]
-    start(client, task_id)
+def test_complete_flow(authenticated_client):
+    application_id = create_application(authenticated_client)
+    task_id = create_task(authenticated_client, application_id).json()["id"]
+    start(authenticated_client, task_id)
 
-    response = complete(client, task_id, comment="All checks reviewed")
+    response = complete(authenticated_client, task_id, comment="All checks reviewed")
 
     assert response.status_code == 200
     body = response.json()
@@ -305,33 +305,33 @@ def test_complete_flow(client):
     assert logs[-1].reason == "All checks reviewed"
 
 
-def test_complete_twice_conflicts(client):
-    application_id = create_application(client)
-    task_id = create_task(client, application_id).json()["id"]
-    start(client, task_id)
-    complete(client, task_id)
+def test_complete_twice_conflicts(authenticated_client):
+    application_id = create_application(authenticated_client)
+    task_id = create_task(authenticated_client, application_id).json()["id"]
+    start(authenticated_client, task_id)
+    complete(authenticated_client, task_id)
 
-    response = complete(client, task_id)
+    response = complete(authenticated_client, task_id)
 
     assert response.status_code == 409
 
 
-def test_reject_requires_reason(client):
-    application_id = create_application(client)
-    task_id = create_task(client, application_id).json()["id"]
-    start(client, task_id)
+def test_reject_requires_reason(authenticated_client):
+    application_id = create_application(authenticated_client)
+    task_id = create_task(authenticated_client, application_id).json()["id"]
+    start(authenticated_client, task_id)
 
-    response = reject(client, task_id, reason="")
+    response = reject(authenticated_client, task_id, reason="")
 
     assert response.status_code == 422
 
 
-def test_reject_flow(client):
-    application_id = create_application(client)
-    task_id = create_task(client, application_id).json()["id"]
-    start(client, task_id)
+def test_reject_flow(authenticated_client):
+    application_id = create_application(authenticated_client)
+    task_id = create_task(authenticated_client, application_id).json()["id"]
+    start(authenticated_client, task_id)
 
-    response = reject(client, task_id, reason="Missing signature")
+    response = reject(authenticated_client, task_id, reason="Missing signature")
 
     assert response.status_code == 200
     assert response.json()["status"] == "REJECTED"
@@ -340,12 +340,12 @@ def test_reject_flow(client):
     assert logs[-1].reason == "Missing signature"
 
 
-def test_request_correction_flow(client):
-    application_id = create_application(client)
-    task_id = create_task(client, application_id).json()["id"]
-    start(client, task_id)
+def test_request_correction_flow(authenticated_client):
+    application_id = create_application(authenticated_client)
+    task_id = create_task(authenticated_client, application_id).json()["id"]
+    start(authenticated_client, task_id)
 
-    response = request_correction(client, task_id, reason="Account number mismatch")
+    response = request_correction(authenticated_client, task_id, reason="Account number mismatch")
 
     assert response.status_code == 200
     assert response.json()["status"] == "NEEDS_CORRECTION"
@@ -354,12 +354,12 @@ def test_request_correction_flow(client):
     assert logs[-1].reason == "Account number mismatch"
 
 
-def test_request_correction_requires_reason(client):
-    application_id = create_application(client)
-    task_id = create_task(client, application_id).json()["id"]
-    start(client, task_id)
+def test_request_correction_requires_reason(authenticated_client):
+    application_id = create_application(authenticated_client)
+    task_id = create_task(authenticated_client, application_id).json()["id"]
+    start(authenticated_client, task_id)
 
-    response = request_correction(client, task_id, reason="   ")
+    response = request_correction(authenticated_client, task_id, reason="   ")
 
     assert response.status_code == 422
 
@@ -367,12 +367,12 @@ def test_request_correction_requires_reason(client):
 # --- Results ----------------------------------------------------------------
 
 
-def test_get_results_returns_stored_checks(client):
-    application_id = create_application(client)
-    task_id = create_task(client, application_id).json()["id"]
+def test_get_results_returns_stored_checks(authenticated_client):
+    application_id = create_application(authenticated_client)
+    task_id = create_task(authenticated_client, application_id).json()["id"]
     add_validation_result(application_id)
 
-    response = client.get(f"{API}/validation/tasks/{task_id}/results")
+    response = authenticated_client.get(f"{API}/validation/tasks/{task_id}/results")
 
     assert response.status_code == 200
     body = response.json()
@@ -382,17 +382,17 @@ def test_get_results_returns_stored_checks(client):
     assert result["status"] == "FAIL"
 
 
-def test_get_results_empty(client):
-    application_id = create_application(client)
-    task_id = create_task(client, application_id).json()["id"]
+def test_get_results_empty(authenticated_client):
+    application_id = create_application(authenticated_client)
+    task_id = create_task(authenticated_client, application_id).json()["id"]
 
-    response = client.get(f"{API}/validation/tasks/{task_id}/results")
+    response = authenticated_client.get(f"{API}/validation/tasks/{task_id}/results")
 
     assert response.status_code == 200
     assert response.json()["total"] == 0
 
 
-def test_get_results_task_not_found(client):
-    response = client.get(f"{API}/validation/tasks/999999/results")
+def test_get_results_task_not_found(authenticated_client):
+    response = authenticated_client.get(f"{API}/validation/tasks/999999/results")
 
     assert response.status_code == 404

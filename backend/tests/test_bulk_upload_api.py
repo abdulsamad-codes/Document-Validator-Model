@@ -115,25 +115,25 @@ def copy_numbers(application_id: int, doc_type: str) -> set[int]:
 # --- Successful bulk uploads -------------------------------------------------
 
 
-def test_bulk_upload_sets_application_name_from_filename(client):
-    application_id = create_application(client)
+def test_bulk_upload_sets_application_name_from_filename(authenticated_client):
+    application_id = create_application(authenticated_client)
     response = upload_bulk(
-        client,
+        authenticated_client,
         application_id,
         make_bulk_pdf(["TMA Khal Dir Lower onboarding documents"]),
         filename="TMA Khal Dir Lower.pdf",
     )
 
     assert response.status_code == 201, response.text
-    detail = client.get(f"{API}/applications/{application_id}").json()["application"]
+    detail = authenticated_client.get(f"{API}/applications/{application_id}").json()["application"]
     assert detail["name"] == "TMA Khal Dir Lower"
 
 
-def test_bulk_upload_success_with_repeated_copies(client, storage_root: Path):
+def test_bulk_upload_success_with_repeated_copies(authenticated_client, storage_root: Path):
     """Three same-type copies split into three queue-ready documents."""
-    application_id = create_application(client)
+    application_id = create_application(authenticated_client)
     response = upload_bulk(
-        client,
+        authenticated_client,
         application_id,
         make_bulk_pdf([
             "TRIPARTITE AGREEMENT\nCopy one.",
@@ -149,11 +149,11 @@ def test_bulk_upload_success_with_repeated_copies(client, storage_root: Path):
     assert body["documents"][0]["document_type"] == "BULK_UPLOAD"
 
 
-def test_bulk_upload_mixed_types(client):
+def test_bulk_upload_mixed_types(authenticated_client):
     """Distinct document types each persist with copy number 1."""
-    application_id = create_application(client)
+    application_id = create_application(authenticated_client)
     response = upload_bulk(
-        client,
+        authenticated_client,
         application_id,
         make_bulk_pdf([
             "TRIPARTITE AGREEMENT\nBody.",
@@ -168,11 +168,11 @@ def test_bulk_upload_mixed_types(client):
     assert items[0]["document"]["document_type"] == "BULK_UPLOAD"
 
 
-def test_bulk_upload_cnic_pair(client):
+def test_bulk_upload_cnic_pair(authenticated_client):
     """A CNIC front/back pair inside one PDF must not produce duplicate fronts."""
-    application_id = create_application(client)
+    application_id = create_application(authenticated_client)
     response = upload_bulk(
-        client,
+        authenticated_client,
         application_id,
         make_bulk_pdf([
             "NATIONAL IDENTITY CARD\nIdentity Number: 42101-0000000-0\nFather Name: Ali",
@@ -186,13 +186,13 @@ def test_bulk_upload_cnic_pair(client):
     assert items[0]["document"]["document_type"] == "BULK_UPLOAD"
 
 
-def test_bulk_upload_copy_numbers_continue_from_database(client):
+def test_bulk_upload_copy_numbers_continue_from_database(authenticated_client):
     """Bulk copies continue from existing persisted copy numbers, not batch-local."""
-    application_id = create_application(client)
-    assert upload_single(client, application_id, "TRIPARTITE_AGREEMENT", 1).status_code == 201
+    application_id = create_application(authenticated_client)
+    assert upload_single(authenticated_client, application_id, "TRIPARTITE_AGREEMENT", 1).status_code == 201
 
     response = upload_bulk(
-        client,
+        authenticated_client,
         application_id,
         make_bulk_pdf([
             "TRIPARTITE AGREEMENT\nCopy two of the bulk.",
@@ -206,15 +206,15 @@ def test_bulk_upload_copy_numbers_continue_from_database(client):
     assert items[0]["document"]["document_type"] == "BULK_UPLOAD"
 
 
-def test_bulk_upload_file_round_trip(client):
+def test_bulk_upload_file_round_trip(authenticated_client):
     """Every persisted split is a valid single-page PDF whose text matches."""
-    application_id = create_application(client)
+    application_id = create_application(authenticated_client)
     title_phrase_by_type = {
         "AUTHORITY_LETTER": "AUTHORITY LETTER",
         "BILATERAL_AGREEMENT": "BILATERAL AGREEMENT",
     }
     response = upload_bulk(
-        client,
+        authenticated_client,
         application_id,
         make_bulk_pdf([
             "AUTHORITY LETTER\nFrom the CEO.",
@@ -231,11 +231,11 @@ def test_bulk_upload_file_round_trip(client):
 # --- Capacity & slot enforcement --------------------------------------------
 
 
-def test_bulk_upload_capacity_overflow_rejected(client, storage_root: Path):
+def test_bulk_upload_capacity_overflow_rejected(authenticated_client, storage_root: Path):
     """More copies than MAX_COPIES_BY_DOCUMENT_TYPE must abort with 409 upfront."""
-    application_id = create_application(client)
+    application_id = create_application(authenticated_client)
     response = upload_bulk(
-        client,
+        authenticated_client,
         application_id,
         make_bulk_pdf([
             "1LINK APPLICATION FORM\nOne.",
@@ -248,13 +248,13 @@ def test_bulk_upload_capacity_overflow_rejected(client, storage_root: Path):
     assert response.status_code == 201, response.text
 
 
-def test_bulk_upload_existing_copy_consumes_capacity(client, storage_root: Path):
+def test_bulk_upload_existing_copy_consumes_capacity(authenticated_client, storage_root: Path):
     """Existing DB copies reduce the batch's remaining allowance."""
-    application_id = create_application(client)
-    assert upload_single(client, application_id, "ONE_LINK_LETTER", 1).status_code == 201
+    application_id = create_application(authenticated_client)
+    assert upload_single(authenticated_client, application_id, "ONE_LINK_LETTER", 1).status_code == 201
 
     response = upload_bulk(
-        client,
+        authenticated_client,
         application_id,
         make_bulk_pdf([
             "1LINK APPLICATION FORM\nOne.",
@@ -266,69 +266,69 @@ def test_bulk_upload_existing_copy_consumes_capacity(client, storage_root: Path)
     assert response.status_code == 201, response.text
 
 
-def test_bulk_upload_missing_application(client):
-    response = upload_bulk(client, 999999, make_bulk_pdf(["TRIPARTITE AGREEMENT\nBody."]))
+def test_bulk_upload_missing_application(authenticated_client):
+    response = upload_bulk(authenticated_client, 999999, make_bulk_pdf(["TRIPARTITE AGREEMENT\nBody."]))
     assert response.status_code == 404, response.text
 
 
-def test_bulk_upload_missing_file(client):
-    application_id = create_application(client)
-    response = client.post(f"{API}/applications/{application_id}/bulk-upload")
+def test_bulk_upload_missing_file(authenticated_client):
+    application_id = create_application(authenticated_client)
+    response = authenticated_client.post(f"{API}/applications/{application_id}/bulk-upload")
     assert response.status_code == 400, response.text
 
 
 # --- Validation failures ----------------------------------------------------
 
 
-def test_bulk_upload_malformed_pdf_returns_400(client, storage_root: Path):
-    application_id = create_application(client)
-    response = upload_bulk(client, application_id, b"%PDF-1.4\n%%EOF")
+def test_bulk_upload_malformed_pdf_returns_400(authenticated_client, storage_root: Path):
+    application_id = create_application(authenticated_client)
+    response = upload_bulk(authenticated_client, application_id, b"%PDF-1.4\n%%EOF")
 
     assert response.status_code == 400, response.text
     assert document_count(application_id) == 0
     assert stored_files(storage_root, application_id, "tripartite") == []
 
 
-def test_bulk_upload_non_pdf_bytes_returns_400(client):
-    application_id = create_application(client)
-    response = upload_bulk(client, application_id, b"this is definitely not a pdf")
+def test_bulk_upload_non_pdf_bytes_returns_400(authenticated_client):
+    application_id = create_application(authenticated_client)
+    response = upload_bulk(authenticated_client, application_id, b"this is definitely not a pdf")
 
     assert response.status_code == 400, response.text
     assert document_count(application_id) == 0
 
 
-def test_bulk_upload_empty_file_returns_400(client):
-    application_id = create_application(client)
-    response = upload_bulk(client, application_id, b"")
+def test_bulk_upload_empty_file_returns_400(authenticated_client):
+    application_id = create_application(authenticated_client)
+    response = upload_bulk(authenticated_client, application_id, b"")
 
     assert response.status_code == 400, response.text
     assert document_count(application_id) == 0
 
 
-def test_bulk_upload_zero_page_pdf_returns_400(client):
-    application_id = create_application(client)
-    response = upload_bulk(client, application_id, ZERO_PAGE_PDF)
+def test_bulk_upload_zero_page_pdf_returns_400(authenticated_client):
+    application_id = create_application(authenticated_client)
+    response = upload_bulk(authenticated_client, application_id, ZERO_PAGE_PDF)
 
     assert response.status_code == 400, response.text
     assert "no documents" in response.json()["detail"].lower()
     assert document_count(application_id) == 0
 
 
-def test_bulk_upload_oversized_returns_413(client, monkeypatch):
+def test_bulk_upload_oversized_returns_413(authenticated_client, monkeypatch):
     from app.core.config import get_settings
 
     monkeypatch.setattr(get_settings(), "max_upload_size_mb", 0)
-    application_id = create_application(client)
-    response = upload_bulk(client, application_id, make_bulk_pdf(["TRIPARTITE AGREEMENT\nBody."]))
+    application_id = create_application(authenticated_client)
+    response = upload_bulk(authenticated_client, application_id, make_bulk_pdf(["TRIPARTITE AGREEMENT\nBody."]))
 
     assert response.status_code == 413, response.text
     assert document_count(application_id) == 0
 
 
-def test_bulk_upload_invalid_extension_returns_400(client):
-    application_id = create_application(client)
+def test_bulk_upload_invalid_extension_returns_400(authenticated_client):
+    application_id = create_application(authenticated_client)
     response = upload_bulk(
-        client,
+        authenticated_client,
         application_id,
         make_bulk_pdf(["TRIPARTITE AGREEMENT\nBody."]),
         filename="package.txt",
@@ -338,22 +338,22 @@ def test_bulk_upload_invalid_extension_returns_400(client):
     assert document_count(application_id) == 0
 
 
-def test_bulk_upload_non_pdf_extension_returns_400(client):
-    application_id = create_application(client)
+def test_bulk_upload_non_pdf_extension_returns_400(authenticated_client):
+    application_id = create_application(authenticated_client)
     png_content = (
         b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"  # PNG magic bytes
         b"\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00"
     )
-    response = upload_bulk(client, application_id, png_content, filename="package.png")
+    response = upload_bulk(authenticated_client, application_id, png_content, filename="package.png")
 
     assert response.status_code == 400, response.text
     assert document_count(application_id) == 0
 
 
-def test_bulk_upload_declared_mime_mismatch_returns_400(client):
-    application_id = create_application(client)
+def test_bulk_upload_declared_mime_mismatch_returns_400(authenticated_client):
+    application_id = create_application(authenticated_client)
     response = upload_bulk(
-        client,
+        authenticated_client,
         application_id,
         make_bulk_pdf(["TRIPARTITE AGREEMENT\nBody."]),
         content_type="text/plain",
@@ -366,7 +366,7 @@ def test_bulk_upload_declared_mime_mismatch_returns_400(client):
 # --- Atomicity --------------------------------------------------------------
 
 
-def test_bulk_upload_atomic_rollback(client, storage_root: Path, monkeypatch):
+def test_bulk_upload_atomic_rollback(authenticated_client, storage_root: Path, monkeypatch):
     """A failure after the file is stored leaves no database row or orphaned file.
 
     Bulk upload now persists a single ``BULK_UPLOAD`` placeholder document and
@@ -374,7 +374,7 @@ def test_bulk_upload_atomic_rollback(client, storage_root: Path, monkeypatch):
     to roll back mid-persist any more, so this simulates the queue-enqueue
     step failing after the file has already been written to storage.
     """
-    application_id = create_application(client)
+    application_id = create_application(authenticated_client)
 
     def flaky_enqueue(*args, **kwargs):
         raise StorageException("simulated queue failure")
@@ -385,7 +385,7 @@ def test_bulk_upload_atomic_rollback(client, storage_root: Path, monkeypatch):
     )
 
     response = upload_bulk(
-        client,
+        authenticated_client,
         application_id,
         make_bulk_pdf(["TRIPARTITE AGREEMENT\nBody."]),
     )

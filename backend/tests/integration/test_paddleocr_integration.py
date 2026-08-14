@@ -26,6 +26,7 @@ from app.document_processing.constants import (
     ProcessingMethod,
 )
 from app.document_processing.processors import PaddleOCREngine
+from tests.test_bulk_queue import authenticate
 from tests.test_document_processing_api import (
     get_ocr_results,
     make_scanned_pdf_bytes,
@@ -126,6 +127,7 @@ def read_stored_rows(application_id: int) -> list:
 
 @pytest.mark.integration
 def test_digital_pdf_route_uses_pymupdf(client, storage_root, monkeypatch):
+    authenticate(client)
     application_id = create_application(client)
     add_document(
         storage_root,
@@ -153,6 +155,7 @@ def test_digital_pdf_route_uses_pymupdf(client, storage_root, monkeypatch):
 
 @pytest.mark.integration
 def test_scanned_pdf_route_uses_real_paddleocr(client, storage_root, monkeypatch):
+    authenticate(client)
     application_id = create_application(client)
     add_document(
         storage_root,
@@ -194,6 +197,7 @@ def test_scanned_pdf_route_uses_real_paddleocr(client, storage_root, monkeypatch
 
 @pytest.mark.integration
 def test_image_route_uses_real_paddleocr(client, storage_root, monkeypatch):
+    authenticate(client)
     application_id = create_application(client)
     add_document(
         storage_root,
@@ -230,6 +234,7 @@ def test_image_route_uses_real_paddleocr(client, storage_root, monkeypatch):
 def test_mixed_application_persists_one_ocr_row_per_document(
     client, storage_root, monkeypatch
 ):
+    authenticate(client)
     application_id = create_application(client)
     add_document(
         storage_root,
@@ -295,6 +300,7 @@ def test_processing_failure_writes_no_ocr_row(client, storage_root, monkeypatch)
     invariant under failure is what is under test. Everything else (validation,
     routing, persistence path) is the real production pipeline.
     """
+    authenticate(client)
     application_id = create_application(client)
     add_document(
         storage_root,

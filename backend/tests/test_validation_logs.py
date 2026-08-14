@@ -133,12 +133,12 @@ def stored_logs(task_id: int) -> list[ValidationLog]:
 # --- Retrieval --------------------------------------------------------------
 
 
-def test_get_task_logs(client):
-    application_id = create_application(client)
-    task_id = create_task(client, application_id)
-    start_task(client, task_id)
+def test_get_task_logs(authenticated_client):
+    application_id = create_application(authenticated_client)
+    task_id = create_task(authenticated_client, application_id)
+    start_task(authenticated_client, task_id)
 
-    response = client.get(f"{API}/validation/tasks/{task_id}/logs")
+    response = authenticated_client.get(f"{API}/validation/tasks/{task_id}/logs")
 
     assert response.status_code == 200
     body = response.json()
@@ -150,20 +150,20 @@ def test_get_task_logs(client):
     assert first["application_id"] == application_id
 
 
-def test_get_task_logs_not_found(client):
-    response = client.get(f"{API}/validation/tasks/999999/logs")
+def test_get_task_logs_not_found(authenticated_client):
+    response = authenticated_client.get(f"{API}/validation/tasks/999999/logs")
 
     assert response.status_code == 404
 
 
-def test_get_application_logs_across_runs(client):
-    application_id = create_application(client)
-    first = create_task(client, application_id)
-    start_task(client, first)
-    client.post(f"{API}/validation/tasks/{first}/complete", json={})
-    second = create_task(client, application_id)
+def test_get_application_logs_across_runs(authenticated_client):
+    application_id = create_application(authenticated_client)
+    first = create_task(authenticated_client, application_id)
+    start_task(authenticated_client, first)
+    authenticated_client.post(f"{API}/validation/tasks/{first}/complete", json={})
+    second = create_task(authenticated_client, application_id)
 
-    response = client.get(f"{API}/validation/applications/{application_id}/logs")
+    response = authenticated_client.get(f"{API}/validation/applications/{application_id}/logs")
 
     assert response.status_code == 200
     body = response.json()
@@ -172,29 +172,29 @@ def test_get_application_logs_across_runs(client):
     assert task_ids == {first, second}
 
 
-def test_get_application_logs_not_found(client):
-    response = client.get(f"{API}/validation/applications/999999/logs")
+def test_get_application_logs_not_found(authenticated_client):
+    response = authenticated_client.get(f"{API}/validation/applications/999999/logs")
 
     assert response.status_code == 404
 
 
-def test_logs_pagination(client):
+def test_logs_pagination(authenticated_client):
     # Starting an already-started task is an illegal transition (409), so the
     # six log rows come from one legitimate TASK_CREATED + TASK_STARTED plus
     # four separate FIELD_VERIFIED events instead of repeated start() calls.
-    application_id = create_application(client)
-    task_id = create_task(client, application_id)
-    start_task(client, task_id)
+    application_id = create_application(authenticated_client)
+    task_id = create_task(authenticated_client, application_id)
+    start_task(authenticated_client, task_id)
 
     for _ in range(4):
         field_id = make_extracted_field(application_id)
-        response = client.post(
+        response = authenticated_client.post(
             f"{API}/validation/fields/{field_id}/verify",
             json={"validation_task_id": task_id, "result": "CONFIRMED"},
         )
         assert response.status_code == 201, response.text
 
-    page = client.get(
+    page = authenticated_client.get(
         f"{API}/validation/tasks/{task_id}/logs", params={"limit": 2}
     ).json()
 
@@ -205,15 +205,15 @@ def test_logs_pagination(client):
 # --- Log immutability / accumulation ----------------------------------------
 
 
-def test_logs_accumulate_never_overwritten(client):
-    application_id = create_application(client)
-    task_id = create_task(client, application_id)
-    start_task(client, task_id)
+def test_logs_accumulate_never_overwritten(authenticated_client):
+    application_id = create_application(authenticated_client)
+    task_id = create_task(authenticated_client, application_id)
+    start_task(authenticated_client, task_id)
 
     before = stored_logs(task_id)
     assert [log.action.value for log in before] == ["TASK_CREATED", "TASK_STARTED"]
 
-    client.post(f"{API}/validation/tasks/{task_id}/complete", json={})
+    authenticated_client.post(f"{API}/validation/tasks/{task_id}/complete", json={})
     after = stored_logs(task_id)
 
     assert len(after) == 3
@@ -223,13 +223,13 @@ def test_logs_accumulate_never_overwritten(client):
 # --- Field verification / correction ---------------------------------------
 
 
-def test_field_correction_preserves_original_value(client):
-    application_id = create_application(client)
-    task_id = create_task(client, application_id)
-    start_task(client, task_id)
+def test_field_correction_preserves_original_value(authenticated_client):
+    application_id = create_application(authenticated_client)
+    task_id = create_task(authenticated_client, application_id)
+    start_task(authenticated_client, task_id)
     field_id = make_extracted_field(application_id, "account_number", "123456789")
 
-    response = client.post(
+    response = authenticated_client.post(
         f"{API}/validation/fields/{field_id}/correct",
         json={
             "validation_task_id": task_id,
@@ -249,13 +249,13 @@ def test_field_correction_preserves_original_value(client):
     assert log["reason"] == "OCR misread a digit"
 
 
-def test_field_verification_logs(client):
-    application_id = create_application(client)
-    task_id = create_task(client, application_id)
-    start_task(client, task_id)
+def test_field_verification_logs(authenticated_client):
+    application_id = create_application(authenticated_client)
+    task_id = create_task(authenticated_client, application_id)
+    start_task(authenticated_client, task_id)
     field_id = make_extracted_field(application_id, "ntn", "1234567")
 
-    response = client.post(
+    response = authenticated_client.post(
         f"{API}/validation/fields/{field_id}/verify",
         json={"validation_task_id": task_id, "result": "CONFIRMED"},
     )
@@ -267,12 +267,12 @@ def test_field_verification_logs(client):
     assert log["result"] == "CONFIRMED"
 
 
-def test_field_action_requires_review(client):
-    application_id = create_application(client)
-    task_id = create_task(client, application_id)
+def test_field_action_requires_review(authenticated_client):
+    application_id = create_application(authenticated_client)
+    task_id = create_task(authenticated_client, application_id)
     field_id = make_extracted_field(application_id)
 
-    response = client.post(
+    response = authenticated_client.post(
         f"{API}/validation/fields/{field_id}/verify",
         json={"validation_task_id": task_id, "result": "CONFIRMED"},
     )
@@ -281,12 +281,12 @@ def test_field_action_requires_review(client):
     assert "not been started" in response.json()["detail"]
 
 
-def test_field_action_field_not_found(client):
-    application_id = create_application(client)
-    task_id = create_task(client, application_id)
-    start_task(client, task_id)
+def test_field_action_field_not_found(authenticated_client):
+    application_id = create_application(authenticated_client)
+    task_id = create_task(authenticated_client, application_id)
+    start_task(authenticated_client, task_id)
 
-    response = client.post(
+    response = authenticated_client.post(
         f"{API}/validation/fields/999999/correct",
         json={"validation_task_id": task_id, "corrected_value": "x"},
     )
@@ -297,13 +297,13 @@ def test_field_action_field_not_found(client):
 # --- Signature / stamp evidence review -------------------------------------
 
 
-def test_signature_evidence_review(client):
-    application_id = create_application(client)
-    task_id = create_task(client, application_id)
-    start_task(client, task_id)
+def test_signature_evidence_review(authenticated_client):
+    application_id = create_application(authenticated_client)
+    task_id = create_task(authenticated_client, application_id)
+    start_task(authenticated_client, task_id)
     evidence_id = make_detection(application_id, "SIGNATURE", is_present=True)
 
-    response = client.post(
+    response = authenticated_client.post(
         f"{API}/validation/evidence/{evidence_id}/review",
         json={"validation_task_id": task_id, "result": "CONFIRMED"},
     )
@@ -316,13 +316,13 @@ def test_signature_evidence_review(client):
     assert log["result"] == "CONFIRMED"
 
 
-def test_stamp_evidence_review(client):
-    application_id = create_application(client)
-    task_id = create_task(client, application_id)
-    start_task(client, task_id)
+def test_stamp_evidence_review(authenticated_client):
+    application_id = create_application(authenticated_client)
+    task_id = create_task(authenticated_client, application_id)
+    start_task(authenticated_client, task_id)
     evidence_id = make_detection(application_id, "STAMP", is_present=False)
 
-    response = client.post(
+    response = authenticated_client.post(
         f"{API}/validation/evidence/{evidence_id}/review",
         json={
             "validation_task_id": task_id,
@@ -340,12 +340,12 @@ def test_stamp_evidence_review(client):
     assert log["reason"] == "Stamp is unclear"
 
 
-def test_evidence_review_requires_review(client):
-    application_id = create_application(client)
-    task_id = create_task(client, application_id)
+def test_evidence_review_requires_review(authenticated_client):
+    application_id = create_application(authenticated_client)
+    task_id = create_task(authenticated_client, application_id)
     evidence_id = make_detection(application_id, "SIGNATURE")
 
-    response = client.post(
+    response = authenticated_client.post(
         f"{API}/validation/evidence/{evidence_id}/review",
         json={"validation_task_id": task_id, "result": "CONFIRMED"},
     )
@@ -353,12 +353,12 @@ def test_evidence_review_requires_review(client):
     assert response.status_code == 400
 
 
-def test_evidence_review_not_found(client):
-    application_id = create_application(client)
-    task_id = create_task(client, application_id)
-    start_task(client, task_id)
+def test_evidence_review_not_found(authenticated_client):
+    application_id = create_application(authenticated_client)
+    task_id = create_task(authenticated_client, application_id)
+    start_task(authenticated_client, task_id)
 
-    response = client.post(
+    response = authenticated_client.post(
         f"{API}/validation/evidence/999999/review",
         json={"validation_task_id": task_id, "result": "CONFIRMED"},
     )

@@ -857,6 +857,7 @@ def test_bulk_upload_split_documents_are_enqueued_for_processing(client):
     use before it was caught. Exercises the real `DocumentProcessingService`
     (not a fake processor) so this path is actually covered.
     """
+    authenticate(client)
     application_id = create_application(client)
     response = upload_bulk(
         client,

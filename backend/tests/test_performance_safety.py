@@ -39,6 +39,7 @@ from app.document_processing.constants import (
 from app.document_processing.processors import OCRExtraction
 from app.document_processing.schemas import ProcessingOutcome
 from app.document_processing.services import DocumentProcessingService
+from tests.test_bulk_queue import authenticate
 from tests.test_document_processing_api import (
     FakeOCREngine,
     make_scanned_pdf_bytes,
@@ -170,6 +171,7 @@ def process_one_document(application_id: int, document_id: int):
 def test_digital_pdf_never_invokes_ocr_through_queue_worker(
     client, storage_root, monkeypatch
 ):
+    authenticate(client)
     application_id = create_application(client)
     add_document(
         storage_root,
@@ -197,6 +199,7 @@ def test_digital_pdf_never_invokes_ocr_through_queue_worker(
 
 
 def test_scanned_pdf_invokes_ocr_exactly_once_per_page(client, storage_root, monkeypatch):
+    authenticate(client)
     application_id = create_application(client)
     add_document(
         storage_root,
@@ -231,6 +234,7 @@ def test_scanned_pdf_invokes_ocr_exactly_once_per_page(client, storage_root, mon
 def test_queue_worker_processes_each_document_exactly_once(
     client, storage_root, monkeypatch
 ):
+    authenticate(client)
     application_id = create_application(client)
     add_document(
         storage_root,

@@ -139,8 +139,8 @@ def low_confidence_corrected(client, storage_root, monkeypatch) -> int:
 # --- Listing and pagination --------------------------------------------------
 
 
-def test_list_feedback_empty(client):
-    response = client.get(f"{API}{LIST_URL}")
+def test_list_feedback_empty(authenticated_client):
+    response = authenticated_client.get(f"{API}{LIST_URL}")
     assert response.status_code == 200
     body = response.json()
     assert body["total"] == 0
@@ -148,11 +148,11 @@ def test_list_feedback_empty(client):
     assert body["items"] == []
 
 
-def test_list_feedback_returns_all_entries_newest_first(client, storage_root):
-    application_id = build_single_statement_application(client, storage_root)
-    assert final_correct_review(client, application_id).status_code == 200
+def test_list_feedback_returns_all_entries_newest_first(authenticated_client, storage_root):
+    application_id = build_single_statement_application(authenticated_client, storage_root)
+    assert final_correct_review(authenticated_client, application_id).status_code == 200
 
-    response = client.get(f"{API}{LIST_URL}")
+    response = authenticated_client.get(f"{API}{LIST_URL}")
     assert response.status_code == 200
     body = response.json()
     assert body["total"] == 2
@@ -161,8 +161,8 @@ def test_list_feedback_returns_all_entries_newest_first(client, storage_root):
     assert recorded_ats == sorted(recorded_ats, reverse=True)
 
 
-def test_list_feedback_pagination(client, storage_root):
-    application_id = create_application(client)
+def test_list_feedback_pagination(authenticated_client, storage_root):
+    application_id = create_application(authenticated_client)
     insert_feedback(
         [
             {"field_name": f"field_{index}", "human_value": f"v{index}", "ocr_value": f"o{index}"}
@@ -171,162 +171,162 @@ def test_list_feedback_pagination(client, storage_root):
         application_id=application_id,
     )
 
-    first = client.get(f"{API}{LIST_URL}?offset=0&limit=2").json()
+    first = authenticated_client.get(f"{API}{LIST_URL}?offset=0&limit=2").json()
     assert first["total"] == 5
     assert first["returned"] == 2
 
-    second = client.get(f"{API}{LIST_URL}?offset=2&limit=2").json()
+    second = authenticated_client.get(f"{API}{LIST_URL}?offset=2&limit=2").json()
     assert second["returned"] == 2
 
-    third = client.get(f"{API}{LIST_URL}?offset=4&limit=2").json()
+    third = authenticated_client.get(f"{API}{LIST_URL}?offset=4&limit=2").json()
     assert third["returned"] == 1
 
     combined = [item["id"] for item in first["items"] + second["items"] + third["items"]]
     assert len(set(combined)) == 5
 
 
-def test_list_feedback_limits_are_enforced(client, storage_root):
-    application_id = create_application(client)
+def test_list_feedback_limits_are_enforced(authenticated_client, storage_root):
+    application_id = create_application(authenticated_client)
     insert_feedback(
         [{"field_name": f"f{i}", "human_value": "h", "ocr_value": "o"} for i in range(3)],
         application_id=application_id,
     )
-    response = client.get(f"{API}{LIST_URL}?limit=501")
+    response = authenticated_client.get(f"{API}{LIST_URL}?limit=501")
     assert response.status_code == 422
 
 
 # --- Filtering ---------------------------------------------------------------
 
 
-def test_filter_by_application(client, storage_root):
-    application_a = build_single_statement_application(client, storage_root)
-    final_correct_review(client, application_a)
-    application_b = build_single_statement_application(client, storage_root)
-    final_correct_review(client, application_b)
+def test_filter_by_application(authenticated_client, storage_root):
+    application_a = build_single_statement_application(authenticated_client, storage_root)
+    final_correct_review(authenticated_client, application_a)
+    application_b = build_single_statement_application(authenticated_client, storage_root)
+    final_correct_review(authenticated_client, application_b)
 
-    body = client.get(f"{API}{LIST_URL}?application_id={application_a}").json()
+    body = authenticated_client.get(f"{API}{LIST_URL}?application_id={application_a}").json()
     assert body["total"] == 2
     assert all(item["application_id"] == application_a for item in body["items"])
 
 
-def test_filter_by_field_name(client, storage_root):
-    application_id = build_single_statement_application(client, storage_root)
-    final_correct_review(client, application_id)
+def test_filter_by_field_name(authenticated_client, storage_root):
+    application_id = build_single_statement_application(authenticated_client, storage_root)
+    final_correct_review(authenticated_client, application_id)
 
-    body = client.get(f"{API}{LIST_URL}?field_name=iban").json()
+    body = authenticated_client.get(f"{API}{LIST_URL}?field_name=iban").json()
     assert body["total"] == 1
     assert body["items"][0]["field_name"] == "iban"
 
 
-def test_filter_by_decision(client, storage_root, monkeypatch):
-    low_confidence_corrected(client, storage_root, monkeypatch)
+def test_filter_by_decision(authenticated_client, storage_root, monkeypatch):
+    low_confidence_corrected(authenticated_client, storage_root, monkeypatch)
 
-    corrected = client.get(f"{API}{LIST_URL}?decision=CORRECTED").json()
+    corrected = authenticated_client.get(f"{API}{LIST_URL}?decision=CORRECTED").json()
     assert corrected["total"] == 1
     assert corrected["items"][0]["decision"] == "CORRECTED"
 
 
-def test_filter_by_reviewer(client, storage_root):
-    application_id = build_single_statement_application(client, storage_root)
-    final_correct_review(client, application_id)
+def test_filter_by_reviewer(authenticated_client, storage_root):
+    application_id = build_single_statement_application(authenticated_client, storage_root)
+    final_correct_review(authenticated_client, application_id)
 
-    body = client.get(f"{API}{LIST_URL}?reviewer=final-reviewer").json()
+    body = authenticated_client.get(f"{API}{LIST_URL}?reviewer=final-reviewer").json()
     assert body["total"] == 2
     assert all(item["reviewer"] == "final-reviewer" for item in body["items"])
-    assert client.get(f"{API}{LIST_URL}?reviewer=nobody").json()["total"] == 0
+    assert authenticated_client.get(f"{API}{LIST_URL}?reviewer=nobody").json()["total"] == 0
 
 
-def test_filter_by_document_type(client, storage_root, monkeypatch):
-    application_id = low_confidence_corrected(client, storage_root, monkeypatch)
+def test_filter_by_document_type(authenticated_client, storage_root, monkeypatch):
+    application_id = low_confidence_corrected(authenticated_client, storage_root, monkeypatch)
     document_type = DocumentRepository(SessionLocal()).get_by_application(application_id)[
         0
     ].document_type
 
-    body = client.get(f"{API}{LIST_URL}?document_type={document_type.value}").json()
+    body = authenticated_client.get(f"{API}{LIST_URL}?document_type={document_type.value}").json()
     assert body["total"] == 1
     assert body["items"][0]["field_name"] == "account_number"
 
 
-def test_filter_by_date_range(client, storage_root):
-    application_id = build_single_statement_application(client, storage_root)
-    final_correct_review(client, application_id)
+def test_filter_by_date_range(authenticated_client, storage_root):
+    application_id = build_single_statement_application(authenticated_client, storage_root)
+    final_correct_review(authenticated_client, application_id)
     now = datetime.now(timezone.utc)
 
     def iso(instant: datetime) -> str:
         return instant.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    all_rows = client.get(
+    all_rows = authenticated_client.get(
         f"{API}{LIST_URL}?date_from={iso(now - timedelta(hours=1))}&date_to={iso(now + timedelta(hours=1))}"
     ).json()
     assert all_rows["total"] == 2
 
-    future_only = client.get(
+    future_only = authenticated_client.get(
         f"{API}{LIST_URL}?date_from={iso(now + timedelta(hours=1))}"
     ).json()
     assert future_only["total"] == 0
 
-    past_only = client.get(
+    past_only = authenticated_client.get(
         f"{API}{LIST_URL}?date_to={iso(now - timedelta(hours=1))}"
     ).json()
     assert past_only["total"] == 0
 
 
-def test_filter_by_min_confidence(client, storage_root):
-    application_id = build_single_statement_application(client, storage_root)
-    final_correct_review(client, application_id)
+def test_filter_by_min_confidence(authenticated_client, storage_root):
+    application_id = build_single_statement_application(authenticated_client, storage_root)
+    final_correct_review(authenticated_client, application_id)
 
-    body = client.get(f"{API}{LIST_URL}?min_confidence=0.99").json()
+    body = authenticated_client.get(f"{API}{LIST_URL}?min_confidence=0.99").json()
     assert body["total"] == 2
     assert all(item["confidence_score"] == 1.0 for item in body["items"])
 
 
-def test_filter_combined(client, storage_root):
-    application_id = build_single_statement_application(client, storage_root)
-    final_correct_review(client, application_id)
+def test_filter_combined(authenticated_client, storage_root):
+    application_id = build_single_statement_application(authenticated_client, storage_root)
+    final_correct_review(authenticated_client, application_id)
 
-    body = client.get(
+    body = authenticated_client.get(
         f"{API}{LIST_URL}?application_id={application_id}&decision=CORRECT&field_name=account_number"
     ).json()
     assert body["total"] == 1
     assert body["items"][0]["field_name"] == "account_number"
 
-    none_match = client.get(
+    none_match = authenticated_client.get(
         f"{API}{LIST_URL}?application_id={application_id}&decision=CORRECT&field_name=amount"
     ).json()
     assert none_match["total"] == 0
 
 
-def test_inverted_date_range_returns_422(client, storage_root):
-    application_id = create_application(client)
+def test_inverted_date_range_returns_422(authenticated_client, storage_root):
+    application_id = create_application(authenticated_client)
     insert_feedback(
         [{"field_name": "f", "human_value": "h", "ocr_value": "o"}],
         application_id=application_id,
     )
-    response = client.get(
+    response = authenticated_client.get(
         f"{API}{LIST_URL}?date_from=2027-01-01T00:00:00Z&date_to=2026-01-01T00:00:00Z"
     )
     assert response.status_code == 422
 
 
-def test_unknown_decision_filter_returns_422(client):
-    response = client.get(f"{API}{LIST_URL}?decision=BOGUS")
+def test_unknown_decision_filter_returns_422(authenticated_client):
+    response = authenticated_client.get(f"{API}{LIST_URL}?decision=BOGUS")
     assert response.status_code == 422
 
 
-def test_out_of_range_confidence_returns_422(client):
-    response = client.get(f"{API}{LIST_URL}?min_confidence=1.5")
+def test_out_of_range_confidence_returns_422(authenticated_client):
+    response = authenticated_client.get(f"{API}{LIST_URL}?min_confidence=1.5")
     assert response.status_code == 422
 
 
 # --- Single entry ------------------------------------------------------------
 
 
-def test_get_feedback_by_id_exposes_14_fields(client, storage_root):
-    application_id = build_single_statement_application(client, storage_root)
-    final_correct_review(client, application_id)
+def test_get_feedback_by_id_exposes_14_fields(authenticated_client, storage_root):
+    application_id = build_single_statement_application(authenticated_client, storage_root)
+    final_correct_review(authenticated_client, application_id)
     entry_id = feedback_rows(application_id)[0].id
 
-    response = client.get(f"{API}{LIST_URL}/{entry_id}")
+    response = authenticated_client.get(f"{API}{LIST_URL}/{entry_id}")
     assert response.status_code == 200
     item = response.json()
     assert set(item) == set(CSV_COLUMNS)
@@ -342,8 +342,8 @@ def test_get_feedback_by_id_exposes_14_fields(client, storage_root):
     assert item["correction_reason"]
 
 
-def test_get_feedback_returns_404(client):
-    response = client.get(f"{API}{LIST_URL}/999999")
+def test_get_feedback_returns_404(authenticated_client):
+    response = authenticated_client.get(f"{API}{LIST_URL}/999999")
     assert response.status_code == 404
     assert response.json()["detail"] == "Feedback entry not found"
 
@@ -351,8 +351,8 @@ def test_get_feedback_returns_404(client):
 # --- Statistics --------------------------------------------------------------
 
 
-def test_statistics_empty(client):
-    body = client.get(f"{API}{STATISTICS_URL}").json()
+def test_statistics_empty(authenticated_client):
+    body = authenticated_client.get(f"{API}{STATISTICS_URL}").json()
     assert body["total_entries"] == 0
     assert body["total_corrected_fields"] == 0
     assert body["most_corrected_fields"] == []
@@ -364,12 +364,12 @@ def test_statistics_empty(client):
     assert "generated_at" in body
 
 
-def test_statistics_over_pipeline_data(client, storage_root, monkeypatch):
-    final_app = build_single_statement_application(client, storage_root)
-    final_correct_review(client, final_app)
-    low_app = low_confidence_corrected(client, storage_root, monkeypatch)
+def test_statistics_over_pipeline_data(authenticated_client, storage_root, monkeypatch):
+    final_app = build_single_statement_application(authenticated_client, storage_root)
+    final_correct_review(authenticated_client, final_app)
+    low_app = low_confidence_corrected(authenticated_client, storage_root, monkeypatch)
 
-    body = client.get(f"{API}{STATISTICS_URL}").json()
+    body = authenticated_client.get(f"{API}{STATISTICS_URL}").json()
     assert body["total_entries"] == 3
     assert body["total_corrected_fields"] == 3
     assert body["corrections_by_decision"] == {"CORRECT": 2, "CORRECTED": 1}
@@ -388,8 +388,8 @@ def test_statistics_over_pipeline_data(client, storage_root, monkeypatch):
     }
 
 
-def test_statistics_aggregation_accuracy(client, storage_root):
-    application_id = create_application(client)
+def test_statistics_aggregation_accuracy(authenticated_client, storage_root):
+    application_id = create_application(authenticated_client)
     add_digital_pdf(
         storage_root,
         application_id,
@@ -466,7 +466,7 @@ def test_statistics_aggregation_accuracy(client, storage_root):
         application_id=application_id,
     )
 
-    body = client.get(f"{API}{STATISTICS_URL}").json()
+    body = authenticated_client.get(f"{API}{STATISTICS_URL}").json()
     assert body["total_entries"] == 5
     assert body["total_corrected_fields"] == 4
     assert body["average_confidence"] == pytest.approx(0.725)
@@ -484,17 +484,17 @@ def test_statistics_aggregation_accuracy(client, storage_root):
     assert body["correction_frequency"][0]["count"] == 5
 
 
-def test_statistics_can_be_filtered(client, storage_root):
-    application_id = build_single_statement_application(client, storage_root)
-    final_correct_review(client, application_id)
+def test_statistics_can_be_filtered(authenticated_client, storage_root):
+    application_id = build_single_statement_application(authenticated_client, storage_root)
+    final_correct_review(authenticated_client, application_id)
 
-    body = client.get(f"{API}{STATISTICS_URL}?field_name=iban").json()
+    body = authenticated_client.get(f"{API}{STATISTICS_URL}?field_name=iban").json()
     assert body["total_entries"] == 1
     assert body["corrections_by_decision"] == {"CORRECT": 1}
 
 
-def test_statistics_large_dataset_is_deterministic(client, storage_root):
-    application_id = create_application(client)
+def test_statistics_large_dataset_is_deterministic(authenticated_client, storage_root):
+    application_id = create_application(authenticated_client)
     rows = [
         {
             "field_name": f"field_{index % 3}",
@@ -509,7 +509,7 @@ def test_statistics_large_dataset_is_deterministic(client, storage_root):
     ]
     insert_feedback(rows, application_id=application_id)
 
-    body = client.get(f"{API}{STATISTICS_URL}").json()
+    body = authenticated_client.get(f"{API}{STATISTICS_URL}").json()
     assert body["total_entries"] == 200
     assert body["total_corrected_fields"] == 200
     assert [item["count"] for item in body["most_corrected_fields"]] == [67, 67, 66]
@@ -517,7 +517,7 @@ def test_statistics_large_dataset_is_deterministic(client, storage_root):
     assert body["average_confidence"] == pytest.approx(expected_average)
     assert body["corrections_by_reviewer"] == {"reviewer_0": 100, "reviewer_1": 100}
 
-    again = client.get(f"{API}{STATISTICS_URL}").json()
+    again = authenticated_client.get(f"{API}{STATISTICS_URL}").json()
     assert {key: value for key, value in again.items() if key != "generated_at"} == {
         key: value for key, value in body.items() if key != "generated_at"
     }
@@ -526,11 +526,11 @@ def test_statistics_large_dataset_is_deterministic(client, storage_root):
 # --- Exports ----------------------------------------------------------------
 
 
-def test_export_json(client, storage_root):
-    application_id = build_single_statement_application(client, storage_root)
-    final_correct_review(client, application_id)
+def test_export_json(authenticated_client, storage_root):
+    application_id = build_single_statement_application(authenticated_client, storage_root)
+    final_correct_review(authenticated_client, application_id)
 
-    response = client.get(f"{API}{EXPORT_JSON_URL}")
+    response = authenticated_client.get(f"{API}{EXPORT_JSON_URL}")
     assert response.status_code == 200
     body = response.json()
     assert body["format"] == "json"
@@ -542,11 +542,11 @@ def test_export_json(client, storage_root):
     assert records[0]["origin"] == "FINAL_HUMAN_REVIEW"
 
 
-def test_export_csv(client, storage_root):
-    application_id = build_single_statement_application(client, storage_root)
-    final_correct_review(client, application_id)
+def test_export_csv(authenticated_client, storage_root):
+    application_id = build_single_statement_application(authenticated_client, storage_root)
+    final_correct_review(authenticated_client, application_id)
 
-    response = client.get(f"{API}{EXPORT_CSV_URL}")
+    response = authenticated_client.get(f"{API}{EXPORT_CSV_URL}")
     assert response.status_code == 200
     body = response.json()
     assert body["format"] == "csv"
@@ -558,29 +558,29 @@ def test_export_csv(client, storage_root):
     assert {row["field_name"] for row in parsed} == {"account_number", "iban"}
 
 
-def test_export_respects_filters(client, storage_root):
-    application_id = build_single_statement_application(client, storage_root)
-    final_correct_review(client, application_id)
+def test_export_respects_filters(authenticated_client, storage_root):
+    application_id = build_single_statement_application(authenticated_client, storage_root)
+    final_correct_review(authenticated_client, application_id)
 
-    body = client.get(f"{API}{EXPORT_CSV_URL}?field_name=account_number").json()
+    body = authenticated_client.get(f"{API}{EXPORT_CSV_URL}?field_name=account_number").json()
     assert body["record_count"] == 1
     parsed = list(csv.DictReader(io.StringIO(body["content"])))
     assert len(parsed) == 1
     assert parsed[0]["field_name"] == "account_number"
 
 
-def test_export_empty_dataset(client):
-    json_body = client.get(f"{API}{EXPORT_JSON_URL}").json()
+def test_export_empty_dataset(authenticated_client):
+    json_body = authenticated_client.get(f"{API}{EXPORT_JSON_URL}").json()
     assert json_body["record_count"] == 0
     assert json.loads(json_body["content"]) == []
 
-    csv_body = client.get(f"{API}{EXPORT_CSV_URL}").json()
+    csv_body = authenticated_client.get(f"{API}{EXPORT_CSV_URL}").json()
     assert csv_body["record_count"] == 0
     assert csv_body["content"].strip() == ",".join(CSV_COLUMNS)
 
 
-def test_pipeline_enriches_feedback_provenance(client, storage_root, monkeypatch):
-    application_id = low_confidence_corrected(client, storage_root, monkeypatch)
+def test_pipeline_enriches_feedback_provenance(authenticated_client, storage_root, monkeypatch):
+    application_id = low_confidence_corrected(authenticated_client, storage_root, monkeypatch)
     entry = feedback_rows(application_id)[0]
     assert entry.document_id is not None
     assert entry.ocr_result_id is not None

@@ -137,13 +137,13 @@ def run_processing(client, application_id: int) -> dict:
 # --- End-to-end analysis -----------------------------------------------------
 
 
-def test_analyze_bank_statement_end_to_end(client, storage_root, monkeypatch):
-    application_id = create_application(client)
+def test_analyze_bank_statement_end_to_end(authenticated_client, storage_root, monkeypatch):
+    application_id = create_application(authenticated_client)
     add_digital_pdf(storage_root, application_id, BANK_STATEMENT_TEXT)
-    run_processing(client, application_id)
+    run_processing(authenticated_client, application_id)
     engine = patch_ocr_engine(monkeypatch)
 
-    result = analyze_documents(client, application_id)
+    result = analyze_documents(authenticated_client, application_id)
 
     assert result["total_analyzed"] == 1
     assert result["total_failed"] == 0
@@ -158,7 +158,7 @@ def test_analyze_bank_statement_end_to_end(client, storage_root, monkeypatch):
     assert engine.calls == 0
     assert stored_analysis_count() == 1
 
-    stored = get_analysis_results(client, application_id)
+    stored = get_analysis_results(authenticated_client, application_id)
     assert stored["total"] == 1
     item = stored["items"][0]
     assert item["verification_status"] == "VERIFIED"
@@ -168,8 +168,8 @@ def test_analyze_bank_statement_end_to_end(client, storage_root, monkeypatch):
     assert item["created_at"] is not None
 
 
-def test_analyze_payslip_from_scanned_image(client, storage_root, monkeypatch):
-    application_id = create_application(client)
+def test_analyze_payslip_from_scanned_image(authenticated_client, storage_root, monkeypatch):
+    application_id = create_application(authenticated_client)
     add_document(
         storage_root,
         application_id,
@@ -178,11 +178,11 @@ def test_analyze_payslip_from_scanned_image(client, storage_root, monkeypatch):
         encode_png(make_document_image()),
         "image/png",
     )
-    run_validation(client, application_id)
+    run_validation(authenticated_client, application_id)
     engine = patch_ocr_engine(monkeypatch, texts=[PAYSLIP_TEXT])
-    process_documents(client, application_id)
+    process_documents(authenticated_client, application_id)
 
-    result = analyze_documents(client, application_id)
+    result = analyze_documents(authenticated_client, application_id)
 
     assert result["total_analyzed"] == 1
     item = result["items"][0]
@@ -194,8 +194,8 @@ def test_analyze_payslip_from_scanned_image(client, storage_root, monkeypatch):
     assert engine.calls == 1
 
 
-def test_analyze_identity_document(client, storage_root):
-    application_id = create_application(client)
+def test_analyze_identity_document(authenticated_client, storage_root):
+    application_id = create_application(authenticated_client)
     add_digital_pdf(
         storage_root,
         application_id,
@@ -203,9 +203,9 @@ def test_analyze_identity_document(client, storage_root):
         document_type=DocumentType.OTHER_SUPPORTING_DOCUMENT,
         filename="id.pdf",
     )
-    run_processing(client, application_id)
+    run_processing(authenticated_client, application_id)
 
-    result = analyze_documents(client, application_id)
+    result = analyze_documents(authenticated_client, application_id)
 
     item = result["items"][0]
     assert item["document_type"] == "ID_DOCUMENT"
@@ -214,8 +214,8 @@ def test_analyze_identity_document(client, storage_root):
     assert item["extracted_fields"]["expiry_date"] == "2028-06-01"
 
 
-def test_analyze_tax_document(client, storage_root):
-    application_id = create_application(client)
+def test_analyze_tax_document(authenticated_client, storage_root):
+    application_id = create_application(authenticated_client)
     add_digital_pdf(
         storage_root,
         application_id,
@@ -223,9 +223,9 @@ def test_analyze_tax_document(client, storage_root):
         document_type=DocumentType.SCHEDULE_OF_CHARGES,
         filename="tax.pdf",
     )
-    run_processing(client, application_id)
+    run_processing(authenticated_client, application_id)
 
-    result = analyze_documents(client, application_id)
+    result = analyze_documents(authenticated_client, application_id)
 
     item = result["items"][0]
     assert item["document_type"] == "TAX_DOCUMENT"
@@ -237,12 +237,12 @@ def test_analyze_tax_document(client, storage_root):
 # --- Failure handling --------------------------------------------------------
 
 
-def test_analyze_without_ocr_result_fails_document(client, storage_root):
-    application_id = create_application(client)
+def test_analyze_without_ocr_result_fails_document(authenticated_client, storage_root):
+    application_id = create_application(authenticated_client)
     add_digital_pdf(storage_root, application_id, BANK_STATEMENT_TEXT)
-    run_validation(client, application_id)
+    run_validation(authenticated_client, application_id)
 
-    result = analyze_documents(client, application_id)
+    result = analyze_documents(authenticated_client, application_id)
 
     assert result["total_analyzed"] == 0
     assert result["total_failed"] == 1
@@ -252,8 +252,8 @@ def test_analyze_without_ocr_result_fails_document(client, storage_root):
     assert stored_analysis_count() == 0
 
 
-def test_analyze_unknown_document_type_fails(client, storage_root):
-    application_id = create_application(client)
+def test_analyze_unknown_document_type_fails(authenticated_client, storage_root):
+    application_id = create_application(authenticated_client)
     add_digital_pdf(
         storage_root,
         application_id,
@@ -261,9 +261,9 @@ def test_analyze_unknown_document_type_fails(client, storage_root):
         document_type=DocumentType.OTHER_SUPPORTING_DOCUMENT,
         filename="letter.pdf",
     )
-    run_processing(client, application_id)
+    run_processing(authenticated_client, application_id)
 
-    result = analyze_documents(client, application_id)
+    result = analyze_documents(authenticated_client, application_id)
 
     assert result["total_analyzed"] == 0
     assert result["total_failed"] == 1
@@ -273,36 +273,36 @@ def test_analyze_unknown_document_type_fails(client, storage_root):
     assert stored_analysis_count() == 0
 
 
-def test_analyze_application_not_found(client):
-    post = client.post(f"{API}/applications/999999/analyze-documents")
+def test_analyze_application_not_found(authenticated_client):
+    post = authenticated_client.post(f"{API}/applications/999999/analyze-documents")
     assert post.status_code == 404
-    get = client.get(f"{API}/applications/999999/analysis-results")
+    get = authenticated_client.get(f"{API}/applications/999999/analysis-results")
     assert get.status_code == 404
 
 
-def test_get_analysis_results_empty_application(client):
-    application_id = create_application(client)
-    result = get_analysis_results(client, application_id)
+def test_get_analysis_results_empty_application(authenticated_client):
+    application_id = create_application(authenticated_client)
+    result = get_analysis_results(authenticated_client, application_id)
     assert result["total"] == 0
     assert result["items"] == []
 
 
-def test_reanalysis_upserts_single_row(client, storage_root):
-    application_id = create_application(client)
+def test_reanalysis_upserts_single_row(authenticated_client, storage_root):
+    application_id = create_application(authenticated_client)
     add_digital_pdf(storage_root, application_id, BANK_STATEMENT_TEXT)
-    run_processing(client, application_id)
+    run_processing(authenticated_client, application_id)
 
-    first = analyze_documents(client, application_id)
-    second = analyze_documents(client, application_id)
+    first = analyze_documents(authenticated_client, application_id)
+    second = analyze_documents(authenticated_client, application_id)
 
     assert first["total_analyzed"] == 1
     assert second["total_analyzed"] == 1
     assert stored_analysis_count() == 1
-    assert get_analysis_results(client, application_id)["total"] == 1
+    assert get_analysis_results(authenticated_client, application_id)["total"] == 1
 
 
-def test_analyze_partial_failure_isolation(client, storage_root, monkeypatch):
-    application_id = create_application(client)
+def test_analyze_partial_failure_isolation(authenticated_client, storage_root, monkeypatch):
+    application_id = create_application(authenticated_client)
     add_digital_pdf(storage_root, application_id, BANK_STATEMENT_TEXT)
     add_digital_pdf(
         storage_root,
@@ -311,9 +311,9 @@ def test_analyze_partial_failure_isolation(client, storage_root, monkeypatch):
         document_type=DocumentType.ONE_LINK_LETTER,
         filename="payslip.pdf",
     )
-    run_processing(client, application_id)
+    run_processing(authenticated_client, application_id)
 
-    result = analyze_documents(client, application_id)
+    result = analyze_documents(authenticated_client, application_id)
 
     assert result["total_analyzed"] == 2
     assert result["total_failed"] == 0
@@ -322,15 +322,15 @@ def test_analyze_partial_failure_isolation(client, storage_root, monkeypatch):
 # --- Report content ----------------------------------------------------------
 
 
-def test_analysis_report_reports_missing_critical_field(client, storage_root):
+def test_analysis_report_reports_missing_critical_field(authenticated_client, storage_root):
     incomplete = BANK_STATEMENT_TEXT.replace(
         "Opening Balance: 1,250.50", "Opening Balance: -"
     )
-    application_id = create_application(client)
+    application_id = create_application(authenticated_client)
     add_digital_pdf(storage_root, application_id, incomplete)
-    run_processing(client, application_id)
+    run_processing(authenticated_client, application_id)
 
-    result = analyze_documents(client, application_id)
+    result = analyze_documents(authenticated_client, application_id)
 
     assert result["total_analyzed"] == 1
     item = result["items"][0]
@@ -340,6 +340,6 @@ def test_analysis_report_reports_missing_critical_field(client, storage_root):
     statuses = {v["field"]: v["status"] for v in item["validation_results"]}
     assert statuses["opening_balance"] == "missing"
 
-    stored = get_analysis_results(client, application_id)["items"][0]
+    stored = get_analysis_results(authenticated_client, application_id)["items"][0]
     assert stored["verification_status"] == "NEEDS_REVIEW"
     assert any("Opening balance missing" in issue for issue in stored["issues"])

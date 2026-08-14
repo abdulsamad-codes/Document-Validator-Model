@@ -47,9 +47,9 @@ def stored_files(storage_root: Path, application_id: int, slug: str) -> list[Pat
 # --- Upload ----------------------------------------------------------------
 
 
-def test_upload_document_success(client, storage_root: Path):
-    application_id = create_application(client)
-    response = upload(client, application_id)
+def test_upload_document_success(authenticated_client, storage_root: Path):
+    application_id = create_application(authenticated_client)
+    response = upload(authenticated_client, application_id)
 
     assert response.status_code == 201, response.text
     body = response.json()["document"]
@@ -66,10 +66,10 @@ def test_upload_document_success(client, storage_root: Path):
     assert files[0].read_bytes() == PDF_BYTES
 
 
-def test_upload_png_document(client, storage_root: Path):
-    application_id = create_application(client)
+def test_upload_png_document(authenticated_client, storage_root: Path):
+    application_id = create_application(authenticated_client)
     response = upload(
-        client,
+        authenticated_client,
         application_id,
         filename="scan.png",
         content=PNG_BYTES,
@@ -86,18 +86,18 @@ def test_upload_png_document(client, storage_root: Path):
     assert files[0].suffix == ".png"
 
 
-def test_upload_invalid_extension(client, storage_root: Path):
-    application_id = create_application(client)
-    response = upload(client, application_id, filename="notes.txt", content=PDF_BYTES)
+def test_upload_invalid_extension(authenticated_client, storage_root: Path):
+    application_id = create_application(authenticated_client)
+    response = upload(authenticated_client, application_id, filename="notes.txt", content=PDF_BYTES)
 
     assert response.status_code == 400, response.text
     assert stored_files(storage_root, application_id, "tripartite") == []
 
 
-def test_upload_unsupported_mime(client):
-    application_id = create_application(client)
+def test_upload_unsupported_mime(authenticated_client):
+    application_id = create_application(authenticated_client)
     response = upload(
-        client,
+        authenticated_client,
         application_id,
         filename="scan.pdf",
         content=PDF_BYTES,
@@ -107,10 +107,10 @@ def test_upload_unsupported_mime(client):
     assert response.status_code == 400, response.text
 
 
-def test_upload_content_extension_mismatch(client):
-    application_id = create_application(client)
+def test_upload_content_extension_mismatch(authenticated_client):
+    application_id = create_application(authenticated_client)
     response = upload(
-        client,
+        authenticated_client,
         application_id,
         filename="scan.png",
         content=PDF_BYTES,
@@ -120,27 +120,27 @@ def test_upload_content_extension_mismatch(client):
     assert response.status_code == 400, response.text
 
 
-def test_upload_oversized(client, monkeypatch):
+def test_upload_oversized(authenticated_client, monkeypatch):
     from app.core.config import get_settings
 
     monkeypatch.setattr(get_settings(), "max_upload_size_mb", 0)
-    application_id = create_application(client)
-    response = upload(client, application_id)
+    application_id = create_application(authenticated_client)
+    response = upload(authenticated_client, application_id)
 
     assert response.status_code == 413, response.text
     assert "maximum" in response.json()["detail"].lower()
 
 
-def test_upload_empty_file(client):
-    application_id = create_application(client)
-    response = upload(client, application_id, content=b"")
+def test_upload_empty_file(authenticated_client):
+    application_id = create_application(authenticated_client)
+    response = upload(authenticated_client, application_id, content=b"")
 
     assert response.status_code == 400, response.text
 
 
-def test_upload_missing_file(client):
-    application_id = create_application(client)
-    response = client.post(
+def test_upload_missing_file(authenticated_client):
+    application_id = create_application(authenticated_client)
+    response = authenticated_client.post(
         f"{API}/applications/{application_id}/documents",
         data={"document_type": "TRIPARTITE_AGREEMENT"},
     )
@@ -148,9 +148,9 @@ def test_upload_missing_file(client):
     assert response.status_code == 400, response.text
 
 
-def test_upload_unsupported_document_type(client):
-    application_id = create_application(client)
-    response = client.post(
+def test_upload_unsupported_document_type(authenticated_client):
+    application_id = create_application(authenticated_client)
+    response = authenticated_client.post(
         f"{API}/applications/{application_id}/documents",
         data={"document_type": "NONSENSE"},
         files={"file": ("scan.pdf", PDF_BYTES, "application/pdf")},
@@ -159,20 +159,20 @@ def test_upload_unsupported_document_type(client):
     assert response.status_code == 422, response.text
 
 
-def test_upload_duplicate_type_rejected(client):
-    application_id = create_application(client)
-    assert upload(client, application_id).status_code == 201
-    response = upload(client, application_id, filename="scan2.pdf")
+def test_upload_duplicate_type_rejected(authenticated_client):
+    application_id = create_application(authenticated_client)
+    assert upload(authenticated_client, application_id).status_code == 201
+    response = upload(authenticated_client, application_id, filename="scan2.pdf")
 
     assert response.status_code == 409, response.text
     assert "already exists" in response.json()["detail"]
 
 
-def test_upload_multiple_copies_success(client):
-    application_id = create_application(client)
+def test_upload_multiple_copies_success(authenticated_client):
+    application_id = create_application(authenticated_client)
     for copy_number in (1, 2, 3):
         response = upload(
-            client,
+            authenticated_client,
             application_id,
             filename=f"scan-{copy_number}.pdf",
             document_type="TRIPARTITE_AGREEMENT",
@@ -181,18 +181,18 @@ def test_upload_multiple_copies_success(client):
         assert response.status_code == 201, response.text
         assert response.json()["document"]["copy_number"] == copy_number
 
-    response = client.get(f"{API}/applications/{application_id}/documents")
+    response = authenticated_client.get(f"{API}/applications/{application_id}/documents")
     assert response.status_code == 200, response.text
     copies = {item["copy_number"] for item in response.json()["items"]}
     assert copies == {1, 2, 3}
 
 
-def test_upload_exceeds_copy_cap_rejected(client):
-    application_id = create_application(client)
+def test_upload_exceeds_copy_cap_rejected(authenticated_client):
+    application_id = create_application(authenticated_client)
     for copy_number in (1, 2, 3):
         assert (
             upload(
-                client,
+                authenticated_client,
                 application_id,
                 document_type="TRIPARTITE_AGREEMENT",
                 copy_number=copy_number,
@@ -200,7 +200,7 @@ def test_upload_exceeds_copy_cap_rejected(client):
             == 201
         )
     response = upload(
-        client,
+        authenticated_client,
         application_id,
         document_type="TRIPARTITE_AGREEMENT",
         copy_number=4,
@@ -210,20 +210,20 @@ def test_upload_exceeds_copy_cap_rejected(client):
     assert "Cannot upload more than 3 copies" in response.json()["detail"]
 
 
-def test_upload_copy_slot_already_occupied(client):
-    application_id = create_application(client)
-    assert upload(client, application_id, copy_number=2).status_code == 201
-    response = upload(client, application_id, filename="scan2.pdf", copy_number=2)
+def test_upload_copy_slot_already_occupied(authenticated_client):
+    application_id = create_application(authenticated_client)
+    assert upload(authenticated_client, application_id, copy_number=2).status_code == 201
+    response = upload(authenticated_client, application_id, filename="scan2.pdf", copy_number=2)
 
     assert response.status_code == 409, response.text
     assert "Copy 2 of TRIPARTITE_AGREEMENT already exists" in response.json()["detail"]
 
 
-def test_upload_single_copy_type_limit(client):
-    application_id = create_application(client)
+def test_upload_single_copy_type_limit(authenticated_client):
+    application_id = create_application(authenticated_client)
     assert (
         upload(
-            client,
+            authenticated_client,
             application_id,
             document_type="AUTHORITY_LETTER",
             copy_number=1,
@@ -231,7 +231,7 @@ def test_upload_single_copy_type_limit(client):
         == 201
     )
     response = upload(
-        client,
+        authenticated_client,
         application_id,
         document_type="AUTHORITY_LETTER",
         copy_number=2,
@@ -241,15 +241,15 @@ def test_upload_single_copy_type_limit(client):
     assert "Cannot upload more than 1 copy" in response.json()["detail"]
 
 
-def test_upload_missing_application(client):
-    response = upload(client, 999999)
+def test_upload_missing_application(authenticated_client):
+    response = upload(authenticated_client, 999999)
 
     assert response.status_code == 404, response.text
 
 
-def test_upload_sanitizes_filename(client, storage_root: Path):
-    application_id = create_application(client)
-    response = upload(client, application_id, filename="../../etc/scan.pdf")
+def test_upload_sanitizes_filename(authenticated_client, storage_root: Path):
+    application_id = create_application(authenticated_client)
+    response = upload(authenticated_client, application_id, filename="../../etc/scan.pdf")
 
     assert response.status_code == 201, response.text
     assert response.json()["document"]["original_filename"] == "scan.pdf"
@@ -261,41 +261,41 @@ def test_upload_sanitizes_filename(client, storage_root: Path):
 # --- Application name from uploaded PDF ------------------------------------
 
 
-def test_application_has_no_name_until_upload(client):
-    application_id = create_application(client)
-    detail = client.get(f"{API}/applications/{application_id}").json()["application"]
+def test_application_has_no_name_until_upload(authenticated_client):
+    application_id = create_application(authenticated_client)
+    detail = authenticated_client.get(f"{API}/applications/{application_id}").json()["application"]
     assert detail["name"] is None
 
 
-def test_first_upload_sets_application_name_from_filename(client):
-    application_id = create_application(client)
-    response = upload(client, application_id, filename="My Bank Statement.pdf")
+def test_first_upload_sets_application_name_from_filename(authenticated_client):
+    application_id = create_application(authenticated_client)
+    response = upload(authenticated_client, application_id, filename="My Bank Statement.pdf")
 
     assert response.status_code == 201, response.text
-    detail = client.get(f"{API}/applications/{application_id}").json()["application"]
+    detail = authenticated_client.get(f"{API}/applications/{application_id}").json()["application"]
     assert detail["name"] == "My Bank Statement"
 
 
-def test_later_uploads_do_not_overwrite_application_name(client):
-    application_id = create_application(client)
+def test_later_uploads_do_not_overwrite_application_name(authenticated_client):
+    application_id = create_application(authenticated_client)
 
-    assert upload(client, application_id, filename="First Document.pdf").status_code == 201
+    assert upload(authenticated_client, application_id, filename="First Document.pdf").status_code == 201
     assert upload(
-        client,
+        authenticated_client,
         application_id,
         filename="Second Document.pdf",
         document_type="ACCOUNT_MAINTENANCE_CERTIFICATE",
     ).status_code == 201
 
-    detail = client.get(f"{API}/applications/{application_id}").json()["application"]
+    detail = authenticated_client.get(f"{API}/applications/{application_id}").json()["application"]
     assert detail["name"] == "First Document"
 
 
-def test_application_name_included_in_list_response(client):
-    application_id = create_application(client)
-    upload(client, application_id, filename="GDA Abbotabad.pdf")
+def test_application_name_included_in_list_response(authenticated_client):
+    application_id = create_application(authenticated_client)
+    upload(authenticated_client, application_id, filename="GDA Abbotabad.pdf")
 
-    items = client.get(f"{API}/applications").json()["items"]
+    items = authenticated_client.get(f"{API}/applications").json()["items"]
     matching = [item for item in items if item["id"] == application_id]
     assert len(matching) == 1
     assert matching[0]["name"] == "GDA Abbotabad"
@@ -304,13 +304,13 @@ def test_application_name_included_in_list_response(client):
 # --- Replace ---------------------------------------------------------------
 
 
-def test_replace_document(client, storage_root: Path):
-    application_id = create_application(client)
-    document_id = upload(client, application_id).json()["document"]["id"]
+def test_replace_document(authenticated_client, storage_root: Path):
+    application_id = create_application(authenticated_client)
+    document_id = upload(authenticated_client, application_id).json()["document"]["id"]
     original = stored_files(storage_root, application_id, "tripartite")[0]
 
     new_content = b"%PDF-1.7\n% replaced\n%%EOF\n"
-    response = client.put(
+    response = authenticated_client.put(
         f"{API}/applications/{application_id}/documents/{document_id}",
         data={"document_type": "TRIPARTITE_AGREEMENT"},
         files={"file": ("replacement.pdf", new_content, "application/pdf")},
@@ -328,9 +328,9 @@ def test_replace_document(client, storage_root: Path):
     assert files[0].read_bytes() == new_content
 
 
-def test_replace_document_missing(client):
-    application_id = create_application(client)
-    response = client.put(
+def test_replace_document_missing(authenticated_client):
+    application_id = create_application(authenticated_client)
+    response = authenticated_client.put(
         f"{API}/applications/{application_id}/documents/999999",
         data={"document_type": "TRIPARTITE_AGREEMENT"},
         files={"file": ("new.pdf", PDF_BYTES, "application/pdf")},
@@ -339,12 +339,12 @@ def test_replace_document_missing(client):
     assert response.status_code == 404, response.text
 
 
-def test_replace_document_of_other_application(client):
-    application_id = create_application(client)
-    other_id = create_application(client)
-    document_id = upload(client, application_id).json()["document"]["id"]
+def test_replace_document_of_other_application(authenticated_client):
+    application_id = create_application(authenticated_client)
+    other_id = create_application(authenticated_client)
+    document_id = upload(authenticated_client, application_id).json()["document"]["id"]
 
-    response = client.put(
+    response = authenticated_client.put(
         f"{API}/applications/{other_id}/documents/{document_id}",
         data={"document_type": "TRIPARTITE_AGREEMENT"},
         files={"file": ("new.pdf", PDF_BYTES, "application/pdf")},
@@ -356,22 +356,22 @@ def test_replace_document_of_other_application(client):
 # --- Delete ----------------------------------------------------------------
 
 
-def test_delete_document(client, storage_root: Path):
-    application_id = create_application(client)
-    document_id = upload(client, application_id).json()["document"]["id"]
+def test_delete_document(authenticated_client, storage_root: Path):
+    application_id = create_application(authenticated_client)
+    document_id = upload(authenticated_client, application_id).json()["document"]["id"]
     stored = stored_files(storage_root, application_id, "tripartite")[0]
 
-    response = client.delete(f"{API}/applications/{application_id}/documents/{document_id}")
+    response = authenticated_client.delete(f"{API}/applications/{application_id}/documents/{document_id}")
 
     assert response.status_code == 200, response.text
-    assert client.get(f"{API}/documents/{document_id}").status_code == 404
+    assert authenticated_client.get(f"{API}/documents/{document_id}").status_code == 404
     assert not stored.exists()
     assert stored_files(storage_root, application_id, "tripartite") == []
 
 
-def test_delete_document_missing(client):
-    application_id = create_application(client)
-    response = client.delete(f"{API}/applications/{application_id}/documents/999999")
+def test_delete_document_missing(authenticated_client):
+    application_id = create_application(authenticated_client)
+    response = authenticated_client.delete(f"{API}/applications/{application_id}/documents/999999")
 
     assert response.status_code == 404, response.text
 
@@ -379,17 +379,17 @@ def test_delete_document_missing(client):
 # --- List ------------------------------------------------------------------
 
 
-def test_list_documents(client):
-    application_id = create_application(client)
-    first = upload(client, application_id, document_type="TRIPARTITE_AGREEMENT").json()["document"]
+def test_list_documents(authenticated_client):
+    application_id = create_application(authenticated_client)
+    first = upload(authenticated_client, application_id, document_type="TRIPARTITE_AGREEMENT").json()["document"]
     second = upload(
-        client,
+        authenticated_client,
         application_id,
         filename="bilateral.pdf",
         document_type="BILATERAL_AGREEMENT",
     ).json()["document"]
 
-    response = client.get(f"{API}/applications/{application_id}/documents")
+    response = authenticated_client.get(f"{API}/applications/{application_id}/documents")
 
     assert response.status_code == 200, response.text
     body = response.json()
@@ -397,28 +397,28 @@ def test_list_documents(client):
     assert [item["id"] for item in body["items"]] == [second["id"], first["id"]]
 
 
-def test_list_documents_empty(client):
-    application_id = create_application(client)
-    response = client.get(f"{API}/applications/{application_id}/documents")
+def test_list_documents_empty(authenticated_client):
+    application_id = create_application(authenticated_client)
+    response = authenticated_client.get(f"{API}/applications/{application_id}/documents")
 
     assert response.status_code == 200
     assert response.json() == {"items": [], "total": 0}
 
 
-def test_list_documents_pagination(client):
-    application_id = create_application(client)
-    upload(client, application_id, filename="a.pdf", document_type="TRIPARTITE_AGREEMENT")
-    upload(client, application_id, filename="b.pdf", document_type="BILATERAL_AGREEMENT")
+def test_list_documents_pagination(authenticated_client):
+    application_id = create_application(authenticated_client)
+    upload(authenticated_client, application_id, filename="a.pdf", document_type="TRIPARTITE_AGREEMENT")
+    upload(authenticated_client, application_id, filename="b.pdf", document_type="BILATERAL_AGREEMENT")
 
-    response = client.get(f"{API}/applications/{application_id}/documents", params={"limit": 1})
+    response = authenticated_client.get(f"{API}/applications/{application_id}/documents", params={"limit": 1})
 
     assert response.status_code == 200
     assert response.json()["total"] == 2
     assert len(response.json()["items"]) == 1
 
 
-def test_list_documents_missing_application(client):
-    response = client.get(f"{API}/applications/999999/documents")
+def test_list_documents_missing_application(authenticated_client):
+    response = authenticated_client.get(f"{API}/applications/999999/documents")
 
     assert response.status_code == 404, response.text
 
@@ -426,11 +426,11 @@ def test_list_documents_missing_application(client):
 # --- Metadata & download ---------------------------------------------------
 
 
-def test_get_document_metadata(client):
-    application_id = create_application(client)
-    document_id = upload(client, application_id).json()["document"]["id"]
+def test_get_document_metadata(authenticated_client):
+    application_id = create_application(authenticated_client)
+    document_id = upload(authenticated_client, application_id).json()["document"]["id"]
 
-    response = client.get(f"{API}/documents/{document_id}")
+    response = authenticated_client.get(f"{API}/documents/{document_id}")
 
     assert response.status_code == 200, response.text
     body = response.json()["document"]
@@ -440,17 +440,17 @@ def test_get_document_metadata(client):
     assert "stored_file_path" not in body
 
 
-def test_get_document_missing(client):
-    response = client.get(f"{API}/documents/999999")
+def test_get_document_missing(authenticated_client):
+    response = authenticated_client.get(f"{API}/documents/999999")
 
     assert response.status_code == 404, response.text
 
 
-def test_download_document(client):
-    application_id = create_application(client)
-    document_id = upload(client, application_id).json()["document"]["id"]
+def test_download_document(authenticated_client):
+    application_id = create_application(authenticated_client)
+    document_id = upload(authenticated_client, application_id).json()["document"]["id"]
 
-    response = client.get(f"{API}/documents/{document_id}/download")
+    response = authenticated_client.get(f"{API}/documents/{document_id}/download")
 
     assert response.status_code == 200, response.text
     assert response.content == PDF_BYTES
@@ -460,24 +460,24 @@ def test_download_document(client):
     assert "scan.pdf" in disposition
 
 
-def test_download_png_document(client):
-    application_id = create_application(client)
+def test_download_png_document(authenticated_client):
+    application_id = create_application(authenticated_client)
     document_id = upload(
-        client,
+        authenticated_client,
         application_id,
         filename="scan.png",
         content=PNG_BYTES,
         content_type="image/png",
     ).json()["document"]["id"]
 
-    response = client.get(f"{API}/documents/{document_id}/download")
+    response = authenticated_client.get(f"{API}/documents/{document_id}/download")
 
     assert response.status_code == 200
     assert response.content == PNG_BYTES
 
 
-def test_download_missing_document(client):
-    response = client.get(f"{API}/documents/999999/download")
+def test_download_missing_document(authenticated_client):
+    response = authenticated_client.get(f"{API}/documents/999999/download")
 
     assert response.status_code == 404, response.text
 
@@ -485,8 +485,8 @@ def test_download_missing_document(client):
 # --- Application creation --------------------------------------------------
 
 
-def test_create_application(client):
-    response = client.post(f"{API}/applications", json={"created_by": "reviewer.alex"})
+def test_create_application(authenticated_client):
+    response = authenticated_client.post(f"{API}/applications", json={"created_by": "reviewer.alex"})
 
     assert response.status_code == 201, response.text
     application = response.json()["application"]
@@ -499,11 +499,11 @@ def test_create_application(client):
 # --- Application list & detail ---------------------------------------------
 
 
-def test_list_applications(client):
-    first = client.post(f"{API}/applications", json={"created_by": "alice"}).json()["application"]
-    second = client.post(f"{API}/applications", json={"created_by": "bob"}).json()["application"]
+def test_list_applications(authenticated_client):
+    first = authenticated_client.post(f"{API}/applications", json={"created_by": "alice"}).json()["application"]
+    second = authenticated_client.post(f"{API}/applications", json={"created_by": "bob"}).json()["application"]
 
-    response = client.get(f"{API}/applications")
+    response = authenticated_client.get(f"{API}/applications")
 
     assert response.status_code == 200, response.text
     body = response.json()
@@ -512,17 +512,17 @@ def test_list_applications(client):
     assert [item["id"] for item in body["items"]] == [second["id"], first["id"]]
 
 
-def test_list_applications_empty(client):
-    response = client.get(f"{API}/applications")
+def test_list_applications_empty(authenticated_client):
+    response = authenticated_client.get(f"{API}/applications")
 
     assert response.status_code == 200
     assert response.json() == {"items": [], "total": 0}
 
 
-def test_list_applications_status_filter(client):
-    client.post(f"{API}/applications", json={"created_by": "alice"})
+def test_list_applications_status_filter(authenticated_client):
+    authenticated_client.post(f"{API}/applications", json={"created_by": "alice"})
 
-    response = client.get(f"{API}/applications", params={"status": "APPROVED"})
+    response = authenticated_client.get(f"{API}/applications", params={"status": "APPROVED"})
 
     assert response.status_code == 200
     body = response.json()
@@ -530,11 +530,11 @@ def test_list_applications_status_filter(client):
     assert body["items"] == []
 
 
-def test_list_applications_pagination(client):
-    client.post(f"{API}/applications", json={"created_by": "alice"})
-    client.post(f"{API}/applications", json={"created_by": "bob"})
+def test_list_applications_pagination(authenticated_client):
+    authenticated_client.post(f"{API}/applications", json={"created_by": "alice"})
+    authenticated_client.post(f"{API}/applications", json={"created_by": "bob"})
 
-    response = client.get(f"{API}/applications", params={"offset": 1, "limit": 1})
+    response = authenticated_client.get(f"{API}/applications", params={"offset": 1, "limit": 1})
 
     assert response.status_code == 200
     body = response.json()
@@ -542,16 +542,16 @@ def test_list_applications_pagination(client):
     assert len(body["items"]) == 1
 
 
-def test_list_applications_invalid_status(client):
-    response = client.get(f"{API}/applications", params={"status": "NONSENSE"})
+def test_list_applications_invalid_status(authenticated_client):
+    response = authenticated_client.get(f"{API}/applications", params={"status": "NONSENSE"})
 
     assert response.status_code == 422, response.text
 
 
-def test_get_application(client):
-    application_id = create_application(client)
+def test_get_application(authenticated_client):
+    application_id = create_application(authenticated_client)
 
-    response = client.get(f"{API}/applications/{application_id}")
+    response = authenticated_client.get(f"{API}/applications/{application_id}")
 
     assert response.status_code == 200, response.text
     application = response.json()["application"]
@@ -562,8 +562,8 @@ def test_get_application(client):
     assert "updated_at" in application
 
 
-def test_get_application_missing(client):
-    response = client.get(f"{API}/applications/999999")
+def test_get_application_missing(authenticated_client):
+    response = authenticated_client.get(f"{API}/applications/999999")
 
     assert response.status_code == 404, response.text
     assert "not found" in response.json()["detail"].lower()

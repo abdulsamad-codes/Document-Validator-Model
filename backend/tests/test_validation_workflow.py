@@ -104,18 +104,18 @@ def stored_runs(application_id: int) -> list[ValidationRun]:
 # --- Workflows --------------------------------------------------------------
 
 
-def test_full_validate_workflow(client):
-    application_id = create_application(client)
+def test_full_validate_workflow(authenticated_client):
+    application_id = create_application(authenticated_client)
 
-    task = create_task(client, application_id)
+    task = create_task(authenticated_client, application_id)
     assert task["status"] == "PENDING"
     assert task["started_at"] is None
 
-    started = start(client, task["id"]).json()
+    started = start(authenticated_client, task["id"]).json()
     assert started["status"] == "IN_REVIEW"
     assert started["started_at"] is not None
 
-    completed = complete(client, task["id"]).json()
+    completed = complete(authenticated_client, task["id"]).json()
     assert completed["status"] == "VALIDATED"
     assert completed["completed_at"] is not None
 
@@ -123,40 +123,40 @@ def test_full_validate_workflow(client):
     assert actions == ["TASK_CREATED", "TASK_STARTED", "VALIDATION_COMPLETED"]
 
 
-def test_reject_workflow(client):
-    application_id = create_application(client)
-    task = create_task(client, application_id)
-    start(client, task["id"])
+def test_reject_workflow(authenticated_client):
+    application_id = create_application(authenticated_client)
+    task = create_task(authenticated_client, application_id)
+    start(authenticated_client, task["id"])
 
-    response = reject(client, task["id"], "Critical rule failure")
+    response = reject(authenticated_client, task["id"], "Critical rule failure")
 
     assert response.status_code == 200
     assert response.json()["status"] == "REJECTED"
     assert stored_task(task["id"]).status is ValidationTaskStatus.REJECTED
 
 
-def test_correction_and_revalidation_workflow(client):
-    application_id = create_application(client)
+def test_correction_and_revalidation_workflow(authenticated_client):
+    application_id = create_application(authenticated_client)
 
-    first = create_task(client, application_id)
-    start(client, first["id"])
+    first = create_task(authenticated_client, application_id)
+    start(authenticated_client, first["id"])
     corrected = request_correction(
-        client, first["id"], "Account number does not match across documents"
+        authenticated_client, first["id"], "Account number does not match across documents"
     ).json()
     assert corrected["status"] == "NEEDS_CORRECTION"
     assert corrected["validation_run_id"] == first["validation_run_id"]
 
-    second = create_task(client, application_id)
+    second = create_task(authenticated_client, application_id)
     assert second["status"] == "PENDING"
     assert second["validation_run_id"] != first["validation_run_id"]
-    start(client, second["id"])
-    completed = complete(client, second["id"]).json()
+    start(authenticated_client, second["id"])
+    completed = complete(authenticated_client, second["id"]).json()
     assert completed["status"] == "VALIDATED"
 
     runs = stored_runs(application_id)
     assert [run.run_number for run in runs] == [1, 2]
 
-    app_logs = client.get(
+    app_logs = authenticated_client.get(
         f"{API}/validation/applications/{application_id}/logs"
     ).json()
     assert app_logs["total"] == 6
@@ -169,14 +169,14 @@ def test_correction_and_revalidation_workflow(client):
     }
 
 
-def test_revalidation_preserves_historical_run(client):
-    application_id = create_application(client)
-    first = create_task(client, application_id)
-    start(client, first["id"])
-    complete(client, first["id"])
+def test_revalidation_preserves_historical_run(authenticated_client):
+    application_id = create_application(authenticated_client)
+    first = create_task(authenticated_client, application_id)
+    start(authenticated_client, first["id"])
+    complete(authenticated_client, first["id"])
 
-    second = create_task(client, application_id)
-    start(client, second["id"])
+    second = create_task(authenticated_client, application_id)
+    start(authenticated_client, second["id"])
 
     # The historical run's task and logs are untouched by the new run.
     first_logs = [log.action.value for log in stored_logs(first["id"])]
@@ -188,9 +188,9 @@ def test_revalidation_preserves_historical_run(client):
 # --- Transaction safety -----------------------------------------------------
 
 
-def test_start_rolls_back_when_log_creation_fails(client, monkeypatch):
-    application_id = create_application(client)
-    task = create_task(client, application_id)
+def test_start_rolls_back_when_log_creation_fails(authenticated_client, monkeypatch):
+    application_id = create_application(authenticated_client)
+    task = create_task(authenticated_client, application_id)
 
     def boom(*args, **kwargs):
         raise RuntimeError("simulated log failure")
@@ -199,7 +199,7 @@ def test_start_rolls_back_when_log_creation_fails(client, monkeypatch):
         "app.validation.repositories.ValidationLogRepository.create", boom
     )
 
-    response = start(client, task["id"])
+    response = start(authenticated_client, task["id"])
 
     assert response.status_code == 500
 
@@ -212,9 +212,9 @@ def test_start_rolls_back_when_log_creation_fails(client, monkeypatch):
 # --- Concurrency ------------------------------------------------------------
 
 
-def test_concurrent_start_only_one_succeeds(client):
-    application_id = create_application(client)
-    task = create_task(client, application_id)
+def test_concurrent_start_only_one_succeeds(authenticated_client):
+    application_id = create_application(authenticated_client)
+    task = create_task(authenticated_client, application_id)
 
     results: list[tuple[str, int | str]] = []
     barrier = threading.Barrier(2)
@@ -249,10 +249,10 @@ def test_concurrent_start_only_one_succeeds(client):
 # --- Data integrity ---------------------------------------------------------
 
 
-def test_foreign_key_cascade(client):
-    application_id = create_application(client)
-    task = create_task(client, application_id)
-    start(client, task["id"])
+def test_foreign_key_cascade(authenticated_client):
+    application_id = create_application(authenticated_client)
+    task = create_task(authenticated_client, application_id)
+    start(authenticated_client, task["id"])
 
     db = SessionLocal()
     try:
@@ -275,8 +275,8 @@ def test_foreign_key_cascade(client):
         db.close()
 
 
-def test_application_missing_task_creation_rejected(client):
-    response = client.post(
+def test_application_missing_task_creation_rejected(authenticated_client):
+    response = authenticated_client.post(
         f"{API}/validation/tasks",
         json={"application_id": 999999},
     )

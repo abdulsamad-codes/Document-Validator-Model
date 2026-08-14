@@ -84,10 +84,10 @@ def _status(application_id: int) -> str:
 # --- Review screen -----------------------------------------------------------
 
 
-def test_screen_contains_full_review_data(client, storage_root):
-    application_id = build_full_application(client, storage_root, with_detections=True)
+def test_screen_contains_full_review_data(authenticated_client, storage_root):
+    application_id = build_full_application(authenticated_client, storage_root, with_detections=True)
 
-    response = client.get(f"{API}/applications/{application_id}{SCREEN_URL}")
+    response = authenticated_client.get(f"{API}/applications/{application_id}{SCREEN_URL}")
 
     assert response.status_code == 200
     screen = response.json()
@@ -106,10 +106,10 @@ def test_screen_contains_full_review_data(client, storage_root):
     assert screen["previous_review"] is None
 
 
-def test_screen_without_validation_results_rejected(client, storage_root):
-    application_id = create_application(client)
+def test_screen_without_validation_results_rejected(authenticated_client, storage_root):
+    application_id = create_application(authenticated_client)
 
-    response = client.get(f"{API}/applications/{application_id}{SCREEN_URL}")
+    response = authenticated_client.get(f"{API}/applications/{application_id}{SCREEN_URL}")
 
     assert response.status_code == 422
     assert "No validation results" in response.json()["detail"]
@@ -118,11 +118,11 @@ def test_screen_without_validation_results_rejected(client, storage_root):
 # --- Approve flow ------------------------------------------------------------
 
 
-def test_approve_flow(client, storage_root):
-    application_id = build_full_application(client, storage_root, with_detections=True)
+def test_approve_flow(authenticated_client, storage_root):
+    application_id = build_full_application(authenticated_client, storage_root, with_detections=True)
 
     response = submit(
-        client,
+        authenticated_client,
         application_id,
         {
             "reviewer_name": "employee",
@@ -160,11 +160,11 @@ def test_approve_flow(client, storage_root):
     assert "human_review.checklist_completed" in actions
 
 
-def test_approve_requires_full_checklist(client, storage_root):
-    application_id = build_full_application(client, storage_root, with_detections=True)
+def test_approve_requires_full_checklist(authenticated_client, storage_root):
+    application_id = build_full_application(authenticated_client, storage_root, with_detections=True)
 
     response = submit(
-        client,
+        authenticated_client,
         application_id,
         {
             "reviewer_name": "employee",
@@ -182,12 +182,12 @@ def test_approve_requires_full_checklist(client, storage_root):
 # --- Correction flow ---------------------------------------------------------
 
 
-def test_correct_flow(client, storage_root):
-    application_id = build_single_statement_application(client, storage_root)
+def test_correct_flow(authenticated_client, storage_root):
+    application_id = build_single_statement_application(authenticated_client, storage_root)
     assert feedback_count(application_id) == 0
 
     response = submit(
-        client,
+        authenticated_client,
         application_id,
         {
             "reviewer_name": "employee",
@@ -245,11 +245,11 @@ def test_correct_flow(client, storage_root):
     assert "human_review.application_corrected" in actions
 
 
-def test_correct_requires_corrections(client, storage_root):
-    application_id = build_single_statement_application(client, storage_root)
+def test_correct_requires_corrections(authenticated_client, storage_root):
+    application_id = build_single_statement_application(authenticated_client, storage_root)
 
     response = submit(
-        client,
+        authenticated_client,
         application_id,
         {"reviewer_name": "employee", "decision": "CORRECT"},
     )
@@ -263,11 +263,11 @@ def test_correct_requires_corrections(client, storage_root):
 # --- Reject flow -------------------------------------------------------------
 
 
-def test_reject_flow(client, storage_root):
-    application_id = build_single_statement_application(client, storage_root)
+def test_reject_flow(authenticated_client, storage_root):
+    application_id = build_single_statement_application(authenticated_client, storage_root)
 
     response = submit(
-        client,
+        authenticated_client,
         application_id,
         {
             "reviewer_name": "employee",
@@ -296,11 +296,11 @@ def test_reject_flow(client, storage_root):
     assert "human_review.application_approved" not in actions
 
 
-def test_reject_requires_reason(client, storage_root):
-    application_id = build_single_statement_application(client, storage_root)
+def test_reject_requires_reason(authenticated_client, storage_root):
+    application_id = build_single_statement_application(authenticated_client, storage_root)
 
     response = submit(
-        client,
+        authenticated_client,
         application_id,
         {"reviewer_name": "employee", "decision": "REJECT", "comments": "no"},
     )
@@ -311,11 +311,11 @@ def test_reject_requires_reason(client, storage_root):
     assert stored_reviews(application_id) == []
 
 
-def test_reject_with_corrections_is_inconsistent(client, storage_root):
-    application_id = build_single_statement_application(client, storage_root)
+def test_reject_with_corrections_is_inconsistent(authenticated_client, storage_root):
+    application_id = build_single_statement_application(authenticated_client, storage_root)
 
     response = submit(
-        client,
+        authenticated_client,
         application_id,
         {
             "reviewer_name": "employee",
@@ -334,10 +334,10 @@ def test_reject_with_corrections_is_inconsistent(client, storage_root):
 # --- Double review prevention ------------------------------------------------
 
 
-def test_double_review_prevented(client, storage_root):
-    application_id = build_single_statement_application(client, storage_root)
+def test_double_review_prevented(authenticated_client, storage_root):
+    application_id = build_single_statement_application(authenticated_client, storage_root)
     submit(
-        client,
+        authenticated_client,
         application_id,
         {
             "reviewer_name": "employee",
@@ -347,7 +347,7 @@ def test_double_review_prevented(client, storage_root):
     )
 
     response = submit(
-        client,
+        authenticated_client,
         application_id,
         {
             "reviewer_name": "second",
@@ -365,10 +365,10 @@ def test_double_review_prevented(client, storage_root):
 # --- History -----------------------------------------------------------------
 
 
-def test_history_returns_reviews_with_corrections(client, storage_root):
-    application_id = build_single_statement_application(client, storage_root)
+def test_history_returns_reviews_with_corrections(authenticated_client, storage_root):
+    application_id = build_single_statement_application(authenticated_client, storage_root)
     submit(
-        client,
+        authenticated_client,
         application_id,
         {
             "reviewer_name": "employee",
@@ -379,7 +379,7 @@ def test_history_returns_reviews_with_corrections(client, storage_root):
         },
     )
 
-    response = client.get(f"{API}/applications/{application_id}{HISTORY_URL}")
+    response = authenticated_client.get(f"{API}/applications/{application_id}{HISTORY_URL}")
 
     assert response.status_code == 200
     history = response.json()
@@ -394,10 +394,10 @@ def test_history_returns_reviews_with_corrections(client, storage_root):
     assert review["corrections"][0]["corrected_value"] == "9999999999"
 
 
-def test_history_is_empty_before_review(client, storage_root):
-    application_id = build_single_statement_application(client, storage_root)
+def test_history_is_empty_before_review(authenticated_client, storage_root):
+    application_id = build_single_statement_application(authenticated_client, storage_root)
 
-    response = client.get(f"{API}/applications/{application_id}{HISTORY_URL}")
+    response = authenticated_client.get(f"{API}/applications/{application_id}{HISTORY_URL}")
 
     assert response.status_code == 200
     assert response.json()["reviews"] == []
@@ -406,25 +406,25 @@ def test_history_is_empty_before_review(client, storage_root):
 # --- Error paths -------------------------------------------------------------
 
 
-def test_endpoints_application_not_found(client):
+def test_endpoints_application_not_found(authenticated_client):
     for url in (SCREEN_URL, HISTORY_URL):
-        response = client.get(f"{API}/applications/999999{url}")
+        response = authenticated_client.get(f"{API}/applications/999999{url}")
         assert response.status_code == 404
         assert response.json()["detail"] == "Application not found"
 
     response = submit(
-        client,
+        authenticated_client,
         999999,
         {"reviewer_name": "employee", "decision": "REJECT", "rejection_reason": "x"},
     )
     assert response.status_code == 404
 
 
-def test_payload_validation_rejects_unknown_decision(client, storage_root):
-    application_id = build_single_statement_application(client, storage_root)
+def test_payload_validation_rejects_unknown_decision(authenticated_client, storage_root):
+    application_id = build_single_statement_application(authenticated_client, storage_root)
 
     response = submit(
-        client,
+        authenticated_client,
         application_id,
         {"reviewer_name": "employee", "decision": "NONSENSE"},
     )
@@ -432,11 +432,11 @@ def test_payload_validation_rejects_unknown_decision(client, storage_root):
     assert response.status_code == 422
 
 
-def test_payload_validation_requires_reviewer(client, storage_root):
-    application_id = build_single_statement_application(client, storage_root)
+def test_payload_validation_requires_reviewer(authenticated_client, storage_root):
+    application_id = build_single_statement_application(authenticated_client, storage_root)
 
     response = submit(
-        client,
+        authenticated_client,
         application_id,
         {"decision": "REJECT", "rejection_reason": "x"},
     )
@@ -444,12 +444,12 @@ def test_payload_validation_requires_reviewer(client, storage_root):
     assert response.status_code == 422
 
 
-def test_approve_with_unknown_checklist_item_rejected(client, storage_root):
-    application_id = build_full_application(client, storage_root, with_detections=True)
+def test_approve_with_unknown_checklist_item_rejected(authenticated_client, storage_root):
+    application_id = build_full_application(authenticated_client, storage_root, with_detections=True)
     items = checked_items() + [{"item_name": "Unknown item", "is_checked": True}]
 
     response = submit(
-        client,
+        authenticated_client,
         application_id,
         {"reviewer_name": "employee", "decision": "APPROVE", "checklist": items},
     )
@@ -458,15 +458,15 @@ def test_approve_with_unknown_checklist_item_rejected(client, storage_root):
     assert "Unknown checklist item" in response.json()["detail"]
 
 
-def test_screen_and_history_are_idempotent(client, storage_root):
-    application_id = build_single_statement_application(client, storage_root)
+def test_screen_and_history_are_idempotent(authenticated_client, storage_root):
+    application_id = build_single_statement_application(authenticated_client, storage_root)
 
-    first = client.get(f"{API}/applications/{application_id}{SCREEN_URL}").json()
-    second = client.get(f"{API}/applications/{application_id}{SCREEN_URL}").json()
+    first = authenticated_client.get(f"{API}/applications/{application_id}{SCREEN_URL}").json()
+    second = authenticated_client.get(f"{API}/applications/{application_id}{SCREEN_URL}").json()
     first["report"].pop("generated_at")
     second["report"].pop("generated_at")
     assert first == second
 
-    first_history = client.get(f"{API}/applications/{application_id}{HISTORY_URL}").json()
-    second_history = client.get(f"{API}/applications/{application_id}{HISTORY_URL}").json()
+    first_history = authenticated_client.get(f"{API}/applications/{application_id}{HISTORY_URL}").json()
+    second_history = authenticated_client.get(f"{API}/applications/{application_id}{HISTORY_URL}").json()
     assert first_history == second_history

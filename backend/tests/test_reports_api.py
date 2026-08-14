@@ -93,10 +93,10 @@ def get_report(client, application_id: int, *, url: str = REPORT_URL):
 # --- Overall statuses --------------------------------------------------------
 
 
-def test_report_approved_application(client, storage_root):
-    application_id = build_full_application(client, storage_root, with_detections=True)
+def test_report_approved_application(authenticated_client, storage_root):
+    application_id = build_full_application(authenticated_client, storage_root, with_detections=True)
 
-    response = get_report(client, application_id)
+    response = get_report(authenticated_client, application_id)
 
     assert response.status_code == 200
     report = response.json()
@@ -137,10 +137,10 @@ def test_report_approved_application(client, storage_root):
     ]
 
 
-def test_report_failed_application(client, storage_root):
-    application_id = build_single_statement_application(client, storage_root)
+def test_report_failed_application(authenticated_client, storage_root):
+    application_id = build_single_statement_application(authenticated_client, storage_root)
 
-    report = get_report(client, application_id).json()
+    report = get_report(authenticated_client, application_id).json()
 
     assert report["overall_status"] == "FAILED"
     summary = report["rule_summary"]
@@ -162,12 +162,12 @@ def test_report_failed_application(client, storage_root):
     assert visual["stamp_missing"] == 0
 
 
-def test_report_manual_review_required_application(client, storage_root):
+def test_report_manual_review_required_application(authenticated_client, storage_root):
     application_id = build_full_application(
-        client, storage_root, with_detections=False
+        authenticated_client, storage_root, with_detections=False
     )
 
-    report = get_report(client, application_id).json()
+    report = get_report(authenticated_client, application_id).json()
 
     assert report["overall_status"] == "MANUAL_REVIEW_REQUIRED"
     summary = report["rule_summary"]
@@ -178,8 +178,8 @@ def test_report_manual_review_required_application(client, storage_root):
     assert "NO_ACTION_REQUIRED" not in codes
 
 
-def test_report_rejected_application_overrides_status(client, storage_root):
-    application_id = build_full_application(client, storage_root, with_detections=True)
+def test_report_rejected_application_overrides_status(authenticated_client, storage_root):
+    application_id = build_full_application(authenticated_client, storage_root, with_detections=True)
     db = SessionLocal()
     try:
         repository = ApplicationRepository(db)
@@ -188,7 +188,7 @@ def test_report_rejected_application_overrides_status(client, storage_root):
     finally:
         db.close()
 
-    report = get_report(client, application_id).json()
+    report = get_report(authenticated_client, application_id).json()
 
     assert report["overall_status"] == "REJECTED"
     assert report["application"]["status"] == "REJECTED"
@@ -197,10 +197,10 @@ def test_report_rejected_application_overrides_status(client, storage_root):
 # --- Report variants ---------------------------------------------------------
 
 
-def test_report_summary_condensed(client, storage_root):
-    application_id = build_full_application(client, storage_root, with_detections=True)
+def test_report_summary_condensed(authenticated_client, storage_root):
+    application_id = build_full_application(authenticated_client, storage_root, with_detections=True)
 
-    response = get_report(client, application_id, url=SUMMARY_URL)
+    response = get_report(authenticated_client, application_id, url=SUMMARY_URL)
 
     assert response.status_code == 200
     summary = response.json()
@@ -218,10 +218,10 @@ def test_report_summary_condensed(client, storage_root):
     assert summary["recommendation_count"] == 1
 
 
-def test_report_html_is_printable(client, storage_root):
-    application_id = build_single_statement_application(client, storage_root)
+def test_report_html_is_printable(authenticated_client, storage_root):
+    application_id = build_single_statement_application(authenticated_client, storage_root)
 
-    response = get_report(client, application_id, url=HTML_URL)
+    response = get_report(authenticated_client, application_id, url=HTML_URL)
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
@@ -233,11 +233,11 @@ def test_report_html_is_printable(client, storage_root):
         assert group in html
 
 
-def test_report_is_idempotent(client, storage_root):
-    application_id = build_single_statement_application(client, storage_root)
+def test_report_is_idempotent(authenticated_client, storage_root):
+    application_id = build_single_statement_application(authenticated_client, storage_root)
 
-    first = get_report(client, application_id).json()
-    second = get_report(client, application_id).json()
+    first = get_report(authenticated_client, application_id).json()
+    second = get_report(authenticated_client, application_id).json()
 
     first.pop("generated_at")
     second.pop("generated_at")
@@ -247,28 +247,28 @@ def test_report_is_idempotent(client, storage_root):
 # --- Error paths -------------------------------------------------------------
 
 
-def test_report_missing_validation_results_rejected(client, storage_root):
-    application_id = create_application(client)
+def test_report_missing_validation_results_rejected(authenticated_client, storage_root):
+    application_id = create_application(authenticated_client)
 
     for url in (REPORT_URL, HTML_URL, SUMMARY_URL):
-        response = get_report(client, application_id, url=url)
+        response = get_report(authenticated_client, application_id, url=url)
         assert response.status_code == 422
         assert "No validation results" in response.json()["detail"]
 
 
-def test_report_technical_results_alone_rejected(client, storage_root):
-    application_id = create_application(client)
+def test_report_technical_results_alone_rejected(authenticated_client, storage_root):
+    application_id = create_application(authenticated_client)
     add_digital_pdf(storage_root, application_id, BANK_STATEMENT_TEXT)
-    run_processing(client, application_id)
+    run_processing(authenticated_client, application_id)
 
-    response = get_report(client, application_id)
+    response = get_report(authenticated_client, application_id)
 
     assert response.status_code == 422
     assert "No validation results" in response.json()["detail"]
 
 
-def test_report_endpoints_application_not_found(client):
+def test_report_endpoints_application_not_found(authenticated_client):
     for url in (REPORT_URL, HTML_URL, SUMMARY_URL):
-        response = get_report(client, 999999, url=url)
+        response = get_report(authenticated_client, 999999, url=url)
         assert response.status_code == 404
         assert response.json()["detail"] == "Application not found"

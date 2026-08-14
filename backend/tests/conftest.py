@@ -15,8 +15,17 @@ from sqlalchemy import text
 
 from app.auth.seed import seed as seed_default_account
 from app.core.config import get_settings
+from app.core.security import hash_password
 from app.database.connection import SessionLocal
+from app.database.models.user import User
 from app.main import app
+
+#: Credentials for the fixed operator identity the ``authenticated_client``
+#: fixture logs in as. Safe to hardcode: ``isolated_database`` wipes every
+#: user before and after each test, so there is never a collision with a
+#: prior test's data.
+_TEST_OPERATOR_EMPLOYEE_ID = "TEST-OPERATOR"
+_TEST_OPERATOR_PASSWORD = "TestPass@123"
 
 #: Minimal but realistic PDF payload starting with the ``%PDF-`` magic bytes.
 PDF_BYTES = (
@@ -66,6 +75,44 @@ def client(storage_root: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr("app.upload.services.get_settings", lambda: settings)
     with TestClient(app) as test_client:
         yield test_client
+
+
+@pytest.fixture()
+def authenticated_client(client: TestClient) -> TestClient:
+    """A ``client`` pre-authenticated as a fixed test operator identity.
+
+    Every route except ``/health`` and the ``auth`` module itself requires a
+    valid session (see ``app/api/__init__.py``). Tests that exercise those
+    endpoints and aren't specifically testing the unauthenticated case should
+    depend on this fixture instead of the raw ``client`` one -- it returns the
+    same ``TestClient``, just with a valid session cookie already set, so
+    every subsequent request on it carries the cookie automatically.
+    """
+    db = SessionLocal()
+    try:
+        db.add(
+            User(
+                employee_id=_TEST_OPERATOR_EMPLOYEE_ID,
+                email="test-operator@example.test",
+                name="Test Operator",
+                role="Verification Officer",
+                password_hash=hash_password(_TEST_OPERATOR_PASSWORD),
+                is_active=True,
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+    response = client.post(
+        f"{get_settings().api_prefix}/auth/login",
+        json={
+            "identifier": _TEST_OPERATOR_EMPLOYEE_ID,
+            "password": _TEST_OPERATOR_PASSWORD,
+            "remember": False,
+        },
+    )
+    assert response.status_code == 200, response.text
+    return client
 
 
 @pytest.fixture(autouse=True)

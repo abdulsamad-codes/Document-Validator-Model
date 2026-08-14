@@ -74,11 +74,11 @@ def _decisions(decisions: list[tuple[str, str, str | None]]) -> list[dict]:
 # --- Digital high-confidence flow --------------------------------------------
 
 
-def test_normalize_digital_statement(client, storage_root):
-    application_id = add_digital_statement(client, storage_root)
-    assert evaluate(client, application_id)["processing_status"] == "READY_FOR_NORMALIZATION"
+def test_normalize_digital_statement(authenticated_client, storage_root):
+    application_id = add_digital_statement(authenticated_client, storage_root)
+    assert evaluate(authenticated_client, application_id)["processing_status"] == "READY_FOR_NORMALIZATION"
 
-    result = normalize(client, application_id)
+    result = normalize(authenticated_client, application_id)
 
     assert result["application_id"] == application_id
     assert result["processing_status"] == "READY_FOR_BUSINESS_VALIDATION"
@@ -101,11 +101,11 @@ def test_normalize_digital_statement(client, storage_root):
     assert all(item["status"] == "NORMALIZED" for item in result["items"])
 
 
-def test_normalize_digital_payslip(client, storage_root):
-    application_id = add_digital_payslip(client, storage_root)
-    evaluate(client, application_id)
+def test_normalize_digital_payslip(authenticated_client, storage_root):
+    application_id = add_digital_payslip(authenticated_client, storage_root)
+    evaluate(authenticated_client, application_id)
 
-    result = normalize(client, application_id)
+    result = normalize(authenticated_client, application_id)
 
     items = items_by_field(result)
     assert items["employee_name"]["normalized_value"] == "JANE Q. ROE"
@@ -116,10 +116,10 @@ def test_normalize_digital_payslip(client, storage_root):
     assert result["summary"]["total"] == 7
 
 
-def test_normalize_persists_normalized_value(client, storage_root):
-    application_id = add_digital_statement(client, storage_root)
-    evaluate(client, application_id)
-    normalize(client, application_id)
+def test_normalize_persists_normalized_value(authenticated_client, storage_root):
+    application_id = add_digital_statement(authenticated_client, storage_root)
+    evaluate(authenticated_client, application_id)
+    normalize(authenticated_client, application_id)
 
     fields = stored_fields(application_id)
     assert fields["iban"].normalized_value == "DE89370400440532013000"
@@ -130,20 +130,20 @@ def test_normalize_persists_normalized_value(client, storage_root):
 # --- Human review flow -------------------------------------------------------
 
 
-def test_normalize_skips_unverified_fields(client, storage_root, monkeypatch):
-    application_id = add_scanned_statement(client, storage_root, monkeypatch)
-    flagged = evaluate(client, application_id)["fields_requiring_review"]
+def test_normalize_skips_unverified_fields(authenticated_client, storage_root, monkeypatch):
+    application_id = add_scanned_statement(authenticated_client, storage_root, monkeypatch)
+    flagged = evaluate(authenticated_client, application_id)["fields_requiring_review"]
     decisions = [
         (field["field_name"], "VERIFIED", None)
         for field in flagged
         if field["field_name"] != "iban"
     ]
     decisions.append(("iban", "CANNOT_VERIFY", None))
-    assert review(client, application_id, _decisions(decisions))["processing_status"] == (
+    assert review(authenticated_client, application_id, _decisions(decisions))["processing_status"] == (
         "PROCESSING_HALTED"
     )
 
-    result = normalize(client, application_id)
+    result = normalize(authenticated_client, application_id)
 
     items = items_by_field(result)
     assert items["iban"]["status"] == "SKIPPED"
@@ -157,20 +157,20 @@ def test_normalize_skips_unverified_fields(client, storage_root, monkeypatch):
     assert fields["account_holder"].normalized_value == "JOHN A. DOE"
 
 
-def test_normalize_prefers_human_corrected_value(client, storage_root, monkeypatch):
-    application_id = add_scanned_statement(client, storage_root, monkeypatch)
-    flagged = evaluate(client, application_id)["fields_requiring_review"]
+def test_normalize_prefers_human_corrected_value(authenticated_client, storage_root, monkeypatch):
+    application_id = add_scanned_statement(authenticated_client, storage_root, monkeypatch)
+    flagged = evaluate(authenticated_client, application_id)["fields_requiring_review"]
     decisions = [
         (field["field_name"], "VERIFIED", None)
         for field in flagged
         if field["field_name"] != "iban"
     ]
     decisions.append(("iban", "CORRECTED", "de89 3704 0044 0532 0130 00"))
-    assert review(client, application_id, _decisions(decisions))["processing_status"] == (
+    assert review(authenticated_client, application_id, _decisions(decisions))["processing_status"] == (
         "READY_FOR_NORMALIZATION"
     )
 
-    result = normalize(client, application_id)
+    result = normalize(authenticated_client, application_id)
 
     items = items_by_field(result)
     assert items["iban"]["source_value"] == "de89 3704 0044 0532 0130 00"
@@ -186,12 +186,12 @@ def test_normalize_prefers_human_corrected_value(client, storage_root, monkeypat
 # --- Idempotency -------------------------------------------------------------
 
 
-def test_normalize_is_idempotent(client, storage_root):
-    application_id = add_digital_statement(client, storage_root)
-    evaluate(client, application_id)
+def test_normalize_is_idempotent(authenticated_client, storage_root):
+    application_id = add_digital_statement(authenticated_client, storage_root)
+    evaluate(authenticated_client, application_id)
 
-    first = normalize(client, application_id)
-    second = normalize(client, application_id)
+    first = normalize(authenticated_client, application_id)
+    second = normalize(authenticated_client, application_id)
 
     assert first["summary"] == second["summary"] == {
         "total": 11,
@@ -207,12 +207,12 @@ def test_normalize_is_idempotent(client, storage_root):
 # --- Read endpoint -----------------------------------------------------------
 
 
-def test_get_normalized_fields_returns_stored_values(client, storage_root):
-    application_id = add_digital_statement(client, storage_root)
-    evaluate(client, application_id)
-    normalize(client, application_id)
+def test_get_normalized_fields_returns_stored_values(authenticated_client, storage_root):
+    application_id = add_digital_statement(authenticated_client, storage_root)
+    evaluate(authenticated_client, application_id)
+    normalize(authenticated_client, application_id)
 
-    records = get_normalized_fields(client, application_id)
+    records = get_normalized_fields(authenticated_client, application_id)
 
     by_name = {record["field_name"]: record for record in records}
     assert len(records) == 11
@@ -225,10 +225,10 @@ def test_get_normalized_fields_returns_stored_values(client, storage_root):
 # --- Audit -------------------------------------------------------------------
 
 
-def test_normalization_is_audited(client, storage_root):
-    application_id = add_digital_statement(client, storage_root)
-    evaluate(client, application_id)
-    normalize(client, application_id)
+def test_normalization_is_audited(authenticated_client, storage_root):
+    application_id = add_digital_statement(authenticated_client, storage_root)
+    evaluate(authenticated_client, application_id)
+    normalize(authenticated_client, application_id)
 
     actions = audit_actions(application_id)
     assert "normalization.completed" in actions
@@ -238,21 +238,21 @@ def test_normalization_is_audited(client, storage_root):
 # --- Error paths -------------------------------------------------------------
 
 
-def test_normalize_application_not_found(client):
-    response = client.post(f"{API}/applications/999999{NORMALIZE_URL}")
+def test_normalize_application_not_found(authenticated_client):
+    response = authenticated_client.post(f"{API}/applications/999999{NORMALIZE_URL}")
     assert response.status_code == 404
     assert response.json()["detail"] == "Application not found"
 
 
-def test_normalize_no_extracted_fields(client):
-    application_id = create_application(client)
-    response = client.post(f"{API}/applications/{application_id}{NORMALIZE_URL}")
+def test_normalize_no_extracted_fields(authenticated_client):
+    application_id = create_application(authenticated_client)
+    response = authenticated_client.post(f"{API}/applications/{application_id}{NORMALIZE_URL}")
     assert response.status_code == 422
     assert "extracted fields" in response.json()["detail"].lower()
 
 
-def test_get_normalized_fields_no_extracted_fields(client):
-    application_id = create_application(client)
-    response = client.get(f"{API}/applications/{application_id}{NORMALIZED_FIELDS_URL}")
+def test_get_normalized_fields_no_extracted_fields(authenticated_client):
+    application_id = create_application(authenticated_client)
+    response = authenticated_client.get(f"{API}/applications/{application_id}{NORMALIZED_FIELDS_URL}")
     assert response.status_code == 422
     assert "extracted fields" in response.json()["detail"].lower()

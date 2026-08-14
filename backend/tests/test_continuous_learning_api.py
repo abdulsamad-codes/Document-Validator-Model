@@ -172,18 +172,18 @@ def five_valid_samples(client, storage_root) -> tuple[int, dict]:
     return application_id, {"doc_a": doc_a, "doc_b": doc_b}
 
 
-def test_all_endpoints_404_on_empty_dataset(client):
-    assert client.get(f"{API}{DATASET_URL}").status_code == 404
-    assert client.get(f"{API}{STATISTICS_URL}").status_code == 404
-    assert client.get(f"{API}{EXPORT_JSON_URL}").status_code == 404
-    assert client.get(f"{API}{EXPORT_CSV_URL}").status_code == 404
-    assert client.get(f"{API}{VERSION_URL}").status_code == 404
+def test_all_endpoints_404_on_empty_dataset(authenticated_client):
+    assert authenticated_client.get(f"{API}{DATASET_URL}").status_code == 404
+    assert authenticated_client.get(f"{API}{STATISTICS_URL}").status_code == 404
+    assert authenticated_client.get(f"{API}{EXPORT_JSON_URL}").status_code == 404
+    assert authenticated_client.get(f"{API}{EXPORT_CSV_URL}").status_code == 404
+    assert authenticated_client.get(f"{API}{VERSION_URL}").status_code == 404
 
 
-def test_dataset_generation_from_pipeline(client, storage_root):
-    application_id = build_curated_application(client, storage_root)
+def test_dataset_generation_from_pipeline(authenticated_client, storage_root):
+    application_id = build_curated_application(authenticated_client, storage_root)
 
-    response = client.get(f"{API}{DATASET_URL}")
+    response = authenticated_client.get(f"{API}{DATASET_URL}")
     assert response.status_code == 200
     body = response.json()
     assert body["metadata"]["record_count"] == 2
@@ -200,17 +200,17 @@ def test_dataset_generation_from_pipeline(client, storage_root):
         assert set(record) == set(CSV_COLUMNS)
 
 
-def test_dataset_includes_low_confidence_scan(client, storage_root, monkeypatch):
-    build_curated_application(client, storage_root)
+def test_dataset_includes_low_confidence_scan(authenticated_client, storage_root, monkeypatch):
+    build_curated_application(authenticated_client, storage_root)
 
-    response = client.get(f"{API}{DATASET_URL}")
+    response = authenticated_client.get(f"{API}{DATASET_URL}")
     assert response.status_code == 200
     origins = {record["origin"] for record in response.json()["records"]}
     assert origins == {"FINAL_HUMAN_REVIEW"}
 
 
-def test_dataset_excludes_invalid_records(client, storage_root):
-    application_id = create_application(client)
+def test_dataset_excludes_invalid_records(authenticated_client, storage_root):
+    application_id = create_application(authenticated_client)
     insert_raw(
         [
             {
@@ -253,13 +253,13 @@ def test_dataset_excludes_invalid_records(client, storage_root):
         ]
     )
 
-    body = client.get(f"{API}{DATASET_URL}").json()
+    body = authenticated_client.get(f"{API}{DATASET_URL}").json()
     assert body["metadata"]["record_count"] == 1
     assert body["records"][0]["field_name"] == "account_number"
 
 
-def test_dataset_excludes_duplicates_keeping_lowest_id(client):
-    application_id = create_application(client)
+def test_dataset_excludes_duplicates_keeping_lowest_id(authenticated_client):
+    application_id = create_application(authenticated_client)
     recorded_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
     insert_raw(
         [
@@ -284,15 +284,15 @@ def test_dataset_excludes_duplicates_keeping_lowest_id(client):
         ]
     )
 
-    body = client.get(f"{API}{DATASET_URL}").json()
+    body = authenticated_client.get(f"{API}{DATASET_URL}").json()
     assert body["metadata"]["record_count"] == 1
     assert body["records"][0]["human_corrected_value"] == "1111111111"
 
 
-def test_version_metadata_contract(client, storage_root):
-    build_curated_application(client, storage_root)
+def test_version_metadata_contract(authenticated_client, storage_root):
+    build_curated_application(authenticated_client, storage_root)
 
-    metadata = client.get(f"{API}{VERSION_URL}").json()
+    metadata = authenticated_client.get(f"{API}{VERSION_URL}").json()
     assert metadata["record_count"] == 2
     assert len(metadata["dataset_hash"]) == 64
     assert int(metadata["dataset_hash"], 16) >= 0
@@ -302,38 +302,38 @@ def test_version_metadata_contract(client, storage_root):
     datetime.fromisoformat(metadata["created_at"].replace("Z", "+00:00"))
 
 
-def test_hash_is_deterministic_across_calls(client, storage_root):
-    build_curated_application(client, storage_root)
+def test_hash_is_deterministic_across_calls(authenticated_client, storage_root):
+    build_curated_application(authenticated_client, storage_root)
 
-    first = client.get(f"{API}{DATASET_URL}").json()
-    second = client.get(f"{API}{DATASET_URL}").json()
+    first = authenticated_client.get(f"{API}{DATASET_URL}").json()
+    second = authenticated_client.get(f"{API}{DATASET_URL}").json()
     assert first["metadata"]["dataset_hash"] == second["metadata"]["dataset_hash"]
     assert first["metadata"]["dataset_version"] == second["metadata"]["dataset_version"]
 
 
-def test_hash_matches_canonical_serialization(client, storage_root):
-    build_curated_application(client, storage_root)
+def test_hash_matches_canonical_serialization(authenticated_client, storage_root):
+    build_curated_application(authenticated_client, storage_root)
 
-    body = client.get(f"{API}{DATASET_URL}").json()
+    body = authenticated_client.get(f"{API}{DATASET_URL}").json()
     records = sorted(body["records"], key=lambda r: r["human_corrected_value"])
     canonical = json.dumps(records, sort_keys=True, separators=(",", ":"))
     expected = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     assert body["metadata"]["dataset_hash"] == expected
 
 
-def test_hash_is_stable_across_export_formats(client, storage_root):
-    build_curated_application(client, storage_root)
+def test_hash_is_stable_across_export_formats(authenticated_client, storage_root):
+    build_curated_application(authenticated_client, storage_root)
 
-    json_export = client.get(f"{API}{EXPORT_JSON_URL}").json()
-    csv_export = client.get(f"{API}{EXPORT_CSV_URL}").json()
+    json_export = authenticated_client.get(f"{API}{EXPORT_JSON_URL}").json()
+    csv_export = authenticated_client.get(f"{API}{EXPORT_CSV_URL}").json()
     assert json_export["dataset_hash"] == csv_export["dataset_hash"]
     assert json_export["dataset_version"] == csv_export["dataset_version"]
 
 
-def test_statistics_aggregation_accuracy(client, storage_root):
-    five_valid_samples(client, storage_root)
+def test_statistics_aggregation_accuracy(authenticated_client, storage_root):
+    five_valid_samples(authenticated_client, storage_root)
 
-    body = client.get(f"{API}{STATISTICS_URL}").json()
+    body = authenticated_client.get(f"{API}{STATISTICS_URL}").json()
     assert body["total_records"] == 5
     assert body["document_distribution"] == {
         "ACCOUNT_MAINTENANCE_CERTIFICATE": 3,
@@ -350,10 +350,10 @@ def test_statistics_aggregation_accuracy(client, storage_root):
     assert body["reviewer_distribution"] == {"alice": 3, "bob": 2}
 
 
-def test_statistics_completeness(client, storage_root):
-    five_valid_samples(client, storage_root)
+def test_statistics_completeness(authenticated_client, storage_root):
+    five_valid_samples(authenticated_client, storage_root)
 
-    body = client.get(f"{API}{STATISTICS_URL}").json()
+    body = authenticated_client.get(f"{API}{STATISTICS_URL}").json()
     completeness = body["dataset_completeness"]
     assert completeness["document_type"] == 1.0
     assert completeness["normalized_value"] == 0.0
@@ -364,20 +364,20 @@ def test_statistics_completeness(client, storage_root):
     assert completeness["reviewer"] == 1.0
 
 
-def test_statistics_include_export_metadata(client, storage_root):
-    build_curated_application(client, storage_root)
+def test_statistics_include_export_metadata(authenticated_client, storage_root):
+    build_curated_application(authenticated_client, storage_root)
 
-    body = client.get(f"{API}{STATISTICS_URL}").json()
+    body = authenticated_client.get(f"{API}{STATISTICS_URL}").json()
     metadata = body["metadata"]
     assert metadata["record_count"] == 2
     assert len(metadata["dataset_hash"]) == 64
     assert metadata["dataset_version"].startswith("cl-1.0.0-")
 
 
-def test_json_export(client, storage_root):
-    build_curated_application(client, storage_root)
+def test_json_export(authenticated_client, storage_root):
+    build_curated_application(authenticated_client, storage_root)
 
-    body = client.get(f"{API}{EXPORT_JSON_URL}").json()
+    body = authenticated_client.get(f"{API}{EXPORT_JSON_URL}").json()
     assert body["format"] == "json"
     assert body["record_count"] == 2
     assert body["dataset_hash"]
@@ -393,10 +393,10 @@ def test_json_export(client, storage_root):
         assert 0.0 <= record["confidence_score"] <= 1.0
 
 
-def test_csv_export_header_and_rows(client, storage_root):
-    build_curated_application(client, storage_root)
+def test_csv_export_header_and_rows(authenticated_client, storage_root):
+    build_curated_application(authenticated_client, storage_root)
 
-    body = client.get(f"{API}{EXPORT_CSV_URL}").json()
+    body = authenticated_client.get(f"{API}{EXPORT_CSV_URL}").json()
     assert body["format"] == "csv"
     assert body["record_count"] == 2
     assert body["filename"].endswith(".csv")
@@ -407,19 +407,19 @@ def test_csv_export_header_and_rows(client, storage_root):
     assert all(row["application_id"] for row in parsed)
 
 
-def test_dataset_records_sorted_deterministically(client, storage_root):
-    build_curated_application(client, storage_root)
+def test_dataset_records_sorted_deterministically(authenticated_client, storage_root):
+    build_curated_application(authenticated_client, storage_root)
 
-    first = client.get(f"{API}{DATASET_URL}").json()
-    second = client.get(f"{API}{DATASET_URL}").json()
+    first = authenticated_client.get(f"{API}{DATASET_URL}").json()
+    second = authenticated_client.get(f"{API}{DATASET_URL}").json()
     assert [r["recorded_at"] for r in first["records"]] == [
         r["recorded_at"] for r in second["records"]
     ]
 
 
-def test_dataset_after_pipeline_and_invalid_mix(client, storage_root):
-    build_curated_application(client, storage_root)
-    application_id = create_application(client)
+def test_dataset_after_pipeline_and_invalid_mix(authenticated_client, storage_root):
+    build_curated_application(authenticated_client, storage_root)
+    application_id = create_application(authenticated_client)
     insert_raw(
         [
             {
@@ -432,5 +432,5 @@ def test_dataset_after_pipeline_and_invalid_mix(client, storage_root):
         ]
     )
 
-    body = client.get(f"{API}{DATASET_URL}").json()
+    body = authenticated_client.get(f"{API}{DATASET_URL}").json()
     assert body["metadata"]["record_count"] == 2
