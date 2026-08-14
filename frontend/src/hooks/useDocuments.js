@@ -116,14 +116,18 @@ export function useDocuments(applicationId) {
 
   const removeDocument = useCallback(
     async (document) => {
+      const operationKey = `delete-${document.id}`;
+      setPending((prev) => ({ ...prev, [operationKey]: { phase: 'delete' } }));
       try {
         await deleteDocument({ applicationId, documentId: document.id });
         setDocumentItems(
           applicationId,
           documents.filter((doc) => doc.id !== document.id)
         );
+        clearPending(operationKey);
         return { ok: true };
       } catch (err) {
+        clearPending(operationKey);
         return { ok: false, error: getApiErrorMessage(err) };
       }
     },

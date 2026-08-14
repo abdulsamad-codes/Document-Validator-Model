@@ -1,4 +1,4 @@
-import { Bell, Menu, Search } from 'lucide-react';
+import { Menu } from 'lucide-react';
 
 import { useAuth } from '../../../hooks/useAuth';
 import { USER_PROFILE } from '../../../data/dashboard';
@@ -9,8 +9,10 @@ import styles from './Navbar.module.css';
  * Top navigation bar of the dashboard.
  *
  * Left side holds the responsive menu toggle, the page title and a breadcrumb;
- * the right side holds the search box, notifications, a functional theme toggle
- * and the employee profile with the current date.
+ * the right side holds a functional theme toggle and the employee profile
+ * with the current date. There is no search or notifications feature in the
+ * product yet, so those controls aren't rendered here rather than shown as
+ * non-functional decoration.
  *
  * @param {string} title Page title shown in the bar.
  * @param {string} breadcrumb Breadcrumb trail for the current page.
@@ -57,21 +59,6 @@ function Navbar({ title, breadcrumb, showMenu = false, onToggleSidebar }) {
       </div>
 
       <div className={styles.right}>
-        <label className={styles.search}>
-          <Search className={styles.searchIcon} aria-hidden="true" />
-          <input
-            className={styles.searchInput}
-            type="search"
-            placeholder="Search..."
-            aria-label="Search"
-          />
-        </label>
-
-        <button className={styles.iconButton} type="button" aria-label="Notifications">
-          <Bell aria-hidden="true" />
-          <span className={styles.notificationDot} aria-hidden="true" />
-        </button>
-
         <ThemeToggle />
 
         <div className={styles.profile}>

@@ -87,12 +87,14 @@ function DocumentList({
                   const document = findDocument(slotType, copyNumber);
                   const slotPending =
                     pending[`upload-${slotKey}`] ?? (document ? pending[`replace-${document.id}`] : null);
+                  const isDeleting = document ? Boolean(pending[`delete-${document.id}`]) : false;
                   return (
                     <li key={slotKey}>
                       <DocumentRow
                         entry={{ ...entry, label: slotLabel }}
                         document={document}
                         pending={slotPending}
+                        isDeleting={isDeleting}
                         onUpload={() => triggerPicker(slotType, copyNumber)}
                         onReplace={() => triggerPicker(slotType, copyNumber)}
                         onDelete={() => document && onDelete(document)}

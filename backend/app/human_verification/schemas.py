@@ -48,11 +48,17 @@ class CorrectionItem(BaseModel):
         field_name: Name of the corrected field.
         corrected_value: Value confirmed by the reviewer.
         reason: Optional explanation for the correction.
+        document_id: Id of the document the field was extracted from.
+            Disambiguates two documents on the same application that extract
+            a same-named field; when omitted, the correction matches any
+            field with that name (fine when the name is unique on the
+            application, which is the common case).
     """
 
     field_name: str = Field(min_length=1, max_length=255)
     corrected_value: str = Field(min_length=1)
     reason: str | None = None
+    document_id: int | None = None
 
 
 class CorrectionItemRead(BaseModel):
@@ -61,6 +67,7 @@ class CorrectionItemRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     field_name: str
+    document_id: int | None = None
     original_value: str | None = None
     corrected_value: str
     reason: str | None = None

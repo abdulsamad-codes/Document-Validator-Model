@@ -6,6 +6,20 @@ import StatusChip from '../../common/StatusChip/StatusChip';
 import { getRuleResultStatus } from '../../../data/statuses';
 import styles from './ReviewFields.module.css';
 
+/**
+ * Composite key for a field's correction draft.
+ *
+ * Corrections are edited per (document, field name): two documents on the
+ * same review screen can extract a same-named field, and keying by field
+ * name alone let starting or canceling a correction on one document's field
+ * affect the other's draft. document_id is carried on the draft and sent
+ * with the correction, so the backend matches it to the right document's
+ * field even when two documents share a field name.
+ */
+function correctionKey(documentId, fieldName) {
+  return `${documentId}::${fieldName}`;
+}
+
 function confidenceClass(score) {
   if (score == null) {
     return 'muted';
@@ -42,13 +56,21 @@ function ReviewFields({ fields, corrections, onCorrectionsChange, readOnly = fal
     );
   }
 
-  const correctionByField = new Map(corrections.map((correction) => [correction.field_name, correction]));
+  const correctionByField = new Map(
+    corrections.map((correction) => [
+      correctionKey(correction.document_id, correction.field_name),
+      correction,
+    ])
+  );
 
-  const updateCorrection = (fieldName, patch) => {
-    const current = correctionByField.get(fieldName);
-    const next = { ...(current ?? {}), field_name: fieldName, ...patch };
+  const updateCorrection = (documentId, fieldName, patch) => {
+    const key = correctionKey(documentId, fieldName);
+    const current = correctionByField.get(key);
+    const next = { ...(current ?? {}), document_id: documentId, field_name: fieldName, ...patch };
     onCorrectionsChange([
-      ...corrections.filter((correction) => correction.field_name !== fieldName),
+      ...corrections.filter(
+        (correction) => correctionKey(correction.document_id, correction.field_name) !== key
+      ),
       next,
     ]);
   };
@@ -58,16 +80,27 @@ function ReviewFields({ fields, corrections, onCorrectionsChange, readOnly = fal
       return;
     }
     const defaultValue = field.normalized_value || field.extracted_value || '';
-    if (!correctionByField.has(field.field_name)) {
+    const key = correctionKey(field.document_id, field.field_name);
+    if (!correctionByField.has(key)) {
       onCorrectionsChange([
         ...corrections,
-        { field_name: field.field_name, corrected_value: defaultValue, reason: '' },
+        {
+          document_id: field.document_id,
+          field_name: field.field_name,
+          corrected_value: defaultValue,
+          reason: '',
+        },
       ]);
     }
   };
 
-  const removeCorrection = (fieldName) => {
-    onCorrectionsChange(corrections.filter((correction) => correction.field_name !== fieldName));
+  const removeCorrection = (documentId, fieldName) => {
+    const key = correctionKey(documentId, fieldName);
+    onCorrectionsChange(
+      corrections.filter(
+        (correction) => correctionKey(correction.document_id, correction.field_name) !== key
+      )
+    );
   };
 
   return (
@@ -88,8 +121,9 @@ function ReviewFields({ fields, corrections, onCorrectionsChange, readOnly = fal
         {fields.map((field) => {
           const status = getRuleResultStatus(field.verification_status);
           const reviewed = field.human_verified || field.human_corrected_value != null;
-          const isCorrecting = correctionByField.has(field.field_name);
-          const correction = correctionByField.get(field.field_name);
+          const key = correctionKey(field.document_id, field.field_name);
+          const isCorrecting = correctionByField.has(key);
+          const correction = correctionByField.get(key);
           return (
             <Fragment key={`${field.document_id}-${field.field_name}`}>
               <tr>
@@ -136,7 +170,7 @@ function ReviewFields({ fields, corrections, onCorrectionsChange, readOnly = fal
                     <button
                       type="button"
                       className={styles.removeBtn}
-                      onClick={() => removeCorrection(field.field_name)}
+                      onClick={() => removeCorrection(field.document_id, field.field_name)}
                       aria-label={`Cancel correction for ${field.field_name}`}
                     >
                       <X aria-hidden="true" />
@@ -156,7 +190,7 @@ function ReviewFields({ fields, corrections, onCorrectionsChange, readOnly = fal
                           className={styles.input}
                           value={correction.corrected_value ?? ''}
                           onChange={(event) =>
-                            updateCorrection(field.field_name, {
+                            updateCorrection(field.document_id, field.field_name, {
                               corrected_value: event.target.value,
                             })
                           }
@@ -169,7 +203,9 @@ function ReviewFields({ fields, corrections, onCorrectionsChange, readOnly = fal
                           className={styles.input}
                           value={correction.reason ?? ''}
                           onChange={(event) =>
-                            updateCorrection(field.field_name, { reason: event.target.value })
+                            updateCorrection(field.document_id, field.field_name, {
+                              reason: event.target.value,
+                            })
                           }
                         />
                       </label>

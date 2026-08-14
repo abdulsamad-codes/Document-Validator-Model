@@ -242,6 +242,54 @@ def test_correct_flow(authenticated_client, storage_root):
     assert "human_review.application_corrected" in actions
 
 
+def test_correct_disambiguates_same_named_field_by_document(authenticated_client, storage_root):
+    """Two documents extracting the same field name must be corrected independently."""
+    application_id = build_full_application(authenticated_client, storage_root, with_detections=True)
+
+    screen = authenticated_client.get(f"{API}/applications/{application_id}{SCREEN_URL}").json()
+    account_number_fields = [f for f in screen["fields"] if f["field_name"] == "account_number"]
+    assert len(account_number_fields) >= 2, "fixture must produce the field on multiple documents"
+    first, second = account_number_fields[0], account_number_fields[1]
+    assert first["document_id"] != second["document_id"]
+
+    response = submit(
+        authenticated_client,
+        application_id,
+        {
+            "decision": "CORRECT",
+            "corrections": [
+                {
+                    "field_name": "account_number",
+                    "document_id": first["document_id"],
+                    "corrected_value": "1111111111",
+                },
+                {
+                    "field_name": "account_number",
+                    "document_id": second["document_id"],
+                    "corrected_value": "2222222222",
+                },
+            ],
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["corrections_count"] == 2
+
+    from app.database.repositories.extracted_field_repository import ExtractedFieldRepository
+
+    db = SessionLocal()
+    try:
+        fields = ExtractedFieldRepository(db).get_by_application(application_id)
+        by_document = {
+            f.ocr_result.document_id: f for f in fields if f.field_name == "account_number"
+        }
+    finally:
+        db.close()
+
+    assert by_document[first["document_id"]].human_corrected_value == "1111111111"
+    assert by_document[second["document_id"]].human_corrected_value == "2222222222"
+
+
 def test_correct_requires_corrections(authenticated_client, storage_root):
     application_id = build_single_statement_application(authenticated_client, storage_root)
 

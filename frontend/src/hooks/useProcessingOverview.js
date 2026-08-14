@@ -20,6 +20,7 @@ import { getPreference } from '../utils/preferences';
  *   error: string|null,
  *   reload: () => Promise<void>,
  *   retry: (applicationId: number) => Promise<void>,
+ *   retryingIds: Set<number>,
  * }}
  */
 export function useProcessingOverview() {
@@ -27,6 +28,7 @@ export function useProcessingOverview() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const [retryingIds, setRetryingIds] = useState(() => new Set());
 
   const reload = useCallback(async () => {
     setLoading(false);
@@ -53,11 +55,18 @@ export function useProcessingOverview() {
 
   const retry = useCallback(
     async (applicationId) => {
+      setRetryingIds((prev) => new Set(prev).add(applicationId));
       try {
         await retryProcessing(applicationId);
         await reload();
       } catch (err) {
         setError(getApiErrorMessage(err));
+      } finally {
+        setRetryingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(applicationId);
+          return next;
+        });
       }
     },
     [reload]
@@ -85,5 +94,5 @@ export function useProcessingOverview() {
     return () => window.clearInterval(interval);
   }, [hasWork, reload]);
 
-  return { rows, loading, refreshing, error, reload, retry };
+  return { rows, loading, refreshing, error, reload, retry, retryingIds };
 }

@@ -388,17 +388,27 @@ class HumanVerificationService:
         updated and a feedback-dataset sample is recorded so ground truth is
         never duplicated for an unchanged value.
 
+        A correction carrying a ``document_id`` matches only the field
+        extracted from that document, so two documents on the same
+        application extracting a same-named field can be corrected
+        independently. A correction without one falls back to matching by
+        field name alone, same as before ``document_id`` existed.
+
         Returns:
             The number of corrections stored.
         """
         if not request.corrections:
             return 0
-        fields = {
-            field.field_name: field
-            for field in self._fields.get_by_application(application_id)
+        all_fields = list(self._fields.get_by_application(application_id))
+        fields_by_key = {
+            (field.ocr_result.document_id, field.field_name): field for field in all_fields
         }
+        fields_by_name = {field.field_name: field for field in all_fields}
         for correction in request.corrections:
-            field = fields.get(correction.field_name)
+            if correction.document_id is not None:
+                field = fields_by_key.get((correction.document_id, correction.field_name))
+            else:
+                field = fields_by_name.get(correction.field_name)
             current = (
                 field.human_corrected_value or field.extracted_value
                 if field is not None
@@ -409,6 +419,7 @@ class HumanVerificationService:
                 review_id=review_id,
                 field_name=correction.field_name,
                 corrected_value=correction.corrected_value,
+                document_id=correction.document_id,
                 original_value=original_value,
                 reason=correction.reason,
             )

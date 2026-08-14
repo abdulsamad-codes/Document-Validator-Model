@@ -29,6 +29,12 @@ export function useHumanReview() {
   // the latest one, otherwise the app dropdown briefly (or permanently) empties.
   const appsRequestIdRef = useRef(0);
 
+  // Same guard for the selected application's review data: switching the
+  // selection quickly enough (before an in-flight fetch for the previous one
+  // resolves) must not let that stale response overwrite the newly-selected
+  // application's data.
+  const reviewRequestIdRef = useRef(0);
+
   const [reviewScreen, setReviewScreen] = useState(null);
   const [application, setApplication] = useState(null);
   const [history, setHistory] = useState([]);
@@ -66,6 +72,7 @@ export function useHumanReview() {
   }, [loadApplications]);
 
   const reload = useCallback(async () => {
+    const requestId = ++reviewRequestIdRef.current;
     if (selectedId == null) {
       setReviewScreen(null);
       setApplication(null);
@@ -81,16 +88,22 @@ export function useHumanReview() {
         getApplication(selectedId),
         getReviewHistory(selectedId),
       ]);
-      setReviewScreen(screen);
-      setApplication(app);
-      setHistory(reviews?.reviews ?? []);
+      if (requestId === reviewRequestIdRef.current) {
+        setReviewScreen(screen);
+        setApplication(app);
+        setHistory(reviews?.reviews ?? []);
+      }
     } catch (err) {
-      setError(getApiErrorMessage(err));
-      setReviewScreen(null);
-      setApplication(null);
-      setHistory([]);
+      if (requestId === reviewRequestIdRef.current) {
+        setError(getApiErrorMessage(err));
+        setReviewScreen(null);
+        setApplication(null);
+        setHistory([]);
+      }
     } finally {
-      setLoading(false);
+      if (requestId === reviewRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   }, [selectedId]);
 

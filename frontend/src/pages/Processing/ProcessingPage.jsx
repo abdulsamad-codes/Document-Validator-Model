@@ -19,7 +19,7 @@ import styles from './ProcessingPage.module.css';
  * autoRefreshProcessingStatus preference is disabled.
  */
 function ProcessingPage() {
-  const { rows, loading, refreshing, error, reload, retry } = useProcessingOverview();
+  const { rows, loading, refreshing, error, reload, retry, retryingIds } = useProcessingOverview();
 
   const totals = rows.reduce(
     (acc, { progress }) => {
@@ -170,9 +170,14 @@ function ProcessingPage() {
                           className={styles.retryBtn}
                           type="button"
                           onClick={() => retry(application.id)}
+                          disabled={retryingIds.has(application.id)}
                         >
-                          <RefreshCw aria-hidden="true" />
-                          Retry failed
+                          {retryingIds.has(application.id) ? (
+                            <Spinner size="small" />
+                          ) : (
+                            <RefreshCw aria-hidden="true" />
+                          )}
+                          {retryingIds.has(application.id) ? 'Retrying…' : 'Retry failed'}
                         </button>
                       )}
                     </div>

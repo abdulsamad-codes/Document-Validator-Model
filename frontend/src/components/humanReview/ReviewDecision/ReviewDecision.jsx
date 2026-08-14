@@ -91,6 +91,7 @@ function ReviewDecision({
         .filter((correction) => (correction.corrected_value ?? '').trim())
         .map((correction) => ({
           field_name: correction.field_name,
+          document_id: correction.document_id ?? null,
           corrected_value: correction.corrected_value.trim(),
           reason: (correction.reason ?? '').trim() || null,
         })),

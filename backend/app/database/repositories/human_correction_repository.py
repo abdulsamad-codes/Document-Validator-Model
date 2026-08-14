@@ -29,6 +29,7 @@ class HumanCorrectionRepository(BaseRepository[HumanCorrection]):
         review_id: int,
         field_name: str,
         corrected_value: str,
+        document_id: int | None = None,
         original_value: str | None = None,
         reason: str | None = None,
     ) -> HumanCorrection:
@@ -38,6 +39,8 @@ class HumanCorrectionRepository(BaseRepository[HumanCorrection]):
             review_id: Review that produced the correction.
             field_name: Name of the corrected field.
             corrected_value: Value confirmed by the reviewer.
+            document_id: Document the corrected field was extracted from,
+                when known.
             original_value: Value extracted before the correction, if known.
             reason: Optional explanation for the correction.
 
@@ -47,6 +50,7 @@ class HumanCorrectionRepository(BaseRepository[HumanCorrection]):
         correction = HumanCorrection(
             review_id=review_id,
             field_name=field_name,
+            document_id=document_id,
             original_value=original_value,
             corrected_value=corrected_value,
             reason=reason,

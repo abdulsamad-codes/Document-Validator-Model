@@ -96,8 +96,12 @@ def _validate_correct(request: HumanReviewRequest) -> None:
         raise InvalidDecision("A correction cannot carry a rejection reason")
     if not request.corrections:
         raise InvalidCorrection()
-    names = [item.field_name for item in request.corrections]
-    if len(names) != len(set(names)):
+    # A correction is unique per (document, field name) when document_id is
+    # given, so two documents extracting the same field name can each be
+    # corrected once. Without document_id, uniqueness falls back to field
+    # name alone, same as before document_id existed.
+    keys = [(item.document_id, item.field_name) for item in request.corrections]
+    if len(keys) != len(set(keys)):
         raise InvalidDecision("A field can only be corrected once per review")
 
 

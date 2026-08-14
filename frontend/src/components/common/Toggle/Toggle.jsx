@@ -18,7 +18,6 @@ function Toggle({ checked, onChange, id, 'aria-label': ariaLabel, disabled = fal
   return (
     <span
       className={`${styles.switch} ${checked ? styles.on : styles.off} ${disabled ? styles.disabled : ''}`}
-      aria-hidden="true"
     >
       <input
         id={id}

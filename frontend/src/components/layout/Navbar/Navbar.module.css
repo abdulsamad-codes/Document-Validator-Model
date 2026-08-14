@@ -68,53 +68,6 @@
   height: 20px;
 }
 
-.notificationDot {
-  position: absolute;
-  top: 10px;
-  right: 11px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--color-danger);
-}
-
-.search {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 40px;
-  padding: 0 12px;
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  transition: border-color var(--transition), background-color var(--transition);
-}
-
-.search:focus-within {
-  border-color: var(--color-primary);
-  background: var(--color-card);
-}
-
-.searchIcon {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-  color: var(--color-text-muted);
-}
-
-.searchInput {
-  width: 180px;
-  border: none;
-  background: none;
-  outline: none;
-  font-size: 14px;
-  color: var(--color-text);
-}
-
-.searchInput::placeholder {
-  color: var(--color-text-muted);
-}
-
 .profile {
   display: flex;
   align-items: center;
@@ -157,7 +110,6 @@
     padding: 0 16px;
   }
 
-  .search,
   .profileInfo {
     display: none;
   }

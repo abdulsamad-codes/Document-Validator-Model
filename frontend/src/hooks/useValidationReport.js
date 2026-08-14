@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import { getAnalysisResults } from '../services/analysis';
@@ -61,6 +61,11 @@ export function useValidationReport() {
   const [sectionErrors, setSectionErrors] = useState({});
   const [error, setError] = useState(null);
 
+  // Guards against out-of-order responses: switching the selected application
+  // quickly enough (before an in-flight fetch for the previous one resolves)
+  // must not let that stale response overwrite the newly-selected one.
+  const reportRequestIdRef = useRef(0);
+
   const loadApplications = useCallback(async () => {
     setAppsLoading(true);
     setAppsError(null);
@@ -83,6 +88,7 @@ export function useValidationReport() {
   }, [loadApplications]);
 
   const reload = useCallback(async () => {
+    const requestId = ++reportRequestIdRef.current;
     if (selectedId == null) {
       setReport(null);
       setCompleteness(null);
@@ -112,6 +118,9 @@ export function useValidationReport() {
       fetchSection(() => getAnalysisResults(selectedId)),
       fetchSection(() => getNormalizedFields(selectedId)),
     ]);
+    if (requestId !== reportRequestIdRef.current) {
+      return;
+    }
     setReport(reportSection.data);
     setCompleteness(completenessSection.data);
     setTechnical(technicalSection.data);

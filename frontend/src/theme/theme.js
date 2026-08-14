@@ -10,6 +10,12 @@ export function getStoredPreference() {
     if (stored && THEME_OPTIONS.includes(stored)) {
       return stored;
     }
+    // Theme options used to include 'system'. That mode no longer exists, but
+    // a user who chose it before this redesign shouldn't be silently reset to
+    // light -- resolve it once against the OS preference instead.
+    if (stored === 'system' && window.matchMedia) {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
   } catch {
     return DEFAULT_THEME;
   }
