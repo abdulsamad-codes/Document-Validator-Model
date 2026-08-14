@@ -11,9 +11,9 @@ from tests.conftest import JPEG_BYTES, PDF_BYTES, PNG_BYTES
 API = "/api/v1"
 
 
-def create_application(client, created_by: str = "tester") -> int:
+def create_application(client) -> int:
     """Create an application via the API and return its id."""
-    response = client.post(f"{API}/applications", json={"created_by": created_by})
+    response = client.post(f"{API}/applications", json={})
     assert response.status_code == 201, response.text
     return response.json()["application"]["id"]
 
@@ -486,12 +486,12 @@ def test_download_missing_document(authenticated_client):
 
 
 def test_create_application(authenticated_client):
-    response = authenticated_client.post(f"{API}/applications", json={"created_by": "reviewer.alex"})
+    response = authenticated_client.post(f"{API}/applications", json={})
 
     assert response.status_code == 201, response.text
     application = response.json()["application"]
     assert application["id"] > 0
-    assert application["created_by"] == "reviewer.alex"
+    assert application["created_by"] == "Test Operator"
     assert application["status"] == "SUBMITTED"
     assert "submitted_at" in application
 
@@ -500,8 +500,8 @@ def test_create_application(authenticated_client):
 
 
 def test_list_applications(authenticated_client):
-    first = authenticated_client.post(f"{API}/applications", json={"created_by": "alice"}).json()["application"]
-    second = authenticated_client.post(f"{API}/applications", json={"created_by": "bob"}).json()["application"]
+    first = authenticated_client.post(f"{API}/applications", json={}).json()["application"]
+    second = authenticated_client.post(f"{API}/applications", json={}).json()["application"]
 
     response = authenticated_client.get(f"{API}/applications")
 
@@ -520,7 +520,7 @@ def test_list_applications_empty(authenticated_client):
 
 
 def test_list_applications_status_filter(authenticated_client):
-    authenticated_client.post(f"{API}/applications", json={"created_by": "alice"})
+    authenticated_client.post(f"{API}/applications", json={})
 
     response = authenticated_client.get(f"{API}/applications", params={"status": "APPROVED"})
 
@@ -531,8 +531,8 @@ def test_list_applications_status_filter(authenticated_client):
 
 
 def test_list_applications_pagination(authenticated_client):
-    authenticated_client.post(f"{API}/applications", json={"created_by": "alice"})
-    authenticated_client.post(f"{API}/applications", json={"created_by": "bob"})
+    authenticated_client.post(f"{API}/applications", json={})
+    authenticated_client.post(f"{API}/applications", json={})
 
     response = authenticated_client.get(f"{API}/applications", params={"offset": 1, "limit": 1})
 
@@ -556,7 +556,7 @@ def test_get_application(authenticated_client):
     assert response.status_code == 200, response.text
     application = response.json()["application"]
     assert application["id"] == application_id
-    assert application["created_by"] == "tester"
+    assert application["created_by"] == "Test Operator"
     assert application["status"] == "SUBMITTED"
     assert "submitted_at" in application
     assert "updated_at" in application

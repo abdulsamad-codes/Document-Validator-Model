@@ -12,6 +12,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import get_current_user
 from app.confidence.exceptions import ConfidenceError
 from app.confidence.schemas import (
     ErrorResponse,
@@ -21,12 +22,14 @@ from app.confidence.schemas import (
 )
 from app.confidence.services import ConfidenceService
 from app.database.connection import get_db
+from app.database.models.user import User
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["confidence"])
 
 _GET_DB = Annotated[Session, Depends(get_db)]
+_CURRENT_USER = Annotated[User, Depends(get_current_user)]
 
 #: Shared OpenAPI error-response documentation reused by both endpoints.
 _ERROR_RESPONSES = {
@@ -122,6 +125,7 @@ def review_confidence(
     application_id: int,
     request: ReviewRequest,
     db: _GET_DB,
+    current_user: _CURRENT_USER,
 ) -> ReviewResponse:
     """Submit a human review for an application's flagged fields.
 
@@ -129,6 +133,7 @@ def review_confidence(
         application_id: Id of the application.
         request: Review payload with the employee's decisions.
         db: Active database session.
+        current_user: The authenticated employee, recorded as the reviewer.
 
     Returns:
         The final processing status.
@@ -137,4 +142,8 @@ def review_confidence(
         HTTPException: When the application does not exist, no review is
             required, the review is already applied or the payload is invalid.
     """
-    return _service(db).review(application_id=application_id, request=request)
+    return _service(db).review(
+        application_id=application_id,
+        request=request,
+        reviewer_name=current_user.name,
+    )

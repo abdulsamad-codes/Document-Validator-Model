@@ -235,7 +235,6 @@ def test_critical_field_classification():
 
 def _review_request(*decisions):
     return ReviewRequest(
-        reviewer_name="tester",
         decisions=[ReviewDecisionInput(**decision) for decision in decisions],
     )
 

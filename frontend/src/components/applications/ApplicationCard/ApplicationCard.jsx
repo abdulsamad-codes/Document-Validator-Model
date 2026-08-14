@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { FolderPlus } from 'lucide-react';
+import { useAuth } from '../../../hooks/useAuth';
 import Spinner from '../../common/Spinner/Spinner';
 import styles from './ApplicationCard.module.css';
 
-const CREATED_BY_MAX_LENGTH = 255;
 const NOTES_MAX_LENGTH = 2000;
 
 /**
@@ -13,31 +13,22 @@ const NOTES_MAX_LENGTH = 2000;
  *
  * Owns its local field state and reports submission through `onSubmit`. The
  * submit button disables and shows a spinner while `submitting` is true;
- * Cancel returns to the applications list.
+ * Cancel returns to the applications list. The creator is always the signed-in
+ * employee, shown read-only -- the backend derives it from the session and
+ * ignores anything else.
  *
  * @param {object} props
  * @param {boolean} props.submitting Whether a create request is in flight.
- * @param {Function} props.onSubmit Callback with `{createdBy, notes}`.
+ * @param {Function} props.onSubmit Callback with `{notes}`.
  */
 function ApplicationCard({ submitting = false, onSubmit }) {
   const navigate = useNavigate();
-  const [createdBy, setCreatedBy] = useState('');
+  const { user } = useAuth();
   const [notes, setNotes] = useState('');
-  const [fieldError, setFieldError] = useState('');
 
   const handleSubmit = (event) => {
     event.preventDefault();
-    const trimmedBy = createdBy.trim();
-    if (!trimmedBy) {
-      setFieldError('Created By is required.');
-      return;
-    }
-    if (trimmedBy.length > CREATED_BY_MAX_LENGTH) {
-      setFieldError(`Created By must be ${CREATED_BY_MAX_LENGTH} characters or fewer.`);
-      return;
-    }
-    setFieldError('');
-    onSubmit({ createdBy: trimmedBy, notes: notes.trim() || null });
+    onSubmit({ notes: notes.trim() || null });
   };
 
   return (
@@ -52,17 +43,10 @@ function ApplicationCard({ submitting = false, onSubmit }) {
         </div>
       </div>
 
-      <label className={styles.field}>
+      <div className={styles.field}>
         <span className={styles.label}>Created By</span>
-        <input
-          className={styles.input}
-          type="text"
-          value={createdBy}
-          placeholder="e.g. reviewer.alex"
-          maxLength={CREATED_BY_MAX_LENGTH}
-          onChange={(event) => setCreatedBy(event.target.value)}
-        />
-      </label>
+        <span className={styles.readOnlyValue}>{user?.name}</span>
+      </div>
 
       <label className={styles.field}>
         <span className={styles.label}>Notes</span>
@@ -75,8 +59,6 @@ function ApplicationCard({ submitting = false, onSubmit }) {
           onChange={(event) => setNotes(event.target.value)}
         />
       </label>
-
-      {fieldError && <p className={styles.error} role="alert">{fieldError}</p>}
 
       <div className={styles.actions}>
         <button

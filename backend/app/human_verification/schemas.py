@@ -70,7 +70,6 @@ class HumanReviewRequest(BaseModel):
     """Payload submitting the employee's final decision.
 
     Attributes:
-        reviewer_name: Name of the employee making the decision.
         decision: One of ``APPROVE``, ``CORRECT`` or ``REJECT``.
         comments: Optional free-form notes.
         rejection_reason: Mandatory explanation when the decision is ``REJECT``.
@@ -79,7 +78,6 @@ class HumanReviewRequest(BaseModel):
         corrections: Corrected values; at least one is required to correct.
     """
 
-    reviewer_name: str = Field(min_length=1, max_length=255)
     decision: ReviewDecision
     comments: str | None = None
     rejection_reason: str | None = None

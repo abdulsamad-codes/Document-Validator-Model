@@ -23,7 +23,6 @@ from app.human_verification.validators import decision_to_status, validate_decis
 def request(
     *,
     decision: ReviewDecision,
-    reviewer_name: str = "reviewer",
     comments: str | None = None,
     rejection_reason: str | None = None,
     checklist: list[ChecklistItem] | None = None,
@@ -31,7 +30,6 @@ def request(
 ) -> HumanReviewRequest:
     """Build a review request with the provided payload."""
     return HumanReviewRequest(
-        reviewer_name=reviewer_name,
         decision=decision,
         comments=comments,
         rejection_reason=rejection_reason,

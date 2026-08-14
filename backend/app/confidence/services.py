@@ -353,7 +353,9 @@ class ConfidenceService:
             critical_failures=critical_failures,
         )
 
-    def review(self, *, application_id: int, request: ReviewRequest) -> ReviewResponse:
+    def review(
+        self, *, application_id: int, request: ReviewRequest, reviewer_name: str
+    ) -> ReviewResponse:
         """Apply an employee's decisions to the flagged fields.
 
         Verified and corrected fields become human-verified ground truth
@@ -364,6 +366,8 @@ class ConfidenceService:
         Args:
             application_id: Id of the application being reviewed.
             request: Review payload with the employee's decisions.
+            reviewer_name: Name of the authenticated employee submitting the
+                review.
 
         Returns:
             The final processing status.
@@ -399,7 +403,7 @@ class ConfidenceService:
                     field=field,
                     decision=decision.decision,
                     corrected_value=decision.corrected_value,
-                    reviewer_name=request.reviewer_name,
+                    reviewer_name=reviewer_name,
                 )
                 decided[field.field_name] = decision.decision.value
             if decision.decision is ReviewDecisionType.CANNOT_VERIFY:
@@ -413,14 +417,14 @@ class ConfidenceService:
         )
         self._audit.create(
             application_id=application_id,
-            username=request.reviewer_name,
+            username=reviewer_name,
             action=ACTION_REVIEWED,
             details={"status": status.value, "decisions": decided},
         )
         if halted:
             self._audit.create(
                 application_id=application_id,
-                username=request.reviewer_name,
+                username=reviewer_name,
                 action=ACTION_HALTED,
                 details={"status": status.value, "halted_fields": decided},
             )
@@ -428,7 +432,7 @@ class ConfidenceService:
             "Confidence review applied for application id=%s by reviewer=%s: "
             "status=%s decisions=%s",
             application_id,
-            request.reviewer_name,
+            reviewer_name,
             status.value,
             sorted(decided),
         )

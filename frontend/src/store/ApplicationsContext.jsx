@@ -55,9 +55,9 @@ export function ApplicationsProvider({ children }) {
     return load();
   }, [load]);
 
-  const create = useCallback(async ({ createdBy, notes }) => {
+  const create = useCallback(async ({ notes }) => {
     try {
-      const application = await createApplication({ createdBy, notes });
+      const application = await createApplication({ notes });
       setApplications((items) => [application, ...items]);
       return { ok: true, application };
     } catch (err) {

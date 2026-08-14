@@ -95,7 +95,6 @@ def final_correct_review(client, application_id: int):
         f"{API}/applications/{application_id}/human-review",
         json={
             "decision": "CORRECT",
-            "reviewer_name": "final-reviewer",
             "corrections": [
                 {
                     "field_name": "account_number",
@@ -230,9 +229,9 @@ def test_filter_by_reviewer(authenticated_client, storage_root):
     application_id = build_single_statement_application(authenticated_client, storage_root)
     final_correct_review(authenticated_client, application_id)
 
-    body = authenticated_client.get(f"{API}{LIST_URL}?reviewer=final-reviewer").json()
+    body = authenticated_client.get(f"{API}{LIST_URL}?reviewer=Test+Operator").json()
     assert body["total"] == 2
-    assert all(item["reviewer"] == "final-reviewer" for item in body["items"])
+    assert all(item["reviewer"] == "Test Operator" for item in body["items"])
     assert authenticated_client.get(f"{API}{LIST_URL}?reviewer=nobody").json()["total"] == 0
 
 
@@ -336,7 +335,7 @@ def test_get_feedback_by_id_exposes_14_fields(authenticated_client, storage_root
     assert item["ocr_result_id"] is not None
     assert item["field_name"] in {"account_number", "iban"}
     assert item["human_corrected_value"]
-    assert item["reviewer"] == "final-reviewer"
+    assert item["reviewer"] == "Test Operator"
     assert item["decision"] == "CORRECT"
     assert item["origin"] == "FINAL_HUMAN_REVIEW"
     assert item["correction_reason"]
@@ -373,10 +372,7 @@ def test_statistics_over_pipeline_data(authenticated_client, storage_root, monke
     assert body["total_entries"] == 3
     assert body["total_corrected_fields"] == 3
     assert body["corrections_by_decision"] == {"CORRECT": 2, "CORRECTED": 1}
-    assert body["corrections_by_reviewer"] == {
-        "final-reviewer": 2,
-        "reviewer": 1,
-    }
+    assert body["corrections_by_reviewer"] == {"Test Operator": 3}
     assert body["corrections_by_document_type"] == {
         "ACCOUNT_MAINTENANCE_CERTIFICATE": 2,
         "ONE_LINK_LETTER": 1,
@@ -584,6 +580,6 @@ def test_pipeline_enriches_feedback_provenance(authenticated_client, storage_roo
     entry = feedback_rows(application_id)[0]
     assert entry.document_id is not None
     assert entry.ocr_result_id is not None
-    assert entry.reviewer == "reviewer"
+    assert entry.reviewer == "Test Operator"
     assert entry.decision == "CORRECTED"
     assert entry.origin == "LOW_CONFIDENCE_REVIEW"

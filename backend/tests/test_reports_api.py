@@ -104,7 +104,7 @@ def test_report_approved_application(authenticated_client, storage_root):
     assert report["report_version"] == REPORT_VERSION
     assert report["overall_status"] == "APPROVED"
     assert report["application"]["status"] == "SUBMITTED"
-    assert report["application"]["created_by"] == "tester"
+    assert report["application"]["created_by"] == "Test Operator"
     assert len(report["document_summary"]) == 8
 
     summary = report["rule_summary"]

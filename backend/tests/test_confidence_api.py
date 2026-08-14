@@ -49,7 +49,7 @@ def review(client, application_id: int, decisions: list[dict]) -> dict:
     """Call the review endpoint and return the JSON response."""
     response = client.post(
         f"{API}/applications/{application_id}{REVIEW_URL}",
-        json={"reviewer_name": "reviewer", "decisions": decisions},
+        json={"decisions": decisions},
     )
     assert response.status_code == 200, response.text
     return response.json()
@@ -243,7 +243,7 @@ def test_review_verify_all_fields_ready(authenticated_client, storage_root, monk
     for field in fields.values():
         assert field.human_verified is True
         assert field.confidence_score == 1.0
-        assert field.reviewer == "reviewer"
+        assert field.reviewer == "Test Operator"
         assert field.reviewed_at is not None
         assert field.verification_status in {"VERIFIED", "AUTO_VERIFIED"}
     actions = audit_actions(application_id)
@@ -267,7 +267,7 @@ def test_review_correct_field_updates_value_and_feedback(authenticated_client, s
     assert corrected.human_corrected_value == "9999999999"
     assert corrected.extracted_value == "9999999999"
     assert corrected.confidence_score == 1.0
-    assert corrected.reviewer == "reviewer"
+    assert corrected.reviewer == "Test Operator"
     assert corrected.reviewed_at is not None
 
     assert feedback_count(application_id) == 1
@@ -373,7 +373,6 @@ def test_review_after_ready_evaluation_conflicts(authenticated_client, storage_r
     response = authenticated_client.post(
         f"{API}/applications/{application_id}{REVIEW_URL}",
         json={
-            "reviewer_name": "reviewer",
             "decisions": [{"field_name": "iban", "decision": "VERIFIED"}],
         },
     )
@@ -386,7 +385,6 @@ def test_review_without_evaluation_rejected(authenticated_client, storage_root):
     response = authenticated_client.post(
         f"{API}/applications/{application_id}{REVIEW_URL}",
         json={
-            "reviewer_name": "reviewer",
             "decisions": [{"field_name": "iban", "decision": "VERIFIED"}],
         },
     )
@@ -400,7 +398,6 @@ def test_review_unknown_field_rejected(authenticated_client, storage_root, monke
     response = authenticated_client.post(
         f"{API}/applications/{application_id}{REVIEW_URL}",
         json={
-            "reviewer_name": "reviewer",
             "decisions": [{"field_name": "unknown_field", "decision": "VERIFIED"}],
         },
     )
@@ -418,7 +415,7 @@ def test_review_missing_field_rejected(authenticated_client, storage_root, monke
     ]
     response = authenticated_client.post(
         f"{API}/applications/{application_id}{REVIEW_URL}",
-        json={"reviewer_name": "reviewer", "decisions": _decisions(decisions)},
+        json={"decisions": _decisions(decisions)},
     )
     assert response.status_code == 422
     assert "missing decisions" in response.json()["detail"].lower()
@@ -432,7 +429,7 @@ def test_review_corrected_without_value_rejected(authenticated_client, storage_r
 
     response = authenticated_client.post(
         f"{API}/applications/{application_id}{REVIEW_URL}",
-        json={"reviewer_name": "reviewer", "decisions": _decisions(decisions)},
+        json={"decisions": _decisions(decisions)},
     )
     assert response.status_code == 422
     assert "corrected value" in response.json()["detail"].lower()
@@ -449,7 +446,6 @@ def test_review_already_applied_conflict(authenticated_client, storage_root, mon
     response = authenticated_client.post(
         f"{API}/applications/{application_id}{REVIEW_URL}",
         json={
-            "reviewer_name": "reviewer",
             "decisions": [{"field_name": "iban", "decision": "VERIFIED"}],
         },
     )

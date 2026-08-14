@@ -14,8 +14,10 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import get_current_user
 from app.database.connection import get_db
 from app.database.models.enums import ApplicationStatus, DocumentType
+from app.database.models.user import User
 from app.upload.exceptions import MissingFileException, UploadError
 from app.upload.schemas import (
     ApplicationCreateRequest,
@@ -38,6 +40,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["documents"])
 
 _GET_DB = Annotated[Session, Depends(get_db)]
+_CURRENT_USER = Annotated[User, Depends(get_current_user)]
 
 #: Shared OpenAPI error-response documentation reused across endpoints.
 _ERROR_RESPONSES = {
@@ -89,19 +92,21 @@ def _service(db: Session) -> UploadService:
 def create_application(
     payload: ApplicationCreateRequest,
     db: _GET_DB,
+    current_user: _CURRENT_USER,
 ) -> ApplicationCreateResponse:
     """Create a new application.
 
     Args:
         payload: Application creation payload.
         db: Active database session.
+        current_user: The authenticated employee, recorded as the creator.
 
     Returns:
         The created application wrapped in a confirmation message.
     """
     service = _service(db)
     application = service.create_application(
-        created_by=payload.created_by,
+        created_by=current_user.name,
         notes=payload.notes,
     )
     return ApplicationCreateResponse(

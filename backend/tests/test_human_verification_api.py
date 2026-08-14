@@ -125,7 +125,6 @@ def test_approve_flow(authenticated_client, storage_root):
         authenticated_client,
         application_id,
         {
-            "reviewer_name": "employee",
             "decision": "APPROVE",
             "comments": "All documents verified",
             "checklist": checked_items(),
@@ -135,7 +134,7 @@ def test_approve_flow(authenticated_client, storage_root):
     assert response.status_code == 200
     summary = response.json()
     assert summary["decision"] == "APPROVE"
-    assert summary["reviewer_name"] == "employee"
+    assert summary["reviewer_name"] == "Test Operator"
     assert summary["application_status"] == "APPROVED"
     assert summary["checklist_checked"] == 15
     assert summary["checklist_total"] == 15
@@ -152,7 +151,7 @@ def test_approve_flow(authenticated_client, storage_root):
     checklist = stored_checklist(application_id)
     assert len(checklist) == 15
     assert all(item.is_checked for item in checklist)
-    assert all(item.reviewer == "employee" for item in checklist)
+    assert all(item.reviewer == "Test Operator" for item in checklist)
 
     actions = audit_actions(application_id)
     assert "human_review.submitted" in actions
@@ -167,7 +166,6 @@ def test_approve_requires_full_checklist(authenticated_client, storage_root):
         authenticated_client,
         application_id,
         {
-            "reviewer_name": "employee",
             "decision": "APPROVE",
             "checklist": checked_items(checked_names=set(CHECKLIST_ITEMS) - {CHECKLIST_ITEMS[0]}),
         },
@@ -190,7 +188,6 @@ def test_correct_flow(authenticated_client, storage_root):
         authenticated_client,
         application_id,
         {
-            "reviewer_name": "employee",
             "decision": "CORRECT",
             "comments": "Account number corrected after manual check",
             "corrections": [
@@ -236,7 +233,7 @@ def test_correct_flow(authenticated_client, storage_root):
         db.close()
     assert account_number.human_corrected_value == "9999999999"
     assert account_number.human_verified is True
-    assert account_number.reviewer == "employee"
+    assert account_number.reviewer == "Test Operator"
     assert account_number.reviewed_at is not None
 
     assert feedback_count(application_id) == 1
@@ -251,7 +248,7 @@ def test_correct_requires_corrections(authenticated_client, storage_root):
     response = submit(
         authenticated_client,
         application_id,
-        {"reviewer_name": "employee", "decision": "CORRECT"},
+        {"decision": "CORRECT"},
     )
 
     assert response.status_code == 422
@@ -270,7 +267,6 @@ def test_reject_flow(authenticated_client, storage_root):
         authenticated_client,
         application_id,
         {
-            "reviewer_name": "employee",
             "decision": "REJECT",
             "comments": "Documents appear tampered",
             "rejection_reason": "Detected signs of document tampering",
@@ -302,7 +298,7 @@ def test_reject_requires_reason(authenticated_client, storage_root):
     response = submit(
         authenticated_client,
         application_id,
-        {"reviewer_name": "employee", "decision": "REJECT", "comments": "no"},
+        {"decision": "REJECT", "comments": "no"},
     )
 
     assert response.status_code == 422
@@ -318,7 +314,6 @@ def test_reject_with_corrections_is_inconsistent(authenticated_client, storage_r
         authenticated_client,
         application_id,
         {
-            "reviewer_name": "employee",
             "decision": "REJECT",
             "rejection_reason": "tampered",
             "corrections": [
@@ -331,6 +326,32 @@ def test_reject_with_corrections_is_inconsistent(authenticated_client, storage_r
     assert stored_reviews(application_id) == []
 
 
+# --- Reviewer identity is session-derived -------------------------------------
+
+
+def test_reviewer_identity_is_session_derived_not_spoofable(authenticated_client, storage_root):
+    """A reviewer_name in the request body must never override the session's identity."""
+    application_id = build_single_statement_application(authenticated_client, storage_root)
+
+    response = submit(
+        authenticated_client,
+        application_id,
+        {
+            "reviewer_name": "someone-else",
+            "decision": "REJECT",
+            "rejection_reason": "tampered",
+        },
+    )
+
+    assert response.status_code == 200
+    summary = response.json()
+    assert summary["reviewer_name"] == "Test Operator"
+    assert summary["reviewer_name"] != "someone-else"
+
+    reviews = stored_reviews(application_id)
+    assert reviews[0].reviewer_name == "Test Operator"
+
+
 # --- Double review prevention ------------------------------------------------
 
 
@@ -340,7 +361,6 @@ def test_double_review_prevented(authenticated_client, storage_root):
         authenticated_client,
         application_id,
         {
-            "reviewer_name": "employee",
             "decision": "REJECT",
             "rejection_reason": "tampered",
         },
@@ -350,7 +370,6 @@ def test_double_review_prevented(authenticated_client, storage_root):
         authenticated_client,
         application_id,
         {
-            "reviewer_name": "second",
             "decision": "APPROVE",
             "checklist": checked_items(),
         },
@@ -371,7 +390,6 @@ def test_history_returns_reviews_with_corrections(authenticated_client, storage_
         authenticated_client,
         application_id,
         {
-            "reviewer_name": "employee",
             "decision": "CORRECT",
             "corrections": [
                 {"field_name": "account_number", "corrected_value": "9999999999"}
@@ -387,7 +405,7 @@ def test_history_returns_reviews_with_corrections(authenticated_client, storage_
     assert len(history["reviews"]) == 1
     review = history["reviews"][0]
     assert review["decision"] == "CORRECT"
-    assert review["reviewer_name"] == "employee"
+    assert review["reviewer_name"] == "Test Operator"
     assert review["checklist_total"] == 15
     assert len(review["corrections"]) == 1
     assert review["corrections"][0]["field_name"] == "account_number"
@@ -415,7 +433,7 @@ def test_endpoints_application_not_found(authenticated_client):
     response = submit(
         authenticated_client,
         999999,
-        {"reviewer_name": "employee", "decision": "REJECT", "rejection_reason": "x"},
+        {"decision": "REJECT", "rejection_reason": "x"},
     )
     assert response.status_code == 404
 
@@ -426,19 +444,7 @@ def test_payload_validation_rejects_unknown_decision(authenticated_client, stora
     response = submit(
         authenticated_client,
         application_id,
-        {"reviewer_name": "employee", "decision": "NONSENSE"},
-    )
-
-    assert response.status_code == 422
-
-
-def test_payload_validation_requires_reviewer(authenticated_client, storage_root):
-    application_id = build_single_statement_application(authenticated_client, storage_root)
-
-    response = submit(
-        authenticated_client,
-        application_id,
-        {"decision": "REJECT", "rejection_reason": "x"},
+        {"decision": "NONSENSE"},
     )
 
     assert response.status_code == 422
@@ -451,7 +457,7 @@ def test_approve_with_unknown_checklist_item_rejected(authenticated_client, stor
     response = submit(
         authenticated_client,
         application_id,
-        {"reviewer_name": "employee", "decision": "APPROVE", "checklist": items},
+        {"decision": "APPROVE", "checklist": items},
     )
 
     assert response.status_code == 400

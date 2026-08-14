@@ -102,12 +102,10 @@ class ReviewRequest(BaseModel):
     """Payload for submitting a human review.
 
     Attributes:
-        reviewer_name: Name of the employee performing the review.
         decisions: One decision per flagged field; every flagged field must
             appear exactly once.
     """
 
-    reviewer_name: str = Field(min_length=1, max_length=255)
     decisions: list[ReviewDecisionInput] = Field(min_length=1)
 
 

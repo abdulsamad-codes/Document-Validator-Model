@@ -26,15 +26,15 @@ export function getApplication(applicationId) {
 }
 
 /**
- * Create a new application.
+ * Create a new application. The creator is derived server-side from the
+ * authenticated session.
  *
- * @param {object} payload
- * @param {string} payload.createdBy Identifier of the submitting user.
+ * @param {object} [payload]
  * @param {string} [payload.notes] Optional free-form notes.
  * @returns {Promise<object>} The created application object.
  */
-export function createApplication({ createdBy, notes }) {
+export function createApplication({ notes } = {}) {
   return api
-    .post('/applications', { created_by: createdBy, notes: notes || null })
+    .post('/applications', { notes: notes || null })
     .then((response) => response.data.application);
 }

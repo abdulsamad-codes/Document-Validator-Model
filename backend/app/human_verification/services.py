@@ -135,6 +135,7 @@ class HumanVerificationService:
         *,
         application_id: int,
         request: HumanReviewRequest,
+        reviewer_name: str,
     ) -> ReviewSummary:
         """Record the employee's final decision for an application.
 
@@ -148,6 +149,8 @@ class HumanVerificationService:
         Args:
             application_id: Id of the application.
             request: Review payload with the employee's decision.
+            reviewer_name: Name of the authenticated employee submitting the
+                review.
 
         Returns:
             A summary of the recorded review.
@@ -165,10 +168,10 @@ class HumanVerificationService:
             raise ReviewAlreadyCompleted()
         try:
             validate_decision_rules(request)
-            self._persist_checklist(application_id, request)
+            self._persist_checklist(application_id, request, reviewer_name)
             review = self._reviews.create(
                 application_id=application_id,
-                reviewer_name=request.reviewer_name,
+                reviewer_name=reviewer_name,
                 decision=request.decision,
                 comments=request.comments,
                 rejection_reason=request.rejection_reason,
@@ -177,10 +180,13 @@ class HumanVerificationService:
                 application_id,
                 review.id,
                 request,
+                reviewer_name,
             )
             status = decision_to_status(request.decision)
             self._applications.update(application, status=status)
-            self._record_audit(application_id, review.id, request, corrections_count)
+            self._record_audit(
+                application_id, review.id, request, corrections_count, reviewer_name
+            )
         except HumanReviewError:
             raise
         except Exception as exc:
@@ -195,14 +201,14 @@ class HumanVerificationService:
             "Human review submitted for application id=%s by reviewer=%s: "
             "decision=%s",
             application_id,
-            request.reviewer_name,
+            reviewer_name,
             request.decision.value,
         )
         return ReviewSummary(
             application_id=application_id,
             review_id=review.id,
             decision=request.decision,
-            reviewer_name=request.reviewer_name,
+            reviewer_name=reviewer_name,
             application_status=status.value,
             reviewed_at=review.reviewed_at,
             comments=request.comments,
@@ -356,6 +362,7 @@ class HumanVerificationService:
         self,
         application_id: int,
         request: HumanReviewRequest,
+        reviewer_name: str,
     ) -> None:
         """Store the submitted checklist items with the reviewer."""
         for item in request.checklist:
@@ -363,7 +370,7 @@ class HumanVerificationService:
                 application_id=application_id,
                 item_name=item.item_name,
                 is_checked=item.is_checked,
-                reviewer=request.reviewer_name if item.is_checked else None,
+                reviewer=reviewer_name if item.is_checked else None,
             )
 
     def _apply_corrections(
@@ -371,6 +378,7 @@ class HumanVerificationService:
         application_id: int,
         review_id: int,
         request: HumanReviewRequest,
+        reviewer_name: str,
     ) -> int:
         """Store corrections, updating fields and feedback when values change.
 
@@ -407,7 +415,7 @@ class HumanVerificationService:
             if field is not None and correction.corrected_value != current:
                 field.human_corrected_value = correction.corrected_value
                 field.human_verified = True
-                field.reviewer = request.reviewer_name
+                field.reviewer = reviewer_name
                 field.reviewed_at = datetime.now(timezone.utc)
                 self._feedback.create(
                     application_id=application_id,
@@ -420,7 +428,7 @@ class HumanVerificationService:
                     normalized_value=field.normalized_value,
                     confidence_source=field.confidence_source,
                     correction_reason=correction.reason,
-                    reviewer=request.reviewer_name,
+                    reviewer=reviewer_name,
                     decision=request.decision.value,
                     origin=ORIGIN_FINAL_HUMAN_REVIEW,
                 )
@@ -438,11 +446,12 @@ class HumanVerificationService:
         review_id: int,
         request: HumanReviewRequest,
         corrections_count: int,
+        reviewer_name: str,
     ) -> None:
         """Write the audit entries for a submitted review."""
         self._audit.create(
             application_id=application_id,
-            username=request.reviewer_name,
+            username=reviewer_name,
             action=ACTION_REVIEW_SUBMITTED,
             details={
                 "decision": request.decision.value,
@@ -464,14 +473,14 @@ class HumanVerificationService:
             }
         self._audit.create(
             application_id=application_id,
-            username=request.reviewer_name,
+            username=reviewer_name,
             action=action,
             details=details,
         )
         if request.decision is ReviewDecision.APPROVE:
             self._audit.create(
                 application_id=application_id,
-                username=request.reviewer_name,
+                username=reviewer_name,
                 action=ACTION_CHECKLIST_COMPLETED,
                 details={"review_id": review_id, "total": len(CHECKLIST_ITEMS)},
             )
@@ -479,7 +488,7 @@ class HumanVerificationService:
                 "Checklist completed for application id=%s by reviewer=%s: "
                 "%s/%s items",
                 application_id,
-                request.reviewer_name,
+                reviewer_name,
                 len(CHECKLIST_ITEMS),
                 len(CHECKLIST_ITEMS),
             )

@@ -36,12 +36,6 @@ class DocumentMetadata(BaseModel):
 class ApplicationCreateRequest(BaseModel):
     """Payload for creating a new application."""
 
-    created_by: str = Field(
-        min_length=1,
-        max_length=255,
-        examples=["reviewer.alex"],
-        description="Identifier of the user submitting the application.",
-    )
     notes: str | None = Field(
         default=None,
         examples=["Checking account maintenance certificate."],
