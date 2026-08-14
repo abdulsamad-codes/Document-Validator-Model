@@ -23,7 +23,8 @@ from app.database.repositories.application_repository import ApplicationReposito
 from app.database.repositories.document_repository import DocumentRepository
 from app.database.repositories.ocr_repository import OCRRepository
 from app.document_processing.constants import (
-    PROCESSING_TIMEOUT_SECONDS,
+    MIN_PROCESSING_TIMEOUT_SECONDS,
+    PROCESSING_TIMEOUT_SECONDS_PER_PAGE,
     DocumentSource,
 )
 from app.document_processing.exceptions import (
@@ -326,9 +327,8 @@ class DocumentProcessingService:
             DocumentProcessingStatus.PROCESSING,
         )
         started = time.perf_counter()
-        deadline = time.monotonic() + PROCESSING_TIMEOUT_SECONDS
         try:
-            result = self._extract(document, deadline)
+            result = self._extract(document)
             assert_non_empty_text(result.text)
             elapsed_ms = int((time.perf_counter() - started) * 1000)
             self._ocr_results.upsert(
@@ -376,12 +376,11 @@ class DocumentProcessingService:
             )
             return self._fail_document(document, f"Unexpected processing error: {exc}")
 
-    def _extract(self, document: Document, deadline: float) -> ExtractionResult:
+    def _extract(self, document: Document) -> ExtractionResult:
         """Resolve, route and extract text from one document.
 
         Args:
             document: Document whose stored file is processed.
-            deadline: Per-document processing deadline (monotonic seconds).
 
         Returns:
             The extraction result with text and metrics.
@@ -400,10 +399,16 @@ class DocumentProcessingService:
         if decision.source is DocumentSource.DIGITAL_PDF:
             extractor = DigitalPdfExtractor(decision.probed_text, decision.page_count or 0)
         elif decision.source is DocumentSource.SCANNED_PDF:
+            # Sized from the real page count (only known now, post-routing) so
+            # the budget scales with the document instead of a flat guess.
+            budget = max(
+                (decision.page_count or 1) * PROCESSING_TIMEOUT_SECONDS_PER_PAGE,
+                MIN_PROCESSING_TIMEOUT_SECONDS,
+            )
             extractor = ScannedPdfExtractor(
                 self._engine_factory(),
                 path,
-                deadline=deadline,
+                deadline=time.monotonic() + budget,
             )
         else:
             extractor = ImageExtractor(self._engine_factory(), path)
