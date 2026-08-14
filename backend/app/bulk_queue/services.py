@@ -36,6 +36,7 @@ class BulkQueueService:
         """Enqueue every eligible UPLOADED document for one application."""
         if self._applications.get_by_id(application_id) is None:
             raise ApplicationNotFound()
+        self._validate_uploaded_documents(application_id)
         jobs, created, existing = self._jobs.enqueue_uploaded_documents(
             application_id=application_id,
             max_attempts=self._settings.bulk_queue_max_attempts,
@@ -59,6 +60,7 @@ class BulkQueueService:
         """Queue all eligible uploaded documents and report the action safely."""
         if self._applications.get_by_id(application_id) is None:
             raise ApplicationNotFound()
+        self._validate_uploaded_documents(application_id)
         jobs, created, _ = self._jobs.enqueue_uploaded_documents(
             application_id=application_id,
             max_attempts=self._settings.bulk_queue_max_attempts,
@@ -144,3 +146,20 @@ class BulkQueueService:
             documents_already_in_progress=0,
             documents_retried=retried,
         )
+
+    def _validate_uploaded_documents(self, application_id: int) -> None:
+        """Run technical validation before any document can be enqueued.
+
+        Both callers above are the only two places that ever enqueue a
+        document, so this is the one place that needs the call -- not
+        UploadService.upload() itself. Single-upload documents used to be
+        enqueued with no stored validation result at all, so
+        DocumentProcessingService.process_one()'s PASS-gate skipped them
+        forever; this closes that gap the same way it's already closed for
+        bulk-split documents (which validate lazily inside process_one after
+        splitting -- a different, still-necessary call for a different set of
+        documents, not replaced by this one).
+        """
+        from app.technical_validation.services import TechnicalValidationService
+
+        TechnicalValidationService(self._db).validate(application_id=application_id)
