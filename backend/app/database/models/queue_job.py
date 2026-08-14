@@ -19,7 +19,7 @@ from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, func,
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
-from app.database.models.enums import JobStatus
+from app.database.models.enums import JobStatus, JobType
 
 if TYPE_CHECKING:
     from app.database.models.application import Application
@@ -33,6 +33,9 @@ class QueueJob(Base):
         id: Auto-incrementing unique job id.
         application_id: Owning application (foreign key, cascades on delete).
         document_id: Document this job processes (unique, cascades on delete).
+            ``NULL`` for ``APPLICATION_PIPELINE`` jobs, which act on the whole
+            application rather than one document.
+        job_type: What kind of work this job performs.
         status: Current lifecycle state of the job.
         attempts: Number of processing attempts already performed.
         max_attempts: Attempt budget before the job is permanently failed.
@@ -51,6 +54,16 @@ class QueueJob(Base):
         Index("ix_queue_jobs_retry_at", "retry_at"),
         #: A document can be queued exactly once.
         Index("uq_queue_jobs_document_id", "document_id", unique=True),
+        #: An application can have at most one pipeline job. This is what
+        #: actually guarantees exactly-once enqueueing when two workers detect
+        #: "every document job is terminal" at nearly the same time -- see
+        #: QueueJobRepository.try_enqueue_pipeline_job.
+        Index(
+            "uq_queue_jobs_application_pipeline",
+            "application_id",
+            unique=True,
+            postgresql_where=text("job_type = 'APPLICATION_PIPELINE'"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -58,8 +71,13 @@ class QueueJob(Base):
         ForeignKey("applications.id", ondelete="CASCADE"),
         nullable=False,
     )
-    document_id: Mapped[int] = mapped_column(
+    document_id: Mapped[int | None] = mapped_column(
         ForeignKey("documents.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    job_type: Mapped[JobType] = mapped_column(
+        default=JobType.DOCUMENT_OCR,
+        server_default=text("'DOCUMENT_OCR'"),
         nullable=False,
     )
     status: Mapped[JobStatus] = mapped_column(
@@ -89,7 +107,7 @@ class QueueJob(Base):
     retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     application: Mapped[Application] = relationship(back_populates="queue_jobs")
-    document: Mapped[Document] = relationship(back_populates="queue_jobs")
+    document: Mapped[Document | None] = relationship(back_populates="queue_jobs")
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
         return f"<QueueJob id={self.id} document_id={self.document_id} status={self.status}>"

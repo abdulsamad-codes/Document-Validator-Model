@@ -5,10 +5,11 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import Select, case, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.database.models.document import Document
-from app.database.models.enums import DocumentProcessingStatus, JobStatus
+from app.database.models.enums import DocumentProcessingStatus, JobStatus, JobType
 from app.database.models.queue_job import QueueJob
 from app.database.repositories.base import BaseRepository
 
@@ -279,30 +280,121 @@ class QueueJobRepository(BaseRepository[QueueJob]):
         return len(jobs)
 
     def progress_for_application(self, application_id: int) -> dict[JobStatus, int]:
-        """Return queue counts grouped by status for an application."""
+        """Return per-document queue counts grouped by status for an application.
+
+        Scoped to ``DOCUMENT_OCR`` jobs so the application-level pipeline job
+        (an implementation detail, not a document) never shows up in
+        operator-facing document counts.
+        """
         rows = self._db.execute(
             select(QueueJob.status, func.count())
-            .where(QueueJob.application_id == application_id)
+            .where(
+                QueueJob.application_id == application_id,
+                QueueJob.job_type == JobType.DOCUMENT_OCR,
+            )
             .group_by(QueueJob.status)
         ).all()
         return {status: int(count) for status, count in rows}
 
     def list_by_application(self, application_id: int) -> Sequence[QueueJob]:
-        """Return queue jobs for an application."""
+        """Return per-document queue jobs for an application.
+
+        Scoped to ``DOCUMENT_OCR`` jobs -- see :meth:`progress_for_application`.
+        """
         return self._db.scalars(
             select(QueueJob)
-            .where(QueueJob.application_id == application_id)
+            .where(
+                QueueJob.application_id == application_id,
+                QueueJob.job_type == JobType.DOCUMENT_OCR,
+            )
             .order_by(QueueJob.id)
         ).all()
 
+    def all_document_jobs_terminal(self, application_id: int) -> bool:
+        """True once every ``DOCUMENT_OCR`` job of an application is COMPLETED or FAILED.
+
+        Called after each document job's own completion/failure to decide
+        whether the application-level pipeline job should be enqueued. Safe to
+        call from multiple workers concurrently: it's a plain read, and the
+        actual exactly-once guarantee lives in the unique index that
+        :meth:`try_enqueue_pipeline_job` relies on, not in this check.
+        """
+        non_terminal = self._db.scalar(
+            select(func.count()).where(
+                QueueJob.application_id == application_id,
+                QueueJob.job_type == JobType.DOCUMENT_OCR,
+                QueueJob.status.not_in((JobStatus.COMPLETED, JobStatus.FAILED)),
+            )
+        )
+        return non_terminal == 0
+
+    def any_document_job_completed(self, application_id: int) -> bool:
+        """True if at least one ``DOCUMENT_OCR`` job of an application succeeded."""
+        completed = self._db.scalar(
+            select(func.count()).where(
+                QueueJob.application_id == application_id,
+                QueueJob.job_type == JobType.DOCUMENT_OCR,
+                QueueJob.status == JobStatus.COMPLETED,
+            )
+        )
+        return completed > 0
+
+    def try_enqueue_pipeline_job(
+        self,
+        *,
+        application_id: int,
+        max_attempts: int,
+    ) -> QueueJob | None:
+        """Enqueue the application-level pipeline job, or no-op if one exists.
+
+        Two workers can both observe "every document job is terminal" for the
+        same application at nearly the same time and both call this method --
+        that race is expected, not a bug to prevent here. The partial unique
+        index ``uq_queue_jobs_application_pipeline`` is what actually makes
+        this exactly-once: the loser's insert raises ``IntegrityError``, which
+        is caught and treated as "someone else already enqueued it."
+
+        Args:
+            application_id: Application to run the pipeline for.
+            max_attempts: Attempt budget for the new job.
+
+        Returns:
+            The newly created job, or ``None`` if one already existed.
+        """
+        job = QueueJob(
+            application_id=application_id,
+            document_id=None,
+            job_type=JobType.APPLICATION_PIPELINE,
+            max_attempts=max_attempts,
+        )
+        savepoint = self._db.begin_nested()
+        try:
+            self._db.add(job)
+            self._db.flush()
+        except IntegrityError:
+            savepoint.rollback()
+            return None
+        else:
+            savepoint.commit()
+            self._db.commit()
+            self._db.refresh(job)
+            return job
+
     def retry_failed_for_application(self, application_id: int) -> int:
-        """Requeue failed documents for an explicit operator retry."""
+        """Requeue failed documents for an explicit operator retry.
+
+        Scoped to ``DOCUMENT_OCR`` jobs -- see :meth:`progress_for_application`.
+        A failed pipeline job is a different failure domain (a stage bug or a
+        data problem, not a stuck document) and must not be silently reset by
+        an operator retrying documents.
+        """
         jobs = list(
             self._db.scalars(
                 select(QueueJob)
                 .options(selectinload(QueueJob.document))
                 .where(
                     QueueJob.application_id == application_id,
+                    QueueJob.job_type == JobType.DOCUMENT_OCR,
                     QueueJob.status == JobStatus.FAILED,
                 )
             ).all()

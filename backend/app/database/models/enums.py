@@ -96,6 +96,20 @@ class JobStatus(str, Enum):
     RETRY_WAITING = "RETRY_WAITING"
 
 
+class JobType(str, Enum):
+    """What a queue job does when claimed.
+
+    ``DOCUMENT_OCR`` processes one document (the original, and only, job kind).
+    ``APPLICATION_PIPELINE`` runs analysis, confidence, normalization and rule
+    validation for a whole application, once every one of its ``DOCUMENT_OCR``
+    jobs has reached a terminal state. It is enqueued automatically, never by a
+    document upload, so it carries no ``document_id``.
+    """
+
+    DOCUMENT_OCR = "DOCUMENT_OCR"
+    APPLICATION_PIPELINE = "APPLICATION_PIPELINE"
+
+
 class ValidationTaskStatus(str, Enum):
     """Lifecycle state of a validation task.
 

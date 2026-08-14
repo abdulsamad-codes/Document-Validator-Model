@@ -30,15 +30,22 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.bulk_queue.pipeline_runner import PipelineRunnerService
 from app.core.config import Settings, get_settings
 from app.database.connection import SessionLocal
-from app.database.models.enums import JobStatus
+from app.database.models.enums import JobStatus, JobType
 from app.database.models.queue_job import QueueJob
+from app.database.repositories.audit_log_repository import AuditLogRepository
 from app.database.repositories.queue_job_repository import QueueJobRepository
 from app.document_processing.schemas import ProcessingOutcome
 from app.document_processing.services import DocumentProcessingService
 
 logger = logging.getLogger(__name__)
+
+#: Audit action recorded when every document job for an application is
+#: terminal but none succeeded, so the pipeline job is deliberately never
+#: enqueued -- see PIPELINE_BLOCKED handling in _maybe_start_pipeline.
+ACTION_PIPELINE_BLOCKED = "PIPELINE_BLOCKED_NO_PROCESSED_DOCUMENTS"
 
 
 @dataclass
@@ -63,6 +70,9 @@ class BulkQueueWorker:
         processor_factory: Callable receiving a session and returning the object
             with a ``process_one(application_id=..., document_id=...)`` method.
             Defaults to the real :class:`DocumentProcessingService`.
+        pipeline_runner_factory: Callable receiving a session and returning the
+            object with a ``run(application_id=...)`` method. Defaults to the
+            real :class:`PipelineRunnerService`.
     """
 
     def __init__(
@@ -72,11 +82,13 @@ class BulkQueueWorker:
         settings: Settings | None = None,
         worker_id: str | None = None,
         processor_factory: Callable[[Session], DocumentProcessingService] | None = None,
+        pipeline_runner_factory: Callable[[Session], PipelineRunnerService] | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._settings = settings or get_settings()
         self.worker_id = worker_id or f"bulk-worker-{uuid.uuid4()}"
         self._processor_factory = processor_factory or DocumentProcessingService
+        self._pipeline_runner_factory = pipeline_runner_factory or PipelineRunnerService
         self._stop_requested = False
 
     def stop(self) -> None:
@@ -189,40 +201,92 @@ class BulkQueueWorker:
         summary.processed += 1
         stop_heartbeat = self._start_heartbeat(job.id)
         try:
-            result = self._processor_factory(db).process_one(
-                application_id=job.application_id,
-                document_id=job.document_id,
-            )
-            if result.outcome is ProcessingOutcome.FAILED:
-                raise RuntimeError(result.message or "Document processing failed")
-            if result.outcome is ProcessingOutcome.SKIPPED:
-                raise RuntimeError(result.message or "Document skipped")
-            jobs.mark_completed(job)
-            summary.succeeded += 1
-            logger.info(
-                "Bulk queue job completed job_id=%s document_id=%s worker_id=%s",
-                job.id,
-                job.document_id,
-                self.worker_id,
-            )
-        except Exception as exc:
-            logger.exception(
-                "Bulk queue job failed job_id=%s document_id=%s worker_id=%s",
-                job.id,
-                job.document_id,
-                self.worker_id,
-            )
-            updated = jobs.mark_failed_attempt(
-                job,
-                error=str(exc) or exc.__class__.__name__,
-                retry_backoff_seconds=self._settings.bulk_queue_retry_backoff_seconds,
-            )
-            if updated.status is JobStatus.FAILED:
-                summary.failed += 1
-            else:
-                summary.retried += 1
+            try:
+                if job.job_type is JobType.APPLICATION_PIPELINE:
+                    self._pipeline_runner_factory(db).run(application_id=job.application_id)
+                else:
+                    result = self._processor_factory(db).process_one(
+                        application_id=job.application_id,
+                        document_id=job.document_id,
+                    )
+                    if result.outcome is ProcessingOutcome.FAILED:
+                        raise RuntimeError(result.message or "Document processing failed")
+                    if result.outcome is ProcessingOutcome.SKIPPED:
+                        raise RuntimeError(result.message or "Document skipped")
+                jobs.mark_completed(job)
+                summary.succeeded += 1
+                logger.info(
+                    "Bulk queue job completed job_id=%s job_type=%s document_id=%s worker_id=%s",
+                    job.id,
+                    job.job_type.value,
+                    job.document_id,
+                    self.worker_id,
+                )
+            except Exception as exc:
+                logger.exception(
+                    "Bulk queue job failed job_id=%s job_type=%s document_id=%s worker_id=%s",
+                    job.id,
+                    job.job_type.value,
+                    job.document_id,
+                    self.worker_id,
+                )
+                updated = jobs.mark_failed_attempt(
+                    job,
+                    error=str(exc) or exc.__class__.__name__,
+                    retry_backoff_seconds=self._settings.bulk_queue_retry_backoff_seconds,
+                )
+                if updated.status is JobStatus.FAILED:
+                    summary.failed += 1
+                else:
+                    summary.retried += 1
+
+            # Outside the try/except above on purpose: this decides whether to
+            # start the *next* stage, not whether *this* job succeeded, so a
+            # problem here must never be mistaken for this job's own outcome
+            # (which would wrongly mark a just-completed document job failed).
+            if job.job_type is JobType.DOCUMENT_OCR and job.status in (
+                JobStatus.COMPLETED,
+                JobStatus.FAILED,
+            ):
+                self._maybe_start_pipeline(db, jobs, job.application_id)
         finally:
             stop_heartbeat()
+
+    def _maybe_start_pipeline(
+        self,
+        db: Session,
+        jobs: QueueJobRepository,
+        application_id: int,
+    ) -> None:
+        """Enqueue the pipeline job once every document job is terminal.
+
+        Called after a ``DOCUMENT_OCR`` job reaches COMPLETED or (permanent)
+        FAILED. Cheap no-op otherwise-terminal-jobs-remain check first, so this
+        only does real work exactly once per application's document batch. Safe
+        under concurrent workers -- see ``try_enqueue_pipeline_job``.
+        """
+        if not jobs.all_document_jobs_terminal(application_id):
+            return
+        if not jobs.any_document_job_completed(application_id):
+            logger.warning(
+                "Pipeline not started for application id=%s: no documents were "
+                "successfully processed",
+                application_id,
+            )
+            AuditLogRepository(db).create(
+                application_id=application_id,
+                username="system",
+                action=ACTION_PIPELINE_BLOCKED,
+                details={"reason": "All document jobs finished with zero successes"},
+            )
+            db.commit()
+            return
+        enqueued = jobs.try_enqueue_pipeline_job(
+            application_id=application_id,
+            max_attempts=self._settings.bulk_queue_max_attempts,
+        )
+        if enqueued is not None:
+            logger.info("Pipeline job enqueued for application id=%s", application_id)
 
 
 def drain_queue(
