@@ -115,6 +115,20 @@ def copy_numbers(application_id: int, doc_type: str) -> set[int]:
 # --- Successful bulk uploads -------------------------------------------------
 
 
+def test_bulk_upload_sets_application_name_from_filename(client):
+    application_id = create_application(client)
+    response = upload_bulk(
+        client,
+        application_id,
+        make_bulk_pdf(["TMA Khal Dir Lower onboarding documents"]),
+        filename="TMA Khal Dir Lower.pdf",
+    )
+
+    assert response.status_code == 201, response.text
+    detail = client.get(f"{API}/applications/{application_id}").json()["application"]
+    assert detail["name"] == "TMA Khal Dir Lower"
+
+
 def test_bulk_upload_success_with_repeated_copies(client, storage_root: Path):
     """Three same-type copies split into three queue-ready documents."""
     application_id = create_application(client)

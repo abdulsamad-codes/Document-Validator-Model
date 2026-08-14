@@ -1,7 +1,7 @@
 import { ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 
-import logo from '../../../assets/logo.svg';
+import Logo from '../../common/Logo/Logo';
 import { findNavItem, NAVIGATION } from '../../../data/navigation';
 import SidebarItem from './SidebarItem';
 import SidebarProfile from './SidebarProfile';
@@ -22,7 +22,7 @@ function Sidebar({ collapsed = false, drawerOpen = false, onNavigate, onToggleCo
   return (
     <aside className={className}>
       <div className={styles.brand}>
-        <img className={styles.logo} src={logo} alt="FinTech logo" />
+        <Logo className={styles.logo} />
         <div className={styles.brandText}>
           <span className={styles.brandName}>FinTech</span>
           <span className={styles.brandSubtitle}>Financial Document Verification</span>

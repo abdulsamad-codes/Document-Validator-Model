@@ -71,6 +71,37 @@ export const DOCUMENT_STATUSES = [
 ];
 
 /**
+ * Rule-result outcomes shown in the validation report.
+ *
+ * Raw rule-engine validation statuses (PASS, FAIL, WARNING,
+ * PENDING_MANUAL_REVIEW, REJECTED) are mapped to the report vocabulary
+ * Passed / Failed / Warning / Pending / Rejected.
+ */
+export const RULE_RESULT_STATUSES = [
+  { value: 'PASS', label: 'Passed', variant: 'success' },
+  { value: 'FAIL', label: 'Failed', variant: 'danger' },
+  { value: 'WARNING', label: 'Warning', variant: 'warning' },
+  { value: 'PENDING_MANUAL_REVIEW', label: 'Pending', variant: 'neutral' },
+  { value: 'REJECTED', label: 'Rejected', variant: 'danger' },
+];
+
+/**
+ * Humanize a raw enum value (e.g. "NOT_PROCESSED" -> "Not Processed").
+ *
+ * @param {string|null|undefined} value The raw value.
+ * @returns {string} A readable label.
+ */
+function readableLabel(value) {
+  if (!value) {
+    return 'Unknown';
+  }
+  return value
+    .toLowerCase()
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+/**
  * Look up a status entry by its value.
  *
  * @param {Array} statuses A status catalogue.
@@ -83,6 +114,21 @@ function findStatus(statuses, value) {
     variant: 'neutral',
     color: 'gray',
   };
+}
+
+/**
+ * Map a raw rule-engine validation status to the report vocabulary.
+ *
+ * @param {string} value A backend `ValidationStatus` value.
+ * @returns {object} The corresponding report status entry.
+ */
+export function getRuleResultStatus(value) {
+  return (
+    RULE_RESULT_STATUSES.find((status) => status.value === value) ?? {
+      label: readableLabel(value),
+      variant: 'neutral',
+    }
+  );
 }
 
 export function getApplicationStatus(value) {

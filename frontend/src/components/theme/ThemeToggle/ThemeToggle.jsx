@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, Monitor, Moon, Sun } from 'lucide-react';
+import { Check, Cherry, Leaf, Moon, MoonStar, Sun } from 'lucide-react';
 
 import { useTheme } from '../../../hooks/useTheme';
 import { THEME_OPTIONS } from '../../../theme/theme';
@@ -8,7 +8,9 @@ import styles from './ThemeToggle.module.css';
 const OPTIONS = {
   light: { icon: Sun, label: 'Light' },
   dark: { icon: Moon, label: 'Dark' },
-  system: { icon: Monitor, label: 'System' },
+  black: { icon: MoonStar, label: 'Black' },
+  mint: { icon: Leaf, label: 'Mint' },
+  cherry: { icon: Cherry, label: 'Cherry' },
 };
 
 function ThemeToggle() {

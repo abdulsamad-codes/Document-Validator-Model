@@ -258,6 +258,49 @@ def test_upload_sanitizes_filename(client, storage_root: Path):
     assert files[0].parent == storage_root / "applications" / f"APP-{application_id:06d}" / "tripartite"
 
 
+# --- Application name from uploaded PDF ------------------------------------
+
+
+def test_application_has_no_name_until_upload(client):
+    application_id = create_application(client)
+    detail = client.get(f"{API}/applications/{application_id}").json()["application"]
+    assert detail["name"] is None
+
+
+def test_first_upload_sets_application_name_from_filename(client):
+    application_id = create_application(client)
+    response = upload(client, application_id, filename="My Bank Statement.pdf")
+
+    assert response.status_code == 201, response.text
+    detail = client.get(f"{API}/applications/{application_id}").json()["application"]
+    assert detail["name"] == "My Bank Statement"
+
+
+def test_later_uploads_do_not_overwrite_application_name(client):
+    application_id = create_application(client)
+
+    assert upload(client, application_id, filename="First Document.pdf").status_code == 201
+    assert upload(
+        client,
+        application_id,
+        filename="Second Document.pdf",
+        document_type="ACCOUNT_MAINTENANCE_CERTIFICATE",
+    ).status_code == 201
+
+    detail = client.get(f"{API}/applications/{application_id}").json()["application"]
+    assert detail["name"] == "First Document"
+
+
+def test_application_name_included_in_list_response(client):
+    application_id = create_application(client)
+    upload(client, application_id, filename="GDA Abbotabad.pdf")
+
+    items = client.get(f"{API}/applications").json()["items"]
+    matching = [item for item in items if item["id"] == application_id]
+    assert len(matching) == 1
+    assert matching[0]["name"] == "GDA Abbotabad"
+
+
 # --- Replace ---------------------------------------------------------------
 
 

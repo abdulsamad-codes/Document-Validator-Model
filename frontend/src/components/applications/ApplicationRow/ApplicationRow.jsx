@@ -23,6 +23,9 @@ function ApplicationRow({ application }) {
           #{application.id}
         </Link>
       </td>
+      <td className={styles.nameCell} data-label="Name">
+        {application.name ?? <span className={styles.noName}>—</span>}
+      </td>
       <td data-label="Status">
         <ApplicationStatusBadge status={application.status} />
       </td>

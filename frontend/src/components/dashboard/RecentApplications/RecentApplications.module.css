@@ -86,6 +86,15 @@
   flex: 1;
 }
 
+.name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .createdBy {
   font-size: 13px;
   font-weight: 500;

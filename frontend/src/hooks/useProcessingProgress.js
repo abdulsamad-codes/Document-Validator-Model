@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import {
   getProcessingDocuments,
@@ -7,13 +8,17 @@ import {
   startProcessing,
 } from '../services/processing';
 import { getApiErrorMessage } from '../utils/apiError';
+import { getPreference } from '../utils/preferences';
 
 export function useProcessingProgress(applicationId) {
+  const navigate = useNavigate();
   const [progress, setProgress] = useState(null);
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  const navigateReportFiredRef = useRef(false);
 
   const reload = useCallback(async () => {
     try {
@@ -31,13 +36,6 @@ export function useProcessingProgress(applicationId) {
     }
   }, [applicationId]);
 
-  useEffect(() => {
-    setLoading(true);
-    reload();
-    const interval = window.setInterval(reload, 2500);
-    return () => window.clearInterval(interval);
-  }, [reload]);
-
   const runAction = useCallback(async (action) => {
     setActionLoading(true);
     try {
@@ -48,6 +46,35 @@ export function useProcessingProgress(applicationId) {
       setActionLoading(false);
     }
   }, [applicationId, reload]);
+
+  // One-shot navigation to the validation report when processing completes.
+  useEffect(() => {
+    const autoOpen = getPreference('openReportOnProcessingComplete', false);
+    const completed =
+      progress != null &&
+      Number(progress.total_documents) > 0 &&
+      Number(progress.completed) >= Number(progress.total_documents);
+    if (!autoOpen || !completed) {
+      navigateReportFiredRef.current = false;
+      return;
+    }
+    if (navigateReportFiredRef.current) {
+      return;
+    }
+    navigateReportFiredRef.current = true;
+    navigate(`/reports?application=${applicationId}`);
+  }, [progress, applicationId, navigate]);
+
+  useEffect(() => {
+    setLoading(true);
+    reload();
+    const autoRefresh = getPreference('autoRefreshProcessingStatus', true);
+    if (!autoRefresh) {
+      return undefined;
+    }
+    const interval = window.setInterval(reload, 2500);
+    return () => window.clearInterval(interval);
+  }, [reload]);
 
   return {
     progress,

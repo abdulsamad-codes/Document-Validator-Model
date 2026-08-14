@@ -1,6 +1,7 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useApplicationsStore } from '../store/ApplicationsContext';
+import { getPreference, setPreference } from '../utils/preferences';
 import { sortBy } from '../utils/sort';
 
 /**
@@ -14,10 +15,20 @@ import { sortBy } from '../utils/sort';
  */
 export function useApplications() {
   const { applications, loading, error, reload, create } = useApplicationsStore();
-  const [statusFilter, setStatusFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState(() =>
+    getPreference('rememberApplicationFilter', true)
+      ? (getPreference('applicationFilter', '') ?? '')
+      : ''
+  );
   const [searchTerm, setSearchTerm] = useState('');
   const [sortKey, setSortKey] = useState('submitted_at');
   const [sortDir, setSortDir] = useState('desc');
+
+  useEffect(() => {
+    if (getPreference('rememberApplicationFilter', true)) {
+      setPreference('applicationFilter', statusFilter);
+    }
+  }, [statusFilter]);
 
   const filteredApplications = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
@@ -30,6 +41,7 @@ export function useApplications() {
       }
       return (
         String(application.id).includes(term) ||
+        (application.name ?? '').toLowerCase().includes(term) ||
         application.created_by.toLowerCase().includes(term) ||
         (application.notes ?? '').toLowerCase().includes(term)
       );

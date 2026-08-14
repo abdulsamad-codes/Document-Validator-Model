@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 
-import { Plus } from 'lucide-react';
+import { History, Plus } from 'lucide-react';
 
 import ApplicationEmptyState from '../../components/applications/ApplicationEmptyState/ApplicationEmptyState';
 import ApplicationFilters from '../../components/applications/ApplicationFilters/ApplicationFilters';
@@ -9,6 +9,8 @@ import { ApplicationTableSkeleton } from '../../components/applications/Applicat
 import ApplicationTable from '../../components/applications/ApplicationTable/ApplicationTable';
 import ErrorState from '../../components/common/ErrorState/ErrorState';
 import { useApplications } from '../../hooks/useApplications';
+import { useLastOpenedApplication } from '../../hooks/useLastOpenedApplication';
+import { getPreference } from '../../utils/preferences';
 import styles from './ApplicationsPage.module.css';
 
 /**
@@ -34,6 +36,11 @@ function ApplicationsPage() {
     onStatusChange,
     onSortChange,
   } = useApplications();
+
+  const { lastOpenedId } = useLastOpenedApplication();
+  const showResume = Boolean(
+    getPreference('rememberLastOpenedApplication', true) && lastOpenedId != null
+  );
 
   const hasFilters = Boolean(searchTerm.trim() || statusFilter);
 
@@ -63,6 +70,12 @@ function ApplicationsPage() {
           value={statusFilter}
           onChange={onStatusChange}
         />
+        {showResume && (
+          <Link to={`/applications/${lastOpenedId}`} className={styles.resumeChip}>
+            <History aria-hidden="true" />
+            Resume Application #{lastOpenedId}
+          </Link>
+        )}
         <p className={styles.count} aria-live="polite">
           {total} {total === 1 ? 'application' : 'applications'}
         </p>

@@ -4,16 +4,6 @@ import ApplicationRow from '../ApplicationRow/ApplicationRow';
 import styles from './ApplicationTable.module.css';
 
 /**
- * Sortable columns and the field each one orders by. Exported so the
- * applications hook can reuse the same key space.
- */
-export const SORTABLE_COLUMNS = [
-  { key: 'id', label: 'Application ID' },
-  { key: 'submitted_at', label: 'Submission Date' },
-  { key: 'updated_at', label: 'Last Updated' },
-];
-
-/**
  * Table of applications with sortable columns.
  *
  * Renders a full table on desktop and collapses each row into a card on small
@@ -58,23 +48,38 @@ function ApplicationTable({ applications, sortKey, sortDir, onSortChange }) {
       <table className={styles.table}>
         <thead>
           <tr>
-            {SORTABLE_COLUMNS.map((column) => (
-              <th
-                key={column.key}
-                scope="col"
-                aria-sort={ariaSortFor(column.key)}
+            <th scope="col" aria-sort={ariaSortFor('id')}>
+              <button
+                type="button"
+                className={styles.sortButton}
+                onClick={() => toggleSort('id')}
               >
-                <button
-                  type="button"
-                  className={styles.sortButton}
-                  onClick={() => toggleSort(column.key)}
-                >
-                  {column.label}
-                  <SortIcon column={column.key} />
-                </button>
-              </th>
-            ))}
+                ID
+                <SortIcon column="id" />
+              </button>
+            </th>
+            <th scope="col">Name</th>
             <th scope="col">Status</th>
+            <th scope="col" aria-sort={ariaSortFor('submitted_at')}>
+              <button
+                type="button"
+                className={styles.sortButton}
+                onClick={() => toggleSort('submitted_at')}
+              >
+                Submission Date
+                <SortIcon column="submitted_at" />
+              </button>
+            </th>
+            <th scope="col" aria-sort={ariaSortFor('updated_at')}>
+              <button
+                type="button"
+                className={styles.sortButton}
+                onClick={() => toggleSort('updated_at')}
+              >
+                Last Updated
+                <SortIcon column="updated_at" />
+              </button>
+            </th>
             <th scope="col">Created By</th>
             <th scope="col" className={styles.actionsHeader}>
               Actions

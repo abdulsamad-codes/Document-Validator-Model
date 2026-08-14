@@ -1,0 +1,89 @@
+import { useCallback, useEffect, useState } from 'react';
+
+import { listApplications } from '../services/applications';
+import { getProcessingProgress, retryProcessing } from '../services/processing';
+import { getApiErrorMessage } from '../utils/apiError';
+import { getPreference } from '../utils/preferences';
+
+/**
+ * Aggregate processing status across every application.
+ *
+ * Merges the applications list with each application's processing progress so a
+ * single view answers "what is being processed and how much is left". While any
+ * application still has queued or in-flight documents the hook polls, gated by
+ * the autoRefreshProcessingStatus workspace preference.
+ *
+ * @returns {{
+ *   rows: Array<{application: object, progress: object|null}>,
+ *   loading: boolean,
+ *   refreshing: boolean,
+ *   error: string|null,
+ *   reload: () => Promise<void>,
+ *   retry: (applicationId: number) => Promise<void>,
+ * }}
+ */
+export function useProcessingOverview() {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(null);
+
+  const reload = useCallback(async () => {
+    setLoading(false);
+    setRefreshing(true);
+    try {
+      const { items } = await listApplications({ limit: 100 });
+      const progressList = await Promise.all(
+        items.map((application) => getProcessingProgress(application.id).catch(() => null))
+      );
+      setRows(
+        items.map((application, index) => ({
+          application,
+          progress: progressList[index],
+        }))
+      );
+      setError(null);
+    } catch (err) {
+      setError(getApiErrorMessage(err));
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  const retry = useCallback(
+    async (applicationId) => {
+      try {
+        await retryProcessing(applicationId);
+        await reload();
+      } catch (err) {
+        setError(getApiErrorMessage(err));
+      }
+    },
+    [reload]
+  );
+
+  useEffect(() => {
+    setLoading(true);
+    reload();
+  }, [reload]);
+
+  const hasWork = rows.some(
+    ({ progress }) =>
+      progress != null &&
+      (Number(progress.queued) > 0 || Number(progress.processing) > 0)
+  );
+
+  useEffect(() => {
+    if (!getPreference('autoRefreshProcessingStatus', true)) {
+      return undefined;
+    }
+    if (!hasWork) {
+      return undefined;
+    }
+    const interval = window.setInterval(reload, 2500);
+    return () => window.clearInterval(interval);
+  }, [hasWork, reload]);
+
+  return { rows, loading, refreshing, error, reload, retry };
+}

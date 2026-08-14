@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Integer, Text, func, text
+from sqlalchemy import DateTime, Integer, String, Text, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -39,6 +39,9 @@ class Application(Base):
         submitted_at: When the application was first recorded (UTC).
         updated_at: When the application was last modified (UTC).
         created_by: Identifier of the user who submitted the application.
+        name: Display name derived from the first uploaded PDF filename
+            (e.g. ``TMA Khal Dir Lower``), set at upload time when the
+            application has no name yet.
         notes: Free-form notes attached to the application.
     """
 
@@ -59,6 +62,7 @@ class Application(Base):
         onupdate=func.now(),
     )
     created_by: Mapped[str] = mapped_column(Text)
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text)
 
     documents: Mapped[list[Document]] = relationship(

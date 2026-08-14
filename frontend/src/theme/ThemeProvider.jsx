@@ -1,24 +1,11 @@
 import { createContext, useCallback, useEffect, useMemo, useState } from 'react';
 
-import {
-  applyTheme,
-  getStoredPreference,
-  getSystemTheme,
-  resolveTheme,
-} from './theme';
+import { applyTheme, getStoredPreference } from './theme';
 
 export const ThemeContext = createContext(null);
 
 export function ThemeProvider({ children }) {
   const [preference, setPreference] = useState(getStoredPreference);
-  const [systemTheme, setSystemTheme] = useState(getSystemTheme);
-
-  useEffect(() => {
-    const media = window.matchMedia('(prefers-color-scheme: dark)');
-    const handleChange = () => setSystemTheme(media.matches ? 'dark' : 'light');
-    media.addEventListener('change', handleChange);
-    return () => media.removeEventListener('change', handleChange);
-  }, []);
 
   useEffect(() => {
     try {
@@ -26,8 +13,8 @@ export function ThemeProvider({ children }) {
     } catch {
       // Ignore storage failures (private mode, disabled storage).
     }
-    applyTheme(resolveTheme(preference));
-  }, [preference, systemTheme]);
+    applyTheme(preference);
+  }, [preference]);
 
   const setTheme = useCallback((next) => {
     setPreference(next);
@@ -36,10 +23,10 @@ export function ThemeProvider({ children }) {
   const value = useMemo(
     () => ({
       theme: preference,
-      resolvedTheme: preference === 'system' ? systemTheme : preference,
+      resolvedTheme: preference,
       setTheme,
     }),
-    [preference, systemTheme, setTheme]
+    [preference, setTheme]
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

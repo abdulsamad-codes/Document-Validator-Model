@@ -145,6 +145,11 @@ class UploadService:
         extension = validate_file_content(filename, content_type, content)
         safe_filename = sanitize_filename(filename)
 
+        # The first uploaded document names the application so operators can
+        # find it by the PDF they uploaded. Later uploads never overwrite it.
+        if application.name is None:
+            application.name = _display_name_from(safe_filename)
+
         stored_path = self._storage.save(application.id, document_type, content, extension)
         try:
             document = self._documents.create(
@@ -222,6 +227,10 @@ class UploadService:
         DocumentSplitter.validate_structure(content)
 
         safe_filename = sanitize_filename(filename)
+        # The bulk PDF is the application's primary file, so its name (minus
+        # the extension) becomes the application's display name.
+        if application.name is None:
+            application.name = _display_name_from(safe_filename)
         stored_path = self._storage.save(application.id, DocumentType.BULK_UPLOAD, content, ".pdf")
 
         # `DocumentRepository.create` commits immediately (see
@@ -542,3 +551,12 @@ def _content_type_for(extension: str) -> str:
 
     types = MIME_TYPES_BY_EXTENSION.get(extension)
     return next(iter(types)) if types else "application/octet-stream"
+
+
+def _display_name_from(filename: str) -> str:
+    """Return the filename without its extension, for use as an application name.
+
+    ``TMA Khal Dir Lower.pdf`` becomes ``TMA Khal Dir Lower``. Falls back to
+    the original filename when stripping leaves nothing (e.g. ``.pdf``).
+    """
+    return Path(filename).stem or filename

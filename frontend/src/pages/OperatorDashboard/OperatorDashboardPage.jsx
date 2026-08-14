@@ -25,7 +25,7 @@ function OperatorDashboardPage() {
     <div className={styles.page}>
       <header className={styles.header}>
         <div>
-          <h2 className={styles.title}>Human Review</h2>
+          <h2 className={styles.title}>Validation Tasks</h2>
           <p className={styles.subtitle}>
             Review validation tasks and drive them through approval, rejection or correction.
           </p>

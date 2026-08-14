@@ -1,11 +1,11 @@
 import {
+  Activity,
   FileText,
   FolderOpen,
   LayoutDashboard,
   MessageSquare,
   RefreshCw,
   Settings,
-  UploadCloud,
   UserCheck,
 } from 'lucide-react';
 
@@ -34,14 +34,14 @@ export const NAVIGATION = [
     id: 'documents',
     label: 'Documents',
     items: [
-      { id: 'upload', label: 'Upload Documents', path: '/upload', icon: UploadCloud },
+      { id: 'processing', label: 'Processing', path: '/processing', icon: Activity },
     ],
   },
   {
     id: 'verification',
     label: 'Verification',
     items: [
-      { id: 'reports', label: 'Validation Reports', path: '/reports', icon: FileText },
+      { id: 'reports', label: 'Validation Report', path: '/reports', icon: FileText },
       { id: 'human-review', label: 'Human Review', path: '/human-review', icon: UserCheck },
     ],
   },
@@ -81,7 +81,6 @@ export const ADMIN_NAV_ITEMS = NAV_ITEMS.flatMap((item) => item.children ?? []);
 export const INTERNAL_ROUTES = [
   { id: 'completeness', label: 'Document Completeness', path: '/completeness' },
   { id: 'technical-validation', label: 'Technical Validation', path: '/technical-validation' },
-  { id: 'processing', label: 'Document Processing', path: '/processing' },
   { id: 'extraction', label: 'Field Extraction', path: '/extraction' },
   { id: 'confidence', label: 'Confidence Review', path: '/confidence' },
   { id: 'normalization', label: 'Normalization', path: '/normalization' },

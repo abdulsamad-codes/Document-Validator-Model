@@ -11,20 +11,15 @@
     <script>
       (function () {
         var key = 'fintech-theme-preference';
-        var preference = 'system';
+        var preference = 'light';
         try {
-          preference = window.localStorage.getItem(key) || 'system';
+          preference = window.localStorage.getItem(key) || 'light';
         } catch (e) {}
-        if (preference !== 'light' && preference !== 'dark') {
-          preference = 'system';
+        var options = ['light', 'dark', 'black', 'mint', 'cherry'];
+        if (options.indexOf(preference) === -1) {
+          preference = 'light';
         }
-        var theme =
-          preference === 'system'
-            ? window.matchMedia('(prefers-color-scheme: dark)').matches
-              ? 'dark'
-              : 'light'
-            : preference;
-        document.documentElement.setAttribute('data-theme', theme);
+        document.documentElement.setAttribute('data-theme', preference);
       })();
     </script>
   </head>
