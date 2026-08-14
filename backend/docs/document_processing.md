@@ -41,8 +41,11 @@ text layer is **already exact**. Recognizing it would:
 So digital PDFs are read natively with PyMuPDF (`page.get_text()`), which is
 fast, lossless and gives no confidence score (there is no recognition to score —
 `overall_confidence` is `NULL`). A PDF is only routed as *digital* when its
-probed selectable text is long enough (`MIN_DIGITAL_TEXT_CHARS = 10`); otherwise
-the pages are treated as scans and OCR'd.
+probed selectable text averages at least `MIN_DIGITAL_TEXT_CHARS_PER_PAGE = 40`
+characters per page; otherwise the pages are treated as scans and OCR'd. A flat
+total-character threshold used to let scanner-app exports (e.g. CamScanner,
+which stamps a short watermark as real text on every page) slip through as
+"digital" with nothing but watermark noise extracted.
 
 ## 3. How PyMuPDF is used
 

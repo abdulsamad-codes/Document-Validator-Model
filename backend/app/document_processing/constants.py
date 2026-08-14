@@ -37,9 +37,14 @@ PYMUPDF_ENGINE: str = "pymupdf"
 #: Identifier stored for text produced by the PaddleOCR engine.
 PADDLE_OCR_ENGINE: str = "paddleocr"
 
-#: Minimum total text length (characters) for a PDF to be routed as a digital
-#: PDF. Below this the pages are assumed to be scans and OCR is used instead.
-MIN_DIGITAL_TEXT_CHARS: int = 10
+#: Minimum average selectable-text characters per page for a PDF to be routed
+#: as digital. Below this the pages are assumed to be scans and OCR is used
+#: instead. A flat total (rather than per-page) threshold let scanner-app
+#: exports slip through as "digital": apps like CamScanner stamp a short
+#: watermark as real selectable text on every page (e.g. "CamScanner" x9
+#: pages = 99 characters), which used to clear a flat 10-character bar despite
+#: the actual page content being an untranscribed image.
+MIN_DIGITAL_TEXT_CHARS_PER_PAGE: int = 40
 
 #: Resolution used when rendering scanned PDF pages for OCR input (dots per inch).
 SCANNED_PDF_RENDER_DPI: int = 200

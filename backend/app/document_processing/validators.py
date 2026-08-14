@@ -16,7 +16,7 @@ from pathlib import Path
 import pymupdf
 
 from app.document_processing.constants import (
-    MIN_DIGITAL_TEXT_CHARS,
+    MIN_DIGITAL_TEXT_CHARS_PER_PAGE,
     DocumentSource,
 )
 from app.document_processing.exceptions import (
@@ -93,10 +93,10 @@ def detect_format(stored_file_path: str) -> FileFormat:
 def classify_document_source(path: Path, file_format: FileFormat) -> SourceDecision:
     """Determine how a document's text should be obtained.
 
-    A PDF is probed with PyMuPDF: when it already carries selectable text above
-    :data:`MIN_DIGITAL_TEXT_CHARS` it is routed as a digital PDF (text extracted
-    natively, no OCR); otherwise its pages are assumed to be scans. Non-PDF
-    formats are routed as images.
+    A PDF is probed with PyMuPDF: when it already carries selectable text
+    averaging at least :data:`MIN_DIGITAL_TEXT_CHARS_PER_PAGE` per page, it is
+    routed as a digital PDF (text extracted natively, no OCR); otherwise its
+    pages are assumed to be scans. Non-PDF formats are routed as images.
 
     Args:
         path: Absolute path of the document file.
@@ -120,11 +120,14 @@ def classify_document_source(path: Path, file_format: FileFormat) -> SourceDecis
         raise
     except Exception as exc:
         raise CorruptedDocument(f"Cannot read PDF: {exc}") from exc
-    if len(text.strip()) >= MIN_DIGITAL_TEXT_CHARS:
+    stripped_length = len(text.strip())
+    average_chars_per_page = stripped_length / max(page_count, 1)
+    if average_chars_per_page >= MIN_DIGITAL_TEXT_CHARS_PER_PAGE:
         logger.info(
-            "PDF routed as digital: %s characters of selectable text across %s pages",
-            len(text.strip()),
+            "PDF routed as digital: %s characters of selectable text across %s pages (%.1f/page)",
+            stripped_length,
             page_count,
+            average_chars_per_page,
         )
         return SourceDecision(DocumentSource.DIGITAL_PDF, text, page_count)
     return SourceDecision(DocumentSource.SCANNED_PDF, None, page_count)
