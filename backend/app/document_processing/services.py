@@ -229,6 +229,7 @@ class DocumentProcessingService:
         from app.upload.constants import MAX_COPIES_BY_DOCUMENT_TYPE
         from app.database.repositories.queue_job_repository import QueueJobRepository
         from app.preprocessing.splitter import DocumentSplitter
+        from app.technical_validation.services import TechnicalValidationService
         
         self._documents.update_status(document, DocumentProcessingStatus.PROCESSING)
         
@@ -284,6 +285,8 @@ class DocumentProcessingService:
                 )
 
             self._documents.create_many(documents=created_documents)
+
+            TechnicalValidationService(self._db).validate(application_id=application_id)
 
             QueueJobRepository(self._db).enqueue_uploaded_documents(
                 application_id=application_id,
