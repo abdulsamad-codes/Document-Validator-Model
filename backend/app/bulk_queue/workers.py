@@ -48,6 +48,12 @@ logger = logging.getLogger(__name__)
 #: enqueued -- see PIPELINE_BLOCKED handling in _maybe_start_pipeline.
 ACTION_PIPELINE_BLOCKED = "PIPELINE_BLOCKED_NO_PROCESSED_DOCUMENTS"
 
+#: Seconds between process-liveness heartbeat file writes -- independent of
+#: (and much coarser than) the per-job DB heartbeat in _start_heartbeat, which
+#: exists to prove one claimed job is still being worked. This one exists to
+#: prove the dedicated worker *process* is up at all, for /health.
+_HEARTBEAT_FILE_INTERVAL_SECONDS = 30
+
 
 @dataclass
 class WorkerRunSummary:
@@ -128,12 +134,33 @@ class BulkQueueWorker:
 
         Intended for dedicated worker processes (``python -m app.bulk_queue``).
         Each iteration drains one job, then sleeps ``bulk_queue_poll_interval``
-        seconds when the queue is empty.
+        seconds when the queue is empty. Also writes the process-liveness
+        heartbeat file every ``_HEARTBEAT_FILE_INTERVAL_SECONDS``, independent
+        of whether any job is actually being processed, so ``/health`` can
+        detect a crashed or never-started dedicated worker process. The
+        heartbeat lives here rather than in :meth:`run_until_empty` because
+        that method is also called by the in-process background-drain path
+        (``drain_queue``), which has no persistent process for a heartbeat
+        file to describe -- writing it there would make a one-off HTTP-request
+        drain look like a permanently live worker.
         """
+        last_heartbeat_write = 0.0
         while not self._stop_requested:
+            now = time.monotonic()
+            if now - last_heartbeat_write >= _HEARTBEAT_FILE_INTERVAL_SECONDS:
+                self._write_heartbeat_file()
+                last_heartbeat_write = now
             summary = self.run_until_empty(max_jobs=1)
             if summary.processed == 0:
                 time.sleep(self._settings.bulk_queue_poll_interval)
+
+    def _write_heartbeat_file(self) -> None:
+        """Record the current UTC time so ``/health`` can see this process is alive."""
+        path = self._settings.worker_heartbeat_path
+        try:
+            path.write_text(str(time.time()))
+        except OSError:
+            logger.exception("Failed to write worker heartbeat file at %s", path)
 
     def _heartbeat_interval(self) -> float:
         """Seconds between heartbeat refreshes, derived from the stale timeout.

@@ -320,6 +320,50 @@ def test_progress_endpoint_counts_statuses(client):
     }
 
 
+def test_queue_stats_endpoint_is_system_wide(client):
+    """/queue/stats aggregates across every application, not just one."""
+    authenticate(client)
+    application_id, _ = create_application_with_documents(4)
+    enqueue(application_id)
+    db = SessionLocal()
+    try:
+        jobs = list(QueueJobRepository(db).list_by_application(application_id))
+        jobs[0].status = JobStatus.PROCESSING
+        jobs[1].status = JobStatus.COMPLETED
+        jobs[2].status = JobStatus.FAILED
+        jobs[3].status = JobStatus.QUEUED
+        jobs[3].created_at = datetime.now(timezone.utc) - timedelta(seconds=120)
+        db.commit()
+    finally:
+        db.close()
+
+    other_application_id, _ = create_application_with_documents(1)
+    enqueue(other_application_id)
+
+    response = client.get(f"{API}/queue/stats")
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    # jobs[3] (backdated) plus the other application's freshly enqueued job.
+    assert data["total_queued"] == 2
+    assert data["total_processing"] == 1
+    assert data["total_failed"] == 1
+    assert data["oldest_queued_age_seconds"] >= 120
+
+
+def test_queue_stats_endpoint_empty_queue(client):
+    """An empty queue reports zero counts and no oldest-queued age."""
+    authenticate(client)
+    response = client.get(f"{API}/queue/stats")
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "total_queued": 0,
+        "total_processing": 0,
+        "total_failed": 0,
+        "oldest_queued_age_seconds": None,
+    }
+
+
 def test_two_workers_cannot_claim_same_job():
     application_id, _ = create_application_with_documents(2)
     enqueue(application_id)
@@ -521,6 +565,7 @@ def test_mixed_success_failure_retry_requeues_only_failed(client, monkeypatch):
     ("post", "/applications/1/processing/retry"),
     ("post", "/applications/1/queue/enqueue"),
     ("get", "/applications/1/queue/progress"),
+    ("get", "/queue/stats"),
     ("post", "/queue/workers/drain"),
 ])
 def test_unauthenticated_requests_rejected(client, method, endpoint):
@@ -750,10 +795,11 @@ def test_heartbeat_refreshes_started_at_preventing_false_stale(monkeypatch):
     assert counts[JobStatus.COMPLETED] == 1
 
 
-def test_loop_forever_polls_until_stopped(monkeypatch):
+def test_loop_forever_polls_until_stopped(monkeypatch, tmp_path):
     """loop_forever drains jobs and exits gracefully when stopped."""
     settings = get_settings()
     monkeypatch.setattr(settings, "bulk_queue_poll_interval", 0.05)
+    monkeypatch.setattr(settings, "worker_heartbeat_path", tmp_path / "worker.heartbeat")
     application_id, _ = create_application_with_documents(2)
     enqueue(application_id)
     worker = BulkQueueWorker(settings=settings, processor_factory=SuccessfulProcessor)
@@ -771,6 +817,9 @@ def test_loop_forever_polls_until_stopped(monkeypatch):
 
     counts = queue_counts(application_id)
     assert counts[JobStatus.COMPLETED] == 2
+    heartbeat_path = settings.worker_heartbeat_path
+    assert heartbeat_path.exists()
+    assert time.time() - float(heartbeat_path.read_text()) < 5
 
 
 def test_large_batch_progress_counts_consistent(client):

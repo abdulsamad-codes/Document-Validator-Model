@@ -87,6 +87,15 @@ class ProcessingActionResponse(BaseModel):
     documents_retried: int = 0
 
 
+class QueueStatsResponse(BaseModel):
+    """System-wide queue backlog snapshot for operator/ops monitoring."""
+
+    total_queued: int
+    total_processing: int
+    total_failed: int
+    oldest_queued_age_seconds: float | None = None
+
+
 class WorkerRunResponse(BaseModel):
     """Summary from an explicit worker drain request."""
 

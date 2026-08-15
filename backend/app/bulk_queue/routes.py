@@ -15,6 +15,7 @@ from app.bulk_queue.schemas import (
     ProcessingDocumentsResponse,
     ProcessingProgressResponse,
     QueueProgressResponse,
+    QueueStatsResponse,
     WorkerRunResponse,
 )
 from app.bulk_queue.services import BulkQueueService
@@ -23,6 +24,7 @@ from app.auth.dependencies import get_current_user
 from app.core.config import get_settings
 from app.database.connection import get_db
 from app.database.models.user import User
+from app.database.repositories.queue_job_repository import QueueJobRepository
 
 logger = logging.getLogger(__name__)
 
@@ -181,6 +183,27 @@ def queue_progress(
 ) -> QueueProgressResponse:
     """Return application-level queue progress."""
     return _service(db).progress(application_id=application_id)
+
+
+@router.get(
+    "/queue/stats",
+    response_model=QueueStatsResponse,
+    summary="Get system-wide queue backlog stats",
+    responses={401: {"model": ErrorResponse}},
+)
+@_handle_queue_errors
+def queue_stats(
+    db: _GET_DB,
+    _user: _CURRENT_USER,
+) -> QueueStatsResponse:
+    """Return operator-facing queue backlog counts across every application."""
+    stats = QueueJobRepository(db).get_queue_stats()
+    return QueueStatsResponse(
+        total_queued=stats.total_queued,
+        total_processing=stats.total_processing,
+        total_failed=stats.total_failed,
+        oldest_queued_age_seconds=stats.oldest_queued_age_seconds,
+    )
 
 
 @router.post(

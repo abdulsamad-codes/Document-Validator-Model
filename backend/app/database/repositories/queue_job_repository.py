@@ -1,6 +1,7 @@
 """Repository for the PostgreSQL-backed queue job table."""
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import Select, case, func, or_, select, update
@@ -12,6 +13,24 @@ from app.database.models.document import Document
 from app.database.models.enums import DocumentProcessingStatus, JobStatus, JobType
 from app.database.models.queue_job import QueueJob
 from app.database.repositories.base import BaseRepository
+
+
+@dataclass(frozen=True)
+class QueueStats:
+    """System-wide queue backlog snapshot for operator/ops monitoring.
+
+    Attributes:
+        total_queued: Jobs waiting to be claimed (``QUEUED``).
+        total_processing: Jobs currently claimed by a worker.
+        total_failed: Jobs permanently failed (attempt budget exhausted).
+        oldest_queued_age_seconds: Age in seconds of the longest-waiting
+            ``QUEUED`` job, or ``None`` when nothing is queued.
+    """
+
+    total_queued: int
+    total_processing: int
+    total_failed: int
+    oldest_queued_age_seconds: float | None
 
 
 class QueueJobRepository(BaseRepository[QueueJob]):
@@ -379,6 +398,42 @@ class QueueJobRepository(BaseRepository[QueueJob]):
             self._db.commit()
             self._db.refresh(job)
             return job
+
+    def get_queue_stats(self, *, now: datetime | None = None) -> QueueStats:
+        """Return a system-wide queue backlog snapshot.
+
+        Unlike :meth:`progress_for_application`, this is deliberately not
+        scoped to ``DOCUMENT_OCR`` jobs: an operator asking "how backed up is
+        the queue" wants the whole backlog, pipeline jobs included.
+
+        Args:
+            now: Reference timestamp for the age calculation; defaults to the
+                current UTC time.
+
+        Returns:
+            Counts of queued/processing/failed jobs and the age of the
+            longest-waiting queued job.
+        """
+        now = now or datetime.now(timezone.utc)
+        rows = self._db.execute(
+            select(QueueJob.status, func.count()).group_by(QueueJob.status)
+        ).all()
+        counts = {status: int(count) for status, count in rows}
+        oldest_queued_created_at = self._db.scalar(
+            select(func.min(QueueJob.created_at)).where(QueueJob.status == JobStatus.QUEUED)
+        )
+        oldest_queued_age_seconds = None
+        if oldest_queued_created_at is not None:
+            created_at = oldest_queued_created_at
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=timezone.utc)
+            oldest_queued_age_seconds = (now - created_at).total_seconds()
+        return QueueStats(
+            total_queued=counts.get(JobStatus.QUEUED, 0),
+            total_processing=counts.get(JobStatus.PROCESSING, 0),
+            total_failed=counts.get(JobStatus.FAILED, 0),
+            oldest_queued_age_seconds=oldest_queued_age_seconds,
+        )
 
     def retry_failed_for_application(self, application_id: int) -> int:
         """Requeue failed documents for an explicit operator retry.

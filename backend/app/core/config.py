@@ -77,6 +77,11 @@ class Settings(BaseSettings):
             ``/processing/retry``. Production deployments that run dedicated
             worker processes (``python -m app.bulk_queue``) should disable this
             so queue draining never happens inside the request path.
+        worker_heartbeat_path: File a dedicated worker process
+            (``python -m app.bulk_queue``) touches periodically to prove it is
+            alive; read by ``/health`` to detect a crashed or never-started
+            worker process. Not written by the in-process background-drain
+            mode, which has no persistent process for a heartbeat to describe.
         database_pool_size: Number of connections each database engine pool
             keeps open; bounds memory and file descriptors under load.
         database_max_overflow: Extra connections the pool may open on demand
@@ -129,6 +134,7 @@ class Settings(BaseSettings):
     bulk_queue_retry_backoff_seconds: int = Field(default=30, ge=0)
     bulk_queue_stale_after_seconds: int = Field(default=900, ge=1)
     bulk_queue_background_drain: bool = Field(default=True)
+    worker_heartbeat_path: Path = Field(default=Path("./worker.heartbeat"))
     database_pool_size: int = Field(default=5, ge=1)
     database_max_overflow: int = Field(default=10, ge=0)
     ai_fallback_enabled: bool = Field(default=False)
