@@ -254,7 +254,11 @@ CREATE DATABASE finance_verification OWNER finance_app;
 ```bash
 cd backend
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+
+# Reproducible install (recommended): installs the exact versions this
+# project is tested against, from the pip-compile-generated lock file.
+pip install pip-tools
+pip-sync requirements-lock.txt
 
 # Configure environment
 cp .env.example .env    # then edit DATABASE_URL, SECRET_KEY, etc.
@@ -273,6 +277,8 @@ Employee ID : EMP-1001
 Email       : employee@fintech.local
 Password    : Welcome@123
 ```
+
+**`requirements.txt` vs `requirements-lock.txt`**: `requirements.txt` declares loose, compatible version ranges (the source of truth for what this project needs); `requirements-lock.txt` is a `pip-compile`-generated, fully pinned resolution of that file, committed so every install — local, CI, or production — gets the exact same dependency versions instead of whatever a range happens to resolve to on a given day. Use `pip-sync requirements-lock.txt` for installs (recommended, especially for production); regenerate the lock file with `pip-compile requirements.txt -o requirements-lock.txt` after changing `requirements.txt`, and commit both files together.
 
 ### 3. Frontend
 
