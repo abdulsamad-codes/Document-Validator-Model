@@ -10,6 +10,7 @@ factory is the dependency-injection seam tests use to substitute a fake engine.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -104,9 +105,23 @@ class PaddleOCREngine:
     predictions over differently-sized images crash the Paddle predictor with a
     native ``std::exception`` (see PaddlePaddle/PaddleOCR#17787); inference runs
     on the plain CPU backend instead.
+
+    A fresh ``PaddleOCREngine()`` is constructed per document (see
+    ``ocr_engine_factory``), but every instance shares the one underlying
+    predictor via ``_engine``. With ``bulk_queue_workers`` > 1 (2 by default),
+    two worker threads can each hold a different ``PaddleOCREngine`` instance
+    that both call ``predict()`` on that shared predictor at the same time --
+    undefined behaviour for a native predictor already known to crash under
+    milder concurrent-call conditions (see the MKLDNN note above).
+    ``_predict_lock`` serializes every ``predict()`` call across every
+    instance so this can't happen.
     """
 
     _engine: object | None = None
+    #: Class attribute, not an instance one: every ``PaddleOCREngine()`` shares
+    #: the same predictor via ``_engine``, so every instance must serialize
+    #: through the same lock, not a fresh (and useless) per-instance lock.
+    _predict_lock: threading.Lock = threading.Lock()
 
     def __init__(self) -> None:
         self._engine = self._get_engine()
@@ -149,7 +164,11 @@ class PaddleOCREngine:
         """
         try:
             predict_image = self._to_predict_image(image)
-            results = self._engine.predict(predict_image)
+            # Serializes concurrent predict() calls across every worker thread
+            # to avoid the PaddlePaddle native crash bug (see the class
+            # docstring and PaddlePaddle/PaddleOCR#17787).
+            with self._predict_lock:
+                results = self._engine.predict(predict_image)
         except Exception as exc:
             raise OCRProcessingFailed(f"PaddleOCR failed to process the image: {exc}") from exc
         texts: list[str] = []
