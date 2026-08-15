@@ -11,6 +11,13 @@ import styles from './OperatorDashboardPage.module.css';
 /**
  * Operator dashboard: the validation task queue plus a review panel.
  *
+ * NOT CURRENTLY WIRED INTO THE PIPELINE: nothing creates a ValidationTask in
+ * real usage (no automatic trigger anywhere, backend or frontend), so this
+ * queue is empty by default -- that's expected, not a bug. Reconciling this
+ * page against the Human Review screen (which already handles the same
+ * real-world review workflow end-to-end) is a pending product decision. See
+ * CONTEXT.md's known-gaps section.
+ *
  * Lists every validation task across all applications (filterable by
  * status), and opens an inline review panel for the selected task where the
  * operator drives the task lifecycle (start / complete / reject /

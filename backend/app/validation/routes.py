@@ -1,5 +1,13 @@
 """HTTP endpoints for the validation module.
 
+NOT CURRENTLY WIRED INTO THE PIPELINE: nothing anywhere in this codebase --
+no queue worker, no other module's service, no frontend action -- ever calls
+POST /validation/tasks, so no ValidationTask is ever created in real usage.
+Reconciling this module against `human_verification` (which already
+independently implements the same real-world review workflow end-to-end) is
+a pending product decision, not a bug fix. See CONTEXT.md's known-gaps
+section for the full reasoning. Do not assume this queue is populated.
+
 Exposes the validation task workflow (create, list, retrieve, start, complete,
 reject, request-correction), the immutable validation logs (per task and per
 application), the stored check results for review, and review-time field and
