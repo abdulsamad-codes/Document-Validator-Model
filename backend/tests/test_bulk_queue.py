@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Lock
 
+import pymupdf
 import pytest
 
 from app.bulk_queue.workers import BulkQueueWorker, drain_queue
@@ -26,6 +27,7 @@ from app.database.repositories.queue_job_repository import QueueJobRepository
 from app.document_processing.schemas import DocumentProcessingResult, ProcessingOutcome
 from app.document_processing.services import DocumentProcessingService
 from tests.test_bulk_upload_api import make_bulk_pdf, upload_bulk
+from tests.test_document_processing_api import FakeOCREngine
 from tests.test_technical_validation_api import create_application
 
 API = "/api/v1"
@@ -943,5 +945,66 @@ def test_bulk_upload_split_documents_are_enqueued_for_processing(client):
         )
         assert len(jobs) == 2
         assert {job.document_id for job in jobs} == {d.id for d in split_documents}
+    finally:
+        db.close()
+
+
+def test_bulk_upload_ocr_fallback_splits_watermark_only_scans(client):
+    """Regression test for the real-data bug found 2026-08-15: a page whose
+    only *native* text is a short scanner-app watermark (e.g. CamScanner,
+    exactly 10 characters) must still trigger OCR during splitting, not be
+    read as if the watermark were the page's entire content.
+
+    Before the fix, the OCR-fallback threshold was a flat `< 10`, so a page
+    with exactly 10 characters of native text never triggered OCR. Every
+    page of a real scanned bulk PDF then read as just its watermark, matched
+    no title phrase, and the whole file collapsed into one
+    OTHER_SUPPORTING_DOCUMENT instead of splitting -- confirmed directly on
+    real files in Confidential Data/ (12 of 21 hit this exact bug).
+    """
+    authenticate(client)
+    application_id = create_application(client)
+
+    # Mirrors a real CamScanner export: each page's only native text is a
+    # short watermark, well under any real document's actual content length.
+    watermark_doc = pymupdf.open()
+    for _ in range(2):
+        page = watermark_doc.new_page()
+        page.insert_text((50, 50), "CamScanner", fontsize=10)
+    content = watermark_doc.tobytes()
+    watermark_doc.close()
+
+    response = upload_bulk(client, application_id, content)
+    assert response.status_code == 201, response.text
+
+    # The splitter can only "see" real content via this fake engine's OCR
+    # fallback -- there is no other source of classifiable text on these
+    # pages, so a correct split proves the fallback actually ran.
+    ocr_engine = FakeOCREngine(
+        texts=[
+            "TRIPARTITE AGREEMENT\nFirst copy body text.",
+            "AUTHORITY LETTER\nSecond copy body text.",
+        ]
+    )
+
+    def processor_factory(db):
+        return DocumentProcessingService(db, engine_factory=lambda: ocr_engine)
+
+    summary = BulkQueueWorker(processor_factory=processor_factory).run_until_empty()
+    assert summary.failed == 0, summary
+
+    db = SessionLocal()
+    try:
+        documents = (
+            db.query(Document)
+            .filter(Document.application_id == application_id)
+            .all()
+        )
+        split_documents = [d for d in documents if d.document_type != DocumentType.BULK_UPLOAD]
+        assert len(split_documents) == 2
+        assert {d.document_type for d in split_documents} == {
+            DocumentType.TRIPARTITE_AGREEMENT,
+            DocumentType.AUTHORITY_LETTER,
+        }
     finally:
         db.close()

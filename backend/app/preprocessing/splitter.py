@@ -25,6 +25,21 @@ logger = logging.getLogger(__name__)
 #: as body text and never start a document.
 _HEADER_ZONE_RATIO = 0.33
 
+#: Minimum native selectable-text characters a page must carry before it's
+#: trusted as real content; below this, OCR runs instead. Scanner-app exports
+#: (e.g. CamScanner) stamp a short watermark as real selectable text on every
+#: page -- confirmed directly on real files in Confidential Data/: exactly
+#: ``"CamScanner\n"``, 10 characters stripped. The previous threshold here was
+#: a flat ``< 10``, so a watermark-only page never cleared it and OCR never
+#: ran during splitting -- every page of a real scanned bulk PDF read as just
+#: its watermark, matched no title phrase, and the whole file collapsed into
+#: one OTHER_SUPPORTING_DOCUMENT instead of splitting. This mirrors the exact
+#: same failure mode already found and fixed once before in
+#: document_processing.constants.MIN_DIGITAL_TEXT_CHARS_PER_PAGE (also 40,
+#: also a CamScanner watermark defeating a flat text-length bar) -- reusing
+#: that already-proven value here rather than picking a new number blind.
+_MIN_NATIVE_TEXT_CHARS = 40
+
 #: Strong title phrases keyed in preference order. Iterated deterministically;
 #: the first phrase found wins. These phrases are only ever treated as strong
 #: evidence when anchored at the start of a line inside the header region.
@@ -252,7 +267,7 @@ class DocumentSplitter:
         page_height = page.rect.height or 0
         full_text = " ".join(text for _, text in lines)
 
-        if len(full_text.strip()) < 10 and ocr_engine:
+        if len(full_text.strip()) < _MIN_NATIVE_TEXT_CHARS and ocr_engine:
             try:
                 import numpy as np
                 import cv2
@@ -264,9 +279,14 @@ class DocumentSplitter:
                 result = ocr_engine.extract(img)
                 full_text = result.text
                 
+                # Upper-cased to match _extract_lines' convention: every
+                # phrase in _STRONG_TITLE_PHRASES/_CNIC_HEADER_PHRASES is
+                # matched via a case-sensitive startswith() against an
+                # all-caps phrase, so raw (non-upper-cased) OCR output would
+                # silently fail to match a title printed in mixed case.
                 lines = []
                 for idx, line_text in enumerate(full_text.splitlines()):
-                    lines.append((float(idx * 10), line_text))
+                    lines.append((float(idx * 10), line_text.upper()))
             except Exception as exc:
                 import logging
                 logging.getLogger(__name__).warning("PaddleOCR fallback failed during split: %s", exc)
