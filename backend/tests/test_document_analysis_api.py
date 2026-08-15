@@ -8,6 +8,7 @@ PaddleOCR model is required.
 """
 
 import pymupdf
+import pytest
 
 from app.database.connection import SessionLocal
 from app.database.models.document_analysis_result import DocumentAnalysisResult
@@ -293,6 +294,109 @@ def test_analyze_unknown_document_type_persists_needs_review(authenticated_clien
     stored_item = stored["items"][0]
     assert stored_item["document_type"] == "UNKNOWN"
     assert stored_item["verification_status"] == "NEEDS_REVIEW"
+
+
+def test_analyze_recognized_checklist_type_stores_real_type_not_unknown(
+    authenticated_client, storage_root
+):
+    """A document of a real checklist type is labelled honestly, not UNKNOWN.
+
+    ``detect_document_type`` only recognises 4 categories unrelated to the
+    real required-document checklist (Tripartite Agreement, Authority
+    Letter, etc.), so it reports UNKNOWN for this text either way. But the
+    splitter already classified this document as TRIPARTITE_AGREEMENT
+    (``document.document_type``), and that's real information -- storing it
+    instead of a generic UNKNOWN makes the result distinguishable from a
+    document neither classifier could identify at all. No extractor exists
+    for this type yet, so fields/confidence must stay empty regardless --
+    this is a labelling fix, not new extraction capability.
+    """
+    application_id = create_application(authenticated_client)
+    add_digital_pdf(
+        storage_root,
+        application_id,
+        PLAIN_TEXT,
+        document_type=DocumentType.TRIPARTITE_AGREEMENT,
+        filename="agreement.pdf",
+    )
+    run_processing(authenticated_client, application_id)
+
+    result = analyze_documents(authenticated_client, application_id)
+
+    assert result["total_analyzed"] == 1
+    assert result["total_failed"] == 0
+    item = result["items"][0]
+    assert item["outcome"] == "ANALYZED"
+    assert item["document_type"] == "TRIPARTITE_AGREEMENT"
+    assert item["verification_status"] == "NEEDS_REVIEW"
+    assert item["extracted_fields"] == {}
+    assert item["confidence_score"] is None
+    assert "recognized as TRIPARTITE_AGREEMENT" in item["message"]
+    assert "not yet supported" in item["message"]
+    assert stored_analysis_count() == 1
+
+    stored = get_analysis_results(authenticated_client, application_id)
+    assert stored["total"] == 1
+    stored_item = stored["items"][0]
+    assert stored_item["document_type"] == "TRIPARTITE_AGREEMENT"
+    assert stored_item["verification_status"] == "NEEDS_REVIEW"
+
+
+@pytest.mark.parametrize(
+    "document_type",
+    [
+        DocumentType.BILATERAL_AGREEMENT,
+        DocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+        DocumentType.ONE_LINK_LETTER,
+        DocumentType.AUTHORITY_LETTER,
+        DocumentType.SCHEDULE_OF_CHARGES,
+        DocumentType.BUSINESS_REQUIREMENT_DOCUMENT,
+        DocumentType.FORMAL_REQUEST_LETTER,
+        DocumentType.CNIC_FRONT,
+        DocumentType.CNIC_BACK,
+    ],
+)
+def test_analyze_every_checklist_type_is_recognized_not_unknown(
+    authenticated_client, storage_root, document_type
+):
+    """Every real checklist category is labelled by its own name, not UNKNOWN."""
+    application_id = create_application(authenticated_client)
+    add_digital_pdf(
+        storage_root,
+        application_id,
+        PLAIN_TEXT,
+        document_type=document_type,
+        filename="doc.pdf",
+    )
+    run_processing(authenticated_client, application_id)
+
+    result = analyze_documents(authenticated_client, application_id)
+
+    item = result["items"][0]
+    assert item["outcome"] == "ANALYZED"
+    assert item["document_type"] == document_type.value
+    assert item["verification_status"] == "NEEDS_REVIEW"
+    assert item["extracted_fields"] == {}
+
+
+def test_analyze_other_supporting_document_still_reports_unknown(
+    authenticated_client, storage_root
+):
+    """OTHER_SUPPORTING_DOCUMENT is the splitter's own catch-all, not a real
+    classification -- it must still fall through to UNKNOWN, unchanged."""
+    application_id = create_application(authenticated_client)
+    add_digital_pdf(
+        storage_root,
+        application_id,
+        PLAIN_TEXT,
+        document_type=DocumentType.OTHER_SUPPORTING_DOCUMENT,
+        filename="letter.pdf",
+    )
+    run_processing(authenticated_client, application_id)
+
+    result = analyze_documents(authenticated_client, application_id)
+
+    assert result["items"][0]["document_type"] == "UNKNOWN"
 
 
 def test_analyze_partial_unknown_type_does_not_block_known_documents(

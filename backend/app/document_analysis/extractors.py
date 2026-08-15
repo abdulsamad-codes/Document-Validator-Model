@@ -403,6 +403,19 @@ def detect_document_type(text: str) -> AnalyzedDocumentType:
     document type; the type with the highest total wins. Ties resolve to the
     first-defined type, keeping the result deterministic.
 
+    Deliberately only recognises the 4 categories with a real extractor
+    below -- it is not, and should not become, a classifier for the real
+    required-document checklist (Tripartite Agreement, Authority Letter,
+    etc.). That vocabulary belongs to the splitter
+    (``app/preprocessing/splitter.py``) and is already reliably captured on
+    ``document.document_type``; widening this table to match it without
+    adding a real extractor for each type would only relabel documents this
+    module still can't extract anything from. When this returns ``UNKNOWN``,
+    ``DocumentAnalysisService`` falls back to the splitter's own
+    classification to distinguish "recognised, no extractor yet" from
+    "genuinely couldn't classify" -- see
+    ``DocumentAnalysisService._recognized_checklist_type``.
+
     Args:
         text: Raw OCR text of the document.
 

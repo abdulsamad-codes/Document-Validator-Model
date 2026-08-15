@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.database.models.document import Document
 from app.database.models.document_analysis_result import DocumentAnalysisResult
+from app.database.models.enums import DocumentType
 from app.database.repositories.application_repository import ApplicationRepository
 from app.database.repositories.document_analysis_repository import DocumentAnalysisRepository
 from app.database.repositories.document_repository import DocumentRepository
@@ -59,6 +60,18 @@ logger = logging.getLogger(__name__)
 #: factory pattern) while ``ai_fallback_enabled`` gates whether a provider is
 #: ever consulted.
 ai_fallback_factory: Callable[[], FieldFallback | None] | None = None
+
+#: Storage-level DocumentType values that are not genuine required-document
+#: checklist categories: OTHER_SUPPORTING_DOCUMENT is the catch-all bucket the
+#: splitter (app/preprocessing/splitter.py) falls back to when a page matches
+#: no checklist keyword, and BULK_UPLOAD is the pre-split placeholder type of
+#: an application's raw upload, never a real document's type. Every other
+#: DocumentType member is a genuine checklist category the splitter
+#: recognised by name (e.g. TRIPARTITE_AGREEMENT) -- see
+#: DocumentAnalysisService._recognized_checklist_type.
+_UNCLASSIFIED_STORAGE_TYPES = frozenset(
+    {DocumentType.OTHER_SUPPORTING_DOCUMENT, DocumentType.BULK_UPLOAD}
+)
 
 
 class DocumentAnalysisService:
@@ -203,6 +216,20 @@ class DocumentAnalysisService:
 
             document_type = detect_document_type(ocr_result.raw_ocr_text)
             if document_type is AnalyzedDocumentType.UNKNOWN:
+                recognized_type = self._recognized_checklist_type(document.document_type)
+                if recognized_type is not None:
+                    logger.info(
+                        "Document id=%s recognized as %s by its storage-level "
+                        "classification but has no field-level extractor "
+                        "(application id=%s)",
+                        document.id,
+                        recognized_type.value,
+                        application_id,
+                    )
+                    elapsed_ms = int((time.perf_counter() - started) * 1000)
+                    return self._persist_recognized_unsupported_type(
+                        application_id, document, recognized_type, elapsed_ms
+                    )
                 logger.warning(
                     "Document type undetermined for document id=%s (application id=%s)",
                     document.id,
@@ -379,6 +406,31 @@ class DocumentAnalysisService:
         )
         return merged, self._validators.run(document_type, merged)
 
+    @staticmethod
+    def _recognized_checklist_type(storage_type: DocumentType | None) -> DocumentType | None:
+        """Return the document's real checklist type, or ``None`` if it has none.
+
+        ``document.document_type`` is set by the splitter
+        (``app/preprocessing/splitter.py``) from the real required-document
+        checklist vocabulary (e.g. ``TRIPARTITE_AGREEMENT``) -- a completely
+        different, non-overlapping vocabulary from the 4-category keyword
+        table :func:`detect_document_type` matches against (bank statement,
+        payslip, ID document, tax document). When keyword detection reports
+        ``UNKNOWN``, this checks whether the splitter already knows the real
+        type, so that type can be stored honestly instead of a generic
+        "undetermined" -- without pretending an extractor ran for it (none
+        exists for any checklist category yet).
+
+        Returns ``None`` for ``OTHER_SUPPORTING_DOCUMENT`` (the splitter's own
+        catch-all for a page matching no checklist keyword) and
+        ``BULK_UPLOAD`` (the pre-split placeholder type): neither is a real
+        classification, so a document with either type is genuinely
+        undetermined, same as before this method existed.
+        """
+        if storage_type is None or storage_type in _UNCLASSIFIED_STORAGE_TYPES:
+            return None
+        return storage_type
+
     def _persist_undetermined_type(
         self,
         application_id: int,
@@ -387,14 +439,17 @@ class DocumentAnalysisService:
     ) -> DocumentAnalysisItem:
         """Persist an analysis result for a document whose type couldn't be determined.
 
-        The document type is inferred from a fixed 4-category keyword table
-        (see :func:`detect_document_type`), narrower than the real
-        required-document checklist the splitter already recognises. A
-        document falling outside that table is not an analysis failure -- it
-        genuinely has no matching extractor -- so this stores a result row
-        (``NEEDS_REVIEW``, no extracted fields) instead of raising, ensuring
-        the document stays visible to human review and downstream reporting
-        rather than silently vanishing from ``document_analysis_results``.
+        Reached only when neither classifier has an answer: the OCR-keyword
+        table in :func:`detect_document_type` scored no match, and the
+        splitter's own classification (``document.document_type``) is itself
+        a placeholder (``OTHER_SUPPORTING_DOCUMENT`` or ``BULK_UPLOAD``), not
+        a real checklist category -- see :meth:`_recognized_checklist_type`
+        for the case where the splitter does know the real type. This is not
+        an analysis failure -- it genuinely has no matching extractor -- so
+        this stores a result row (``NEEDS_REVIEW``, no extracted fields)
+        instead of raising, ensuring the document stays visible to human
+        review and downstream reporting rather than silently vanishing from
+        ``document_analysis_results``.
 
         Deliberately bypasses :func:`scoring_components`: with no expected
         fields and nothing to validate, its rate calculations default to
@@ -426,6 +481,65 @@ class DocumentAnalysisService:
             document_id=document.id,
             file_name=document.original_filename,
             document_type=AnalyzedDocumentType.UNKNOWN.value,
+            outcome=AnalysisOutcome.ANALYZED,
+            verification_status=VerificationStatus.NEEDS_REVIEW.value,
+            confidence_score=None,
+            extracted_fields={},
+            validation_results=[],
+            consistency_results=[],
+            issues=[],
+            processing_time_ms=elapsed_ms,
+            message=message,
+        )
+
+    def _persist_recognized_unsupported_type(
+        self,
+        application_id: int,
+        document: Document,
+        document_type: DocumentType,
+        elapsed_ms: int,
+    ) -> DocumentAnalysisItem:
+        """Persist an analysis result for a document of a known checklist type
+        that has no field-level extractor.
+
+        Stores the splitter's real type (e.g. ``TRIPARTITE_AGREEMENT``)
+        instead of ``AnalyzedDocumentType.UNKNOWN``, so the result is
+        honestly labelled and distinguishable from a genuinely unclassifiable
+        document. Fields, validations and consistency results stay empty and
+        confidence stays unset -- same as :meth:`_persist_undetermined_type`
+        -- because no ``RegexExtractor`` exists for any checklist category
+        yet; this method only fixes the *label*, it does not fabricate
+        extraction that didn't happen.
+
+        Args:
+            application_id: Owning application id.
+            document: Document being analysed.
+            document_type: The splitter's real checklist type for this document.
+            elapsed_ms: Time spent up to the point of detection.
+
+        Returns:
+            The persisted, analysed (not failed) outcome.
+        """
+        message = (
+            f"Document recognized as {document_type.value}, but field-level "
+            "analysis is not yet supported for this document type"
+        )
+        self._analysis_results.upsert(
+            application_id=application_id,
+            document_id=document.id,
+            document_type=document_type.value,
+            extracted_fields={},
+            validation_results=[],
+            consistency_results=[],
+            confidence_score=None,
+            verification_status=VerificationStatus.NEEDS_REVIEW.value,
+            analysis_version=ANALYSIS_VERSION,
+            processing_time_ms=elapsed_ms,
+        )
+        return DocumentAnalysisItem(
+            document_id=document.id,
+            file_name=document.original_filename,
+            document_type=document_type.value,
             outcome=AnalysisOutcome.ANALYZED,
             verification_status=VerificationStatus.NEEDS_REVIEW.value,
             confidence_score=None,
