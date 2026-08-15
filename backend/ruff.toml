@@ -1,0 +1,16 @@
+target-version = "py312"
+line-length = 100
+
+[lint]
+# Matches the rule set already validated against this codebase (foundation
+# audit, Section 9): 109 findings, 72 auto-fixable, remainder triaged below.
+select = ["E", "F", "I", "UP", "B", "SIM", "C4", "DTZ", "PLR", "RUF", "BLE", "ISC", "PYI"]
+ignore = [
+    "PLR0124",  # value != value is the standard NaN-check idiom, not a bug
+]
+
+[lint.per-file-ignores]
+# Deliberate defensive isolation (a broad `except Exception` here must never
+# take down the caller) -- see CONTEXT.md and the foundation audit's Section 4.
+"app/document_analysis/services.py" = ["BLE001"]
+"app/preprocessing/splitter.py" = ["BLE001"]

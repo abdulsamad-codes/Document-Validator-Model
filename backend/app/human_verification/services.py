@@ -70,7 +70,13 @@ logger = logging.getLogger(__name__)
 
 
 class HumanVerificationService:
-    """Record the final human review and decision for an application.
+    """Assemble the final review screen and record the employee's decision.
+
+    Covers the full final-review workflow: ``get_review`` assembles the
+    aggregated report, documents, extracted fields, visual detections and
+    checklist state for an employee to review; ``submit_review`` records their
+    decision (approve, correct or reject) and moves the application to a
+    terminal status; ``get_history`` returns a previously submitted review.
 
     Args:
         db: Active database session.
