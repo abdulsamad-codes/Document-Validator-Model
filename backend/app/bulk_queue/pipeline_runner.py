@@ -28,6 +28,8 @@ import logging
 from sqlalchemy.orm import Session
 
 from app.confidence.services import ConfidenceService
+from app.database.models.enums import ApplicationStatus
+from app.database.repositories.application_repository import ApplicationRepository
 from app.document_analysis.services import DocumentAnalysisService
 from app.normalization.services import NormalizationService
 from app.rule_engine.services import RuleEngineService
@@ -76,7 +78,20 @@ class PipelineRunnerService:
         self._run_stage("rule_validation", lambda: RuleEngineService(self._db).validate(
             application_id=application_id
         ))
+        self._mark_pending_review(application_id)
         logger.info("Pipeline completed for application id=%s", application_id)
+
+    def _mark_pending_review(self, application_id: int) -> None:
+        """Move the application to PENDING_REVIEW now that a report exists.
+
+        Guarded to only fire from PROCESSING so a retried pipeline job (this
+        method can run more than once for the same application if an earlier
+        attempt raised) never regresses a status a human has since decided.
+        """
+        applications = ApplicationRepository(self._db)
+        application = applications.get_by_id(application_id)
+        if application is not None and application.status is ApplicationStatus.PROCESSING:
+            applications.update(application, status=ApplicationStatus.PENDING_REVIEW)
 
     def _run_stage(self, name: str, call) -> None:
         try:

@@ -33,8 +33,9 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.bulk_queue.pipeline_runner import PipelineRunnerService
 from app.core.config import Settings, get_settings
 from app.database.connection import SessionLocal
-from app.database.models.enums import JobStatus, JobType
+from app.database.models.enums import ApplicationStatus, JobStatus, JobType
 from app.database.models.queue_job import QueueJob
+from app.database.repositories.application_repository import ApplicationRepository
 from app.database.repositories.audit_log_repository import AuditLogRepository
 from app.database.repositories.queue_job_repository import QueueJobRepository
 from app.document_processing.schemas import ProcessingOutcome
@@ -279,6 +280,10 @@ class BulkQueueWorker:
                 action=ACTION_PIPELINE_BLOCKED,
                 details={"reason": "All document jobs finished with zero successes"},
             )
+            applications = ApplicationRepository(db)
+            application = applications.get_by_id(application_id)
+            if application is not None and application.status is ApplicationStatus.PROCESSING:
+                applications.update(application, status=ApplicationStatus.PROCESSING_FAILED)
             db.commit()
             return
         enqueued = jobs.try_enqueue_pipeline_job(

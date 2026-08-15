@@ -4,6 +4,10 @@ import { getApplication, listApplications } from '../services/applications';
 import { getReviewHistory, getReviewScreen, submitHumanReview } from '../services/humanReview';
 import { getApiErrorMessage } from '../utils/apiError';
 
+// Applications only reach PENDING_REVIEW once PipelineRunnerService.run()
+// completes successfully (see bulk_queue/pipeline_runner.py). Before that
+// backend transition existed, this default silently matched zero
+// applications regardless of how many were actually awaiting review.
 const DEFAULT_STATUS = 'PENDING_REVIEW';
 
 const FINALIZED_STATUSES = ['APPROVED', 'REJECTED', 'CORRECTED'];

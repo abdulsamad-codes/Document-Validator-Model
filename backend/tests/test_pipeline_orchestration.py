@@ -14,11 +14,13 @@ from __future__ import annotations
 from sqlalchemy import select
 
 from app.bulk_queue.pipeline_runner import PipelineRunnerService
+from app.bulk_queue.services import BulkQueueService
 from app.bulk_queue.workers import ACTION_PIPELINE_BLOCKED, BulkQueueWorker, drain_queue
 from app.database.connection import SessionLocal
 from app.database.models.audit_log import AuditLog
-from app.database.models.enums import JobStatus, JobType
+from app.database.models.enums import ApplicationStatus, JobStatus, JobType
 from app.database.models.queue_job import QueueJob
+from app.database.repositories.application_repository import ApplicationRepository
 from app.database.repositories.extracted_field_repository import ExtractedFieldRepository
 from app.database.repositories.queue_job_repository import QueueJobRepository
 from app.database.repositories.validation_repository import ValidationRepository
@@ -31,6 +33,7 @@ from tests.test_bulk_queue import (
 from tests.test_bulk_upload_api import make_bulk_pdf, upload_bulk
 from tests.test_document_analysis_api import BANK_STATEMENT_TEXT
 from tests.test_technical_validation_api import create_application
+from tests.test_upload_api import upload as upload_single_document
 
 API = "/api/v1"
 
@@ -58,6 +61,34 @@ def audit_actions_for(application_id: int) -> list[str]:
                 select(AuditLog.action).where(AuditLog.application_id == application_id)
             ).all()
         )
+    finally:
+        db.close()
+
+
+def application_status_for(application_id: int) -> str | None:
+    """Return the current status of an application."""
+    db = SessionLocal()
+    try:
+        application = ApplicationRepository(db).get_by_id(application_id)
+        return application.status.value if application is not None else None
+    finally:
+        db.close()
+
+
+def mark_processing(application_id: int) -> None:
+    """Set an application's status to PROCESSING directly.
+
+    Mirrors the real precondition every production enqueue call site now
+    establishes (see the guarded writes in ``upload/services.py`` and
+    ``bulk_queue/services.py``) without going through the full HTTP upload
+    flow, matching this module's existing pattern of building queue state
+    directly for worker-level tests.
+    """
+    db = SessionLocal()
+    try:
+        applications = ApplicationRepository(db)
+        application = applications.get_by_id(application_id)
+        applications.update(application, status=ApplicationStatus.PROCESSING)
     finally:
         db.close()
 
@@ -102,6 +133,54 @@ def test_ten_bulk_uploads_each_produce_a_working_report(authenticated_client):
         )
         response = authenticated_client.get(f"{API}/applications/{application_id}/validation-report")
         assert response.status_code == 200, response.text
+        assert application_status_for(application_id) == "PENDING_REVIEW"
+
+
+def test_bulk_upload_marks_application_processing_immediately(authenticated_client):
+    application_id = create_application(authenticated_client)
+    response = upload_bulk(
+        authenticated_client,
+        application_id,
+        make_bulk_pdf([BANK_STATEMENT_TEXT]),
+    )
+    assert response.status_code == 201, response.text
+
+    # No draining yet -- the enqueue itself, not the worker, sets PROCESSING.
+    assert application_status_for(application_id) == "PROCESSING"
+
+
+def test_start_processing_marks_single_upload_application_processing(authenticated_client):
+    application_id = create_application(authenticated_client)
+    upload_response = upload_single_document(authenticated_client, application_id)
+    assert upload_response.status_code == 201, upload_response.text
+    assert application_status_for(application_id) == "SUBMITTED"
+
+    start = authenticated_client.post(f"{API}/applications/{application_id}/processing/start")
+    assert start.status_code == 200, start.text
+
+    assert application_status_for(application_id) == "PROCESSING"
+
+
+def test_enqueue_does_not_regress_a_decided_application_status():
+    """Adding a document after a decision must not resurrect PROCESSING.
+
+    A document can be uploaded to an application after it has already been
+    approved/rejected/corrected (upload has no status check). Re-enqueueing
+    must not silently move the status backward from a terminal decision.
+    """
+    application_id, _ = create_application_with_documents(1)
+    db = SessionLocal()
+    try:
+        applications = ApplicationRepository(db)
+        application = applications.get_by_id(application_id)
+        applications.update(application, status=ApplicationStatus.APPROVED)
+
+        BulkQueueService(db).enqueue_application(application_id=application_id)
+
+        db.refresh(application)
+        assert application.status is ApplicationStatus.APPROVED
+    finally:
+        db.close()
 
 
 def test_rerunning_the_pipeline_does_not_duplicate_stored_rows(authenticated_client):
@@ -145,12 +224,17 @@ def test_pipeline_never_starts_when_zero_documents_processed(monkeypatch):
     monkeypatch.setattr(settings, "bulk_queue_retry_backoff_seconds", 0)
     application_id, _ = create_application_with_documents(2)
     enqueue(application_id)
+    mark_processing(application_id)
 
     BulkQueueWorker(settings=settings, processor_factory=FailingProcessor).run_until_empty()
 
     job = pipeline_job_for(application_id)
     assert job is None, "pipeline job must not be enqueued when nothing succeeded"
     assert ACTION_PIPELINE_BLOCKED in audit_actions_for(application_id)
+    assert application_status_for(application_id) == "PROCESSING_FAILED", (
+        "an application where every document fails must end up visibly "
+        "distinguishable, not silently stuck at PROCESSING"
+    )
 
 
 # --- Partial failure: pipeline must still run on what succeeded --------------

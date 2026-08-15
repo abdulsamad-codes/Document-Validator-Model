@@ -11,6 +11,7 @@
 export const APPLICATION_STATUSES = [
   { value: 'SUBMITTED', label: 'Pending', variant: 'info', color: 'blue' },
   { value: 'PROCESSING', label: 'Processing', variant: 'info', color: 'sky' },
+  { value: 'PROCESSING_FAILED', label: 'Processing Failed', variant: 'danger', color: 'rose' },
   { value: 'PENDING_REVIEW', label: 'Under Review', variant: 'warning', color: 'orange' },
   { value: 'APPROVED', label: 'Approved', variant: 'success', color: 'green' },
   { value: 'REJECTED', label: 'Rejected', variant: 'danger', color: 'red' },

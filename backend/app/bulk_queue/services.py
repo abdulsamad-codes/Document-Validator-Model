@@ -16,7 +16,7 @@ from app.bulk_queue.schemas import (
     QueueProgressResponse,
 )
 from app.core.config import get_settings
-from app.database.models.enums import JobStatus
+from app.database.models.enums import ApplicationStatus, JobStatus
 from app.database.repositories.application_repository import ApplicationRepository
 from app.database.repositories.queue_job_repository import QueueJobRepository
 
@@ -34,13 +34,16 @@ class BulkQueueService:
 
     def enqueue_application(self, *, application_id: int) -> EnqueueResponse:
         """Enqueue every eligible UPLOADED document for one application."""
-        if self._applications.get_by_id(application_id) is None:
+        application = self._applications.get_by_id(application_id)
+        if application is None:
             raise ApplicationNotFound()
         self._validate_uploaded_documents(application_id)
         jobs, created, existing = self._jobs.enqueue_uploaded_documents(
             application_id=application_id,
             max_attempts=self._settings.bulk_queue_max_attempts,
         )
+        if jobs and application.status is ApplicationStatus.SUBMITTED:
+            self._applications.update(application, status=ApplicationStatus.PROCESSING)
         logger.info(
             "Bulk queue enqueue application_id=%s created=%s existing=%s",
             application_id,
@@ -58,13 +61,16 @@ class BulkQueueService:
 
     def start_processing(self, *, application_id: int) -> ProcessingActionResponse:
         """Queue all eligible uploaded documents and report the action safely."""
-        if self._applications.get_by_id(application_id) is None:
+        application = self._applications.get_by_id(application_id)
+        if application is None:
             raise ApplicationNotFound()
         self._validate_uploaded_documents(application_id)
         jobs, created, _ = self._jobs.enqueue_uploaded_documents(
             application_id=application_id,
             max_attempts=self._settings.bulk_queue_max_attempts,
         )
+        if jobs and application.status is ApplicationStatus.SUBMITTED:
+            self._applications.update(application, status=ApplicationStatus.PROCESSING)
         active = sum(
             1
             for job in jobs

@@ -6,7 +6,7 @@ import styles from './ApplicationStatusBadge.module.css';
  *
  * Resolves the raw backend status value through the shared status catalogue
  * and renders it with the spec's colour mapping (blue / sky / orange / green /
- * red / purple, grey fallback for unknown values).
+ * red / purple / rose, grey fallback for unknown values).
  *
  * @param {object} props
  * @param {string} props.status Raw application status value (backend enum).

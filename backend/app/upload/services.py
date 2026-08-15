@@ -256,6 +256,8 @@ class UploadService:
                 application_id=application.id,
                 max_attempts=get_settings().bulk_queue_max_attempts,
             )
+            if application.status is ApplicationStatus.SUBMITTED:
+                self._applications.update(application, status=ApplicationStatus.PROCESSING)
 
         except Exception:
             self._db.rollback()

@@ -39,6 +39,11 @@
   color: #7c3aed;
 }
 
+.rose {
+  background: rgba(225, 29, 72, 0.12);
+  color: #be123c;
+}
+
 .gray {
   background: var(--color-bg);
   color: var(--color-text-muted);
@@ -55,4 +60,8 @@
 
 :root[data-theme='dark'] .purple {
   color: #a78bfa;
+}
+
+:root[data-theme='dark'] .rose {
+  color: #fb7185;
 }
