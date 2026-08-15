@@ -252,7 +252,17 @@ def test_analyze_without_ocr_result_fails_document(authenticated_client, storage
     assert stored_analysis_count() == 0
 
 
-def test_analyze_unknown_document_type_fails(authenticated_client, storage_root):
+def test_analyze_unknown_document_type_persists_needs_review(authenticated_client, storage_root):
+    """A document outside the 4-category keyword table must stay visible.
+
+    Previously this raised ``UnsupportedDocumentType``, which was caught and
+    turned into an in-memory-only failed item -- no ``DocumentAnalysisResult``
+    row was ever persisted, so the document silently vanished from
+    ``document_analysis_results`` and everything downstream (confidence
+    scoring, reports) had no record it existed. It must now be analysed (not
+    failed) with a NEEDS_REVIEW status and a real stored row, so a human
+    reviewer sees it rather than the pipeline quietly dropping it.
+    """
     application_id = create_application(authenticated_client)
     add_digital_pdf(
         storage_root,
@@ -265,12 +275,54 @@ def test_analyze_unknown_document_type_fails(authenticated_client, storage_root)
 
     result = analyze_documents(authenticated_client, application_id)
 
-    assert result["total_analyzed"] == 0
-    assert result["total_failed"] == 1
+    assert result["total_analyzed"] == 1
+    assert result["total_failed"] == 0
     item = result["items"][0]
-    assert item["outcome"] == "FAILED"
+    assert item["outcome"] == "ANALYZED"
+    assert item["document_type"] == "UNKNOWN"
+    assert item["verification_status"] == "NEEDS_REVIEW"
+    assert item["extracted_fields"] == {}
+    assert item["confidence_score"] is None
     assert "could not be determined" in item["message"]
-    assert stored_analysis_count() == 0
+    assert stored_analysis_count() == 1
+
+    # The row must be independently readable, not just present in the
+    # immediate response -- this is what "silently excluded" actually meant.
+    stored = get_analysis_results(authenticated_client, application_id)
+    assert stored["total"] == 1
+    stored_item = stored["items"][0]
+    assert stored_item["document_type"] == "UNKNOWN"
+    assert stored_item["verification_status"] == "NEEDS_REVIEW"
+
+
+def test_analyze_partial_unknown_type_does_not_block_known_documents(
+    authenticated_client, storage_root
+):
+    """One undetermined document must not affect a known document's analysis."""
+    application_id = create_application(authenticated_client)
+    add_digital_pdf(
+        storage_root,
+        application_id,
+        BANK_STATEMENT_TEXT,
+        filename="statement.pdf",
+    )
+    add_digital_pdf(
+        storage_root,
+        application_id,
+        PLAIN_TEXT,
+        document_type=DocumentType.OTHER_SUPPORTING_DOCUMENT,
+        filename="letter.pdf",
+    )
+    run_processing(authenticated_client, application_id)
+
+    result = analyze_documents(authenticated_client, application_id)
+
+    assert result["total_analyzed"] == 2
+    assert result["total_failed"] == 0
+    statuses = {item["document_type"]: item["verification_status"] for item in result["items"]}
+    assert statuses["BANK_STATEMENT"] == "VERIFIED"
+    assert statuses["UNKNOWN"] == "NEEDS_REVIEW"
+    assert stored_analysis_count() == 2
 
 
 def test_analyze_application_not_found(authenticated_client):

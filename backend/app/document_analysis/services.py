@@ -16,23 +16,23 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.database.models.document import Document
 from app.database.models.document_analysis_result import DocumentAnalysisResult
 from app.database.repositories.application_repository import ApplicationRepository
 from app.database.repositories.document_analysis_repository import DocumentAnalysisRepository
 from app.database.repositories.document_repository import DocumentRepository
 from app.database.repositories.ocr_repository import OCRRepository
-from app.core.config import get_settings
 from app.document_analysis.constants import (
     ANALYSIS_VERSION,
     EXPECTED_FIELDS,
     AnalyzedDocumentType,
+    VerificationStatus,
 )
 from app.document_analysis.exceptions import (
     ApplicationNotFound,
     DocumentAnalysisError,
     OCRResultNotFound,
-    UnsupportedDocumentType,
 )
 from app.document_analysis.extractors import detect_document_type, extract_fields
 from app.document_analysis.fallbacks import (
@@ -43,10 +43,10 @@ from app.document_analysis.fallbacks import (
 )
 from app.document_analysis.rules import RulesEngine, scoring_components
 from app.document_analysis.schemas import (
+    AnalysisOutcome,
     AnalysisResultItem,
     AnalysisResultsResponse,
     AnalyzeDocumentsResponse,
-    AnalysisOutcome,
     DocumentAnalysisItem,
 )
 from app.document_analysis.validators import ValidatorEngine
@@ -208,7 +208,8 @@ class DocumentAnalysisService:
                     document.id,
                     application_id,
                 )
-                raise UnsupportedDocumentType()
+                elapsed_ms = int((time.perf_counter() - started) * 1000)
+                return self._persist_undetermined_type(application_id, document, elapsed_ms)
 
             fields = extract_fields(ocr_result.raw_ocr_text, document_type)
             validations = self._validators.run(document_type, fields)
@@ -377,6 +378,64 @@ class DocumentAnalysisService:
             resolved_names,
         )
         return merged, self._validators.run(document_type, merged)
+
+    def _persist_undetermined_type(
+        self,
+        application_id: int,
+        document: Document,
+        elapsed_ms: int,
+    ) -> DocumentAnalysisItem:
+        """Persist an analysis result for a document whose type couldn't be determined.
+
+        The document type is inferred from a fixed 4-category keyword table
+        (see :func:`detect_document_type`), narrower than the real
+        required-document checklist the splitter already recognises. A
+        document falling outside that table is not an analysis failure -- it
+        genuinely has no matching extractor -- so this stores a result row
+        (``NEEDS_REVIEW``, no extracted fields) instead of raising, ensuring
+        the document stays visible to human review and downstream reporting
+        rather than silently vanishing from ``document_analysis_results``.
+
+        Deliberately bypasses :func:`scoring_components`: with no expected
+        fields and nothing to validate, its rate calculations default to
+        vacuously-true 1.0s, which would misreport this document as fully
+        verified instead of undetermined.
+
+        Args:
+            application_id: Owning application id.
+            document: Document whose type could not be determined.
+            elapsed_ms: Time spent up to the point of detection.
+
+        Returns:
+            The persisted, analysed (not failed) outcome.
+        """
+        message = "Document type could not be determined from the extracted text"
+        self._analysis_results.upsert(
+            application_id=application_id,
+            document_id=document.id,
+            document_type=AnalyzedDocumentType.UNKNOWN.value,
+            extracted_fields={},
+            validation_results=[],
+            consistency_results=[],
+            confidence_score=None,
+            verification_status=VerificationStatus.NEEDS_REVIEW.value,
+            analysis_version=ANALYSIS_VERSION,
+            processing_time_ms=elapsed_ms,
+        )
+        return DocumentAnalysisItem(
+            document_id=document.id,
+            file_name=document.original_filename,
+            document_type=AnalyzedDocumentType.UNKNOWN.value,
+            outcome=AnalysisOutcome.ANALYZED,
+            verification_status=VerificationStatus.NEEDS_REVIEW.value,
+            confidence_score=None,
+            extracted_fields={},
+            validation_results=[],
+            consistency_results=[],
+            issues=[],
+            processing_time_ms=elapsed_ms,
+            message=message,
+        )
 
     def _fail_item(self, document: Document, message: str) -> DocumentAnalysisItem:
         """Build a failed outcome for a document."""
