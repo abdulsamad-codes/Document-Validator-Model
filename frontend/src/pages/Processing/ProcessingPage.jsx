@@ -31,7 +31,7 @@ function ProcessingPage() {
       acc.failed += Number(progress.failed) || 0;
       acc.inFlight +=
         (Number(progress.queued) || 0) + (Number(progress.processing) || 0);
-      if (Number(progress.queued) > 0 || Number(progress.processing) > 0) {
+      if (Number(progress.processing) > 0) {
         acc.busyApplications += 1;
       }
       return acc;
