@@ -87,19 +87,20 @@ def run(rule_id: str, ctx: RuleContext) -> RuleResult:
 # --- Registry contract -------------------------------------------------------
 
 
-def test_registry_has_49_rules_in_8_categories():
+def test_registry_has_47_rules_in_8_categories():
     from collections import Counter
 
     rules = REGISTRY.rules()
-    assert len(rules) == 49
+    assert len(rules) == 47
     categories = Counter(rule.category for rule in rules)
     assert categories == {
         "document_completeness": 8,
-        "field_presence": 6,
+        "field_presence": 4,
         "format": 6,
         # CrossBranchCodeRule and CrossPeriodRule are implemented but
         # deliberately not registered -- see the inline rationale in
-        # rule_engine/rules/__init__.py.
+        # rule_engine/rules/__init__.py. FieldStatementPeriodPresenceRule and
+        # FieldBalancesPresenceRule were removed outright -- see the same file.
         "cross_document": 3,
         "date": 7,
         "visual": 11,
@@ -182,14 +183,6 @@ def test_field_presence_ignores_other_document_types():
         ),
     )
     assert result.status is ValidationStatus.FAIL
-
-
-def test_balances_presence_passes_with_either_balance():
-    result = run(
-        "FLD_BALANCES_PRESENT",
-        context(fields=[field("closing_balance", "3,200.75")]),
-    )
-    assert result.status is ValidationStatus.PASS
 
 
 # --- Format ------------------------------------------------------------------

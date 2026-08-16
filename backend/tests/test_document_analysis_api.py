@@ -87,6 +87,33 @@ IBAN: DE89370400440532013000
 Effective Date: 2026-01-15
 """
 
+#: Synthetic (fabricated, non-real) fixtures mirroring the checklist types.
+#: Never real extracted values.
+ACCOUNT_MAINTENANCE_CERTIFICATE_TEXT = """FUTURE BANK LIMITED
+ACCOUNT MAINTENANCE CERTIFICATE
+
+This is to certify that the following account is maintained with us:
+
+Account Title: KHYBER PROVINCE UTILITIES BOARD
+Account Number: 01234567890123
+IBAN: PK36FUTB0000001123456702
+Bank Name: Future Bank Limited
+Branch Name: Main Branch, Peshawar
+Date of Issue: 15/08/2026
+"""
+
+TRIPARTITE_AGREEMENT_TEXT = """TRIPARTITE AGREEMENT
+This Tripartite Agreement is made and entered into by and between:
+1-Link (Private) Limited, having its registered office at 4th Floor, State Life Building, Karachi (hereinafter referred to as '1-Link')
+Khyber Pakhtunkhwa Information Technology Board, having its registered office at Civil Secretariat, Peshawar (hereinafter referred to as 'KPITB')
+Transport and Mass Transit Department, Government of Khyber Pakhtunkhwa, having its office at Peshawar (hereinafter referred to as the 'Sub-biller')
+
+Bank Details:
+Account Title: KHYBER PROVINCE UTILITIES BOARD
+Account Number: 01234567890123
+Branch: Main Branch, Peshawar
+"""
+
 #: Synthetic (fabricated, non-real) fixture mirroring the real prose-embedded
 #: Authority Letter template confirmed on two independent real departments in
 #: Confidential Data/. Never real extracted values. Deliberately mentions
@@ -122,10 +149,17 @@ def add_digital_pdf(
     application_id: int,
     text: str,
     *,
-    document_type: DocumentType = DocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    document_type: DocumentType = DocumentType.OTHER_SUPPORTING_DOCUMENT,
     filename: str = "statement.pdf",
 ) -> int:
-    """Upload a digital PDF carrying ``text`` and return its document id."""
+    """Upload a digital PDF carrying ``text`` and return its document id.
+
+    Defaults to ``OTHER_SUPPORTING_DOCUMENT`` -- the storage type on which
+    ``detect_document_type``'s OCR keyword table is the correct classifier
+    (bank statement, payslip, etc.). A checklist storage type (e.g.
+    ``ACCOUNT_MAINTENANCE_CERTIFICATE``) would instead be routed to that
+    type's own real extractor, bypassing keyword detection entirely.
+    """
     return add_document(
         storage_root,
         application_id,
@@ -170,7 +204,12 @@ def run_processing(client, application_id: int) -> dict:
 
 def test_analyze_bank_statement_end_to_end(authenticated_client, storage_root, monkeypatch):
     application_id = create_application(authenticated_client)
-    add_digital_pdf(storage_root, application_id, BANK_STATEMENT_TEXT)
+    add_digital_pdf(
+        storage_root,
+        application_id,
+        BANK_STATEMENT_TEXT,
+        document_type=DocumentType.OTHER_SUPPORTING_DOCUMENT,
+    )
     run_processing(authenticated_client, application_id)
     engine = patch_ocr_engine(monkeypatch)
 
@@ -334,7 +373,7 @@ def test_analyze_recognized_checklist_type_stores_real_type_not_unknown(
     ``detect_document_type`` only recognises 4 categories unrelated to the
     real required-document checklist (Tripartite Agreement, Authority
     Letter, etc.), so it reports UNKNOWN for this text either way. But the
-    splitter already classified this document as TRIPARTITE_AGREEMENT
+    splitter already classified this document as ONE_LINK_LETTER
     (``document.document_type``), and that's real information -- storing it
     instead of a generic UNKNOWN makes the result distinguishable from a
     document neither classifier could identify at all. No extractor exists
@@ -346,8 +385,8 @@ def test_analyze_recognized_checklist_type_stores_real_type_not_unknown(
         storage_root,
         application_id,
         PLAIN_TEXT,
-        document_type=DocumentType.TRIPARTITE_AGREEMENT,
-        filename="agreement.pdf",
+        document_type=DocumentType.ONE_LINK_LETTER,
+        filename="one-link.pdf",
     )
     run_processing(authenticated_client, application_id)
 
@@ -357,18 +396,18 @@ def test_analyze_recognized_checklist_type_stores_real_type_not_unknown(
     assert result["total_failed"] == 0
     item = result["items"][0]
     assert item["outcome"] == "ANALYZED"
-    assert item["document_type"] == "TRIPARTITE_AGREEMENT"
+    assert item["document_type"] == "ONE_LINK_LETTER"
     assert item["verification_status"] == "NEEDS_REVIEW"
     assert item["extracted_fields"] == {}
     assert item["confidence_score"] is None
-    assert "recognized as TRIPARTITE_AGREEMENT" in item["message"]
+    assert "recognized as ONE_LINK_LETTER" in item["message"]
     assert "not yet supported" in item["message"]
     assert stored_analysis_count() == 1
 
     stored = get_analysis_results(authenticated_client, application_id)
     assert stored["total"] == 1
     stored_item = stored["items"][0]
-    assert stored_item["document_type"] == "TRIPARTITE_AGREEMENT"
+    assert stored_item["document_type"] == "ONE_LINK_LETTER"
     assert stored_item["verification_status"] == "NEEDS_REVIEW"
 
 
@@ -413,7 +452,7 @@ def test_analyze_bilateral_agreement_runs_real_extraction(
     authenticated_client, storage_root
 ):
     """BILATERAL_AGREEMENT now has a real extractor (Phase 1), unlike the
-    other 8 checklist types still covered by the "recognized but unsupported"
+    other 6 checklist types still covered by the "recognized but unsupported"
     stub above. A document typed BILATERAL_AGREEMENT by the splitter must be
     routed to real field extraction, not the stub message.
     """
@@ -448,6 +487,83 @@ def test_analyze_bilateral_agreement_runs_real_extraction(
     stored_item = stored["items"][0]
     assert stored_item["document_type"] == "BILATERAL_AGREEMENT"
     assert stored_item["extracted_fields"]["account_number"] == "9876543210"
+
+
+def test_analyze_account_maintenance_certificate_runs_real_extraction(
+    authenticated_client, storage_root
+):
+    """ACCOUNT_MAINTENANCE_CERTIFICATE has a real extractor. Proves the
+    routing-precedence fix: the fixture's own "IBAN"/"Account Number" labels
+    score positively against detect_document_type's bank-statement keyword
+    table, so without the splitter-first routing this would be mislabelled
+    BANK_STATEMENT instead of reaching the AMC extractor.
+    """
+    application_id = create_application(authenticated_client)
+    add_digital_pdf(
+        storage_root,
+        application_id,
+        ACCOUNT_MAINTENANCE_CERTIFICATE_TEXT,
+        document_type=DocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+        filename="amc.pdf",
+    )
+    run_processing(authenticated_client, application_id)
+
+    result = analyze_documents(authenticated_client, application_id)
+
+    assert result["total_analyzed"] == 1
+    assert result["total_failed"] == 0
+    item = result["items"][0]
+    assert item["outcome"] == "ANALYZED"
+    assert item["document_type"] == "ACCOUNT_MAINTENANCE_CERTIFICATE"
+    fields = item["extracted_fields"]
+    assert fields["account_holder"] == "KHYBER PROVINCE UTILITIES BOARD"
+    assert fields["account_number"] == "01234567890123"
+    assert fields["iban"] == "PK36FUTB0000001123456702"
+    assert fields["bank_name"] == "Future Bank Limited"
+    assert fields["issue_date"] == "2026-08-15"
+    assert item["confidence_score"] is not None
+    assert item["confidence_score"] > 0.0
+    assert item.get("message") is None
+
+    stored = get_analysis_results(authenticated_client, application_id)
+    stored_item = stored["items"][0]
+    assert stored_item["document_type"] == "ACCOUNT_MAINTENANCE_CERTIFICATE"
+    assert stored_item["extracted_fields"]["account_number"] == "01234567890123"
+
+
+def test_analyze_tripartite_agreement_runs_real_extraction(
+    authenticated_client, storage_root
+):
+    """TRIPARTITE_AGREEMENT has a real extractor (third checklist type)."""
+    application_id = create_application(authenticated_client)
+    add_digital_pdf(
+        storage_root,
+        application_id,
+        TRIPARTITE_AGREEMENT_TEXT,
+        document_type=DocumentType.TRIPARTITE_AGREEMENT,
+        filename="tripartite.pdf",
+    )
+    run_processing(authenticated_client, application_id)
+
+    result = analyze_documents(authenticated_client, application_id)
+
+    assert result["total_analyzed"] == 1
+    assert result["total_failed"] == 0
+    item = result["items"][0]
+    assert item["outcome"] == "ANALYZED"
+    assert item["document_type"] == "TRIPARTITE_AGREEMENT"
+    fields = item["extracted_fields"]
+    assert fields["party_1link"] == "1-Link (Private) Limited"
+    assert fields["party_kpitb"] == "Khyber Pakhtunkhwa Information Technology Board"
+    assert fields["account_number"] == "01234567890123"
+    assert item["confidence_score"] is not None
+    assert item["confidence_score"] > 0.0
+    assert item.get("message") is None
+
+    stored = get_analysis_results(authenticated_client, application_id)
+    stored_item = stored["items"][0]
+    assert stored_item["document_type"] == "TRIPARTITE_AGREEMENT"
+    assert stored_item["extracted_fields"]["account_number"] == "01234567890123"
 
 
 def test_analyze_authority_letter_runs_real_extraction(
@@ -519,6 +635,7 @@ def test_analyze_partial_unknown_type_does_not_block_known_documents(
         storage_root,
         application_id,
         BANK_STATEMENT_TEXT,
+        document_type=DocumentType.OTHER_SUPPORTING_DOCUMENT,
         filename="statement.pdf",
     )
     add_digital_pdf(
@@ -594,7 +711,12 @@ def test_analysis_report_reports_missing_critical_field(authenticated_client, st
         "Opening Balance: 1,250.50", "Opening Balance: -"
     )
     application_id = create_application(authenticated_client)
-    add_digital_pdf(storage_root, application_id, incomplete)
+    add_digital_pdf(
+        storage_root,
+        application_id,
+        incomplete,
+        document_type=DocumentType.OTHER_SUPPORTING_DOCUMENT,
+    )
     run_processing(authenticated_client, application_id)
 
     result = analyze_documents(authenticated_client, application_id)

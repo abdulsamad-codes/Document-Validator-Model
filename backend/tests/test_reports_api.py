@@ -11,7 +11,7 @@ from app.database.models.enums import ApplicationStatus, DocumentType
 from app.database.repositories.application_repository import ApplicationRepository
 from app.reports.constants import REPORT_GROUP_ORDER, VISUAL_TYPE_BY_RULE
 from app.rule_engine.constants import REQUIRED_DOCUMENT_TYPES
-from tests.test_confidence_api import add_digital_statement, evaluate
+from tests.test_confidence_api import evaluate
 from tests.test_document_analysis_api import (
     AUTHORITY_LETTER_TEXT,
     BANK_STATEMENT_TEXT,
@@ -21,7 +21,9 @@ from tests.test_document_analysis_api import (
 )
 from tests.test_normalization_api import normalize
 from tests.test_rule_engine_api import (
+    ACCOUNT_MAINTENANCE_CERTIFICATE_CROSS_DOC_TEXT,
     BILATERAL_STATEMENT_TEXT,
+    TRIPARTITE_AGREEMENT_CROSS_DOC_TEXT,
     add_visual_detection,
     document_ids_by_type,
     validate,
@@ -36,10 +38,12 @@ SUMMARY_URL = "/validation-summary"
 
 REPORT_VERSION = "1.0.0"
 
-#: Per-group rule totals expected from the 49-rule ruleset (50 implemented,
-#: CrossPeriodRule unregistered -- see rule_engine/rules/__init__.py).
+#: Per-group rule totals expected from the 47-rule ruleset (49 implemented,
+#: CrossPeriodRule unregistered -- see rule_engine/rules/__init__.py -- plus
+#: FieldStatementPeriodPresenceRule and FieldBalancesPresenceRule removed
+#: outright, same file).
 EXPECTED_GROUP_TOTALS = {
-    "Document Validation": 14,
+    "Document Validation": 12,
     "Format Validation": 6,
     # CrossPeriodRule is unregistered (see rule_engine/rules/__init__.py) --
     # 3 of the 4 implemented cross-document rules are active.
@@ -55,16 +59,16 @@ EXPECTED_GROUP_TOTALS = {
 def build_full_application(client, storage_root, *, with_detections: bool) -> int:
     """Build an application carrying all eight required documents, analysed.
 
-    BILATERAL_AGREEMENT and AUTHORITY_LETTER each get their own real-shaped
-    text (Phase 1, docs/IMPLEMENTATION_ROADMAP.md gave both real extractors).
-    BILATERAL_AGREEMENT's text carries the same account_holder/account_number/
-    iban values as BANK_STATEMENT_TEXT, so the cross-document consistency
-    rules still agree; AUTHORITY_LETTER's CRITICAL_FIELDS are all non-bank
-    fields (focal_person_name/designation/organization_name -- see
-    AuthorityLetterExtractor's docstring), so no cross-document account value
-    needs to line up. Every other required type still has no real extractor
-    and keeps using BANK_STATEMENT_TEXT via the generic keyword-based
-    classifier, unaffected by either change.
+    BILATERAL_AGREEMENT, AUTHORITY_LETTER, ACCOUNT_MAINTENANCE_CERTIFICATE and
+    TRIPARTITE_AGREEMENT each get their own real-shaped text, since all four
+    now have real extractors (Phase 1 + Track B). The AMC, Bilateral and
+    Tripartite texts carry the same account_holder/account_number values, so
+    the cross-document consistency rules still agree. AUTHORITY_LETTER's
+    CRITICAL_FIELDS are all non-bank fields (focal_person_name/designation/
+    organization_name -- see AuthorityLetterExtractor's docstring), so no
+    cross-document account value needs to line up. Every other required type
+    still has no real extractor and keeps using BANK_STATEMENT_TEXT via the
+    generic keyword-based classifier, unaffected by either change.
     """
     application_id = create_application(client)
     for document_type in REQUIRED_DOCUMENT_TYPES:
@@ -72,6 +76,10 @@ def build_full_application(client, storage_root, *, with_detections: bool) -> in
             text = BILATERAL_STATEMENT_TEXT
         elif document_type is DocumentType.AUTHORITY_LETTER:
             text = AUTHORITY_LETTER_TEXT
+        elif document_type is DocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE:
+            text = ACCOUNT_MAINTENANCE_CERTIFICATE_CROSS_DOC_TEXT
+        elif document_type is DocumentType.TRIPARTITE_AGREEMENT:
+            text = TRIPARTITE_AGREEMENT_CROSS_DOC_TEXT
         else:
             text = BANK_STATEMENT_TEXT
         add_digital_pdf(
@@ -100,8 +108,16 @@ def build_full_application(client, storage_root, *, with_detections: bool) -> in
 
 
 def build_single_statement_application(client, storage_root) -> int:
-    """Build a minimal analysed application with rule results."""
-    application_id = add_digital_statement(client, storage_root)
+    """Build a minimal analysed application with a real AMC document."""
+    application_id = create_application(client)
+    add_digital_pdf(
+        storage_root,
+        application_id,
+        ACCOUNT_MAINTENANCE_CERTIFICATE_CROSS_DOC_TEXT,
+        document_type=DocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    run_processing(client, application_id)
+    analyze_documents(client, application_id)
     evaluate(client, application_id)
     normalize(client, application_id)
     validate(client, application_id)
@@ -131,10 +147,10 @@ def test_report_approved_application(authenticated_client, storage_root):
     assert len(report["document_summary"]) == 8
 
     summary = report["rule_summary"]
-    assert summary["total"] == 49
+    assert summary["total"] == 47
     assert summary["failed"] == 0
     assert summary["pending_manual_review"] == 0
-    assert summary["passed"] + summary["warnings"] == 49
+    assert summary["passed"] + summary["warnings"] == 47
 
     assert [
         group["category"] for group in summary["by_category"]
@@ -157,7 +173,7 @@ def test_report_approved_application(authenticated_client, storage_root):
     # iban, which real Authority Letters never carry (see AuthorityLetterExtractor's
     # docstring) -- its template coverage is honestly 0.5, pulling the fleet-wide
     # mean confidence just under 1.0.
-    assert extraction["overall_confidence"] == 0.9926
+    assert extraction["overall_confidence"] == 0.9865
 
     assert [item["code"] for item in report["recommendations"]] == [
         "NO_ACTION_REQUIRED"
@@ -171,7 +187,7 @@ def test_report_failed_application(authenticated_client, storage_root):
 
     assert report["overall_status"] == "FAILED"
     summary = report["rule_summary"]
-    assert summary["total"] == 49
+    assert summary["total"] == 47
     assert summary["failed"] > 0
     # Only the present AMC document's visual rules await detection; the rest
     # fail because their documents are missing.
@@ -236,13 +252,13 @@ def test_report_summary_condensed(authenticated_client, storage_root):
     assert summary["overall_status"] == "APPROVED"
     assert summary["application_status"] == "SUBMITTED"
     assert summary["document_count"] == 8
-    assert summary["rule_total"] == 49
-    assert summary["rule_passed"] + summary["rule_warnings"] == 49
+    assert summary["rule_total"] == 47
+    assert summary["rule_passed"] + summary["rule_warnings"] == 47
     assert summary["rule_failed"] == 0
     assert summary["rule_pending_review"] == 0
     assert summary["field_count"] > 0
     # See test_report_approved_application's overall_confidence comment.
-    assert summary["overall_confidence"] == 0.9926
+    assert summary["overall_confidence"] == 0.9865
     assert summary["recommendation_count"] == 1
 
 
