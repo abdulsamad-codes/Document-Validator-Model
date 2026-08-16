@@ -511,6 +511,93 @@ _DETECTION_KEYWORDS: dict[AnalyzedDocumentType, list[tuple[str, int]]] = {
     ],
 }
 
+class AccountMaintenanceCertificateExtractor(RegexExtractor):
+    """Extracts structured fields from an Account Maintenance Certificate.
+
+    A bank certificate attesting an account's details: account title, account
+    number, IBAN, issuing bank and branch. Field names deliberately mirror the
+    cross-document consistency rules (``account_holder``, ``account_number``,
+    ``iban``) so the normalization stage can compare them against the Bilateral
+    and Tripartite agreements.
+    """
+
+    document_type = AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE
+
+    _patterns = {
+        "account_holder": re.compile(
+            r"(?:Account Title|Title of Account|Account Holder|Account Name)\s*[:|-]?\s*(.+)",
+            re.IGNORECASE | re.MULTILINE,
+        ),
+        "account_number": re.compile(
+            r"(?:Account Number|A/?C No\.?|Account No\.?)\s*[:|-]?\s*([A-Za-z0-9\-/ ]+)",
+            re.IGNORECASE | re.MULTILINE,
+        ),
+        "iban": re.compile(
+            r"\bIBAN\b\s*[:|-]?\s*([A-Z]{2}\d{2}[A-Z0-9]{10,30})",
+            re.IGNORECASE,
+        ),
+        "bank_name": re.compile(
+            r"\bBank(?: Name)?\s*:\s*(.+)",
+            re.IGNORECASE | re.MULTILINE,
+        ),
+        "branch_name": re.compile(
+            r"(?:Branch Name|Branch)\s*:\s*(.+)",
+            re.IGNORECASE | re.MULTILINE,
+        ),
+        "issue_date": re.compile(
+            r"(?:Date of Issue|Issue Date|Issued On|Issuance Date)\s*[:|-]?\s*([A-Za-z0-9\-/.]+)",
+            re.IGNORECASE | re.MULTILINE,
+        ),
+    }
+
+    _post = {
+        "issue_date": _as_iso_date,
+    }
+
+
+class TripartiteAgreementExtractor(RegexExtractor):
+    """Extracts structured fields from a Tripartite Agreement.
+
+    Captures the three named parties (1-Link, KPITB, the sub-biller) and the
+    bank details section (account title, account number, branch) that must
+    match the Account Maintenance Certificate. Field names follow the
+    cross-document consistency rules (``account_holder``, ``account_number``,
+    ``branch_code``).
+    """
+
+    document_type = AnalyzedDocumentType.TRIPARTITE_AGREEMENT
+
+    #: Patterns are label-anchored and deliberately tolerant of OCR noise:
+    #: party names are captured up to the next comma, newline or the standard
+    #: "(hereinafter referred to as ...)" clause. Tune against real samples.
+    _patterns = {
+        "party_1link": re.compile(
+            r"((?:1LINK|1-LINK|ONE[-\s]?LINK|ONELINK)[^,\n]*?)(?=\s*\(hereinafter|\s*,|\s*\n|$)",
+            re.IGNORECASE,
+        ),
+        "party_kpitb": re.compile(
+            r"((?:KHYBER PAKHTUNKHWA INFORMATION TECHNOLOGY BOARD|KPITB))(?=[\s,])",
+            re.IGNORECASE,
+        ),
+        "party_subbiller": re.compile(
+            r"(.{2,}?)\s*\([^)]*?[Ss]ub[-\s]?[Bb]iller[^)]*?\)",
+            re.IGNORECASE,
+        ),
+        "account_holder": re.compile(
+            r"(?:Account Title|Title of Account|Account Holder)\s*[:|-]?\s*(.+)",
+            re.IGNORECASE | re.MULTILINE,
+        ),
+        "account_number": re.compile(
+            r"(?:Account Number|A/?C No\.?|Account No\.?)\s*[:|-]?\s*([A-Za-z0-9\-/ ]+)",
+            re.IGNORECASE | re.MULTILINE,
+        ),
+        "branch_code": re.compile(
+            r"(?:Branch Code|Branch)\s*:\s*(.+)",
+            re.IGNORECASE | re.MULTILINE,
+        ),
+    }
+
+
 #: Extractors available for each analysed document type.
 _EXTRACTORS: dict[AnalyzedDocumentType, RegexExtractor] = {
     AnalyzedDocumentType.BANK_STATEMENT: BankStatementExtractor(),
@@ -519,6 +606,8 @@ _EXTRACTORS: dict[AnalyzedDocumentType, RegexExtractor] = {
     AnalyzedDocumentType.TAX_DOCUMENT: TaxExtractor(),
     AnalyzedDocumentType.BILATERAL_AGREEMENT: BilateralAgreementExtractor(),
     AnalyzedDocumentType.AUTHORITY_LETTER: AuthorityLetterExtractor(),
+    AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE: AccountMaintenanceCertificateExtractor(),
+    AnalyzedDocumentType.TRIPARTITE_AGREEMENT: TripartiteAgreementExtractor(),
 }
 
 

@@ -187,7 +187,7 @@ _FIELD_VALIDATORS: dict[AnalyzedDocumentType, dict[str, tuple[str, Validator]]] 
         "total_tax": ("amount", validate_amount),
         "currency": ("currency", validate_currency),
     },
-    AnalyzedDocumentType.BILATERAL_AGREEMENT: {
+AnalyzedDocumentType.BILATERAL_AGREEMENT: {
         "account_number": ("account_number", validate_account_number),
         "iban": ("iban_checksum", validate_iban),
         "effective_date": ("date", validate_date),
@@ -195,6 +195,14 @@ _FIELD_VALIDATORS: dict[AnalyzedDocumentType, dict[str, tuple[str, Validator]]] 
     AnalyzedDocumentType.AUTHORITY_LETTER: {
         "account_number": ("account_number", validate_account_number),
         "iban": ("iban_checksum", validate_iban),
+    },
+    AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE: {
+        "account_number": ("account_number", validate_account_number),
+        "iban": ("iban_checksum", validate_iban),
+        "issue_date": ("date_not_future", validate_date_not_future),
+    },
+    AnalyzedDocumentType.TRIPARTITE_AGREEMENT: {
+        "account_number": ("account_number", validate_account_number),
     },
 }
 
@@ -241,6 +249,11 @@ _FIELD_LABELS: dict[str, str] = {
     "effective_date": "Effective date",
     "focal_person_name": "Focal person name",
     "focal_person_designation": "Focal person designation",
+    "branch_name": "Branch name",
+    "branch_code": "Branch",
+    "party_1link": "1-Link party",
+    "party_kpitb": "KPITB party",
+    "party_subbiller": "Sub-biller party",
 }
 
 

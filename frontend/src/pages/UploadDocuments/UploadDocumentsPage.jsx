@@ -106,7 +106,7 @@ function UploadDocumentsPage() {
   };
 
   const maybeAutoStartProcessing = () => {
-    if (!getPreference('autoStartProcessingAfterUpload', false)) {
+    if (!getPreference('autoStartProcessingAfterUpload', true)) {
       return;
     }
     startProcessing(applicationId).catch(() => {

@@ -61,6 +61,14 @@ BLUR_THRESHOLD: float = 100.0
 #: Maximum absolute rotation (degrees) before a document is flagged as rotated.
 ROTATION_TOLERANCE_DEGREES: float = 3.0
 
+#: Gray value below which a pixel counts as ink when measuring page content.
+BLANK_INK_GRAY_THRESHOLD: int = 200
+
+#: Maximum fraction of ink pixels a page may have before it is considered blank.
+#: A page with less than this share of non-background pixels has no usable
+#: content and is flagged as blank.
+BLANK_INK_RATIO: float = 0.005
+
 #: Resolution used when rendering a PDF page for blur/rotation analysis.
 PDF_RENDER_DPI: int = 150
 
@@ -91,6 +99,7 @@ CHECK_IMAGE_RESOLUTION: str = "TECH_IMAGE_RESOLUTION"
 #: Visual content checks (apply to images and rendered PDF pages).
 CHECK_BLUR: str = "TECH_BLUR"
 CHECK_ROTATION: str = "TECH_ROTATION"
+CHECK_BLANK_PAGE: str = "TECH_BLANK_PAGE"
 
 #: Aggregate readability check.
 CHECK_READABILITY: str = "TECH_READABILITY"

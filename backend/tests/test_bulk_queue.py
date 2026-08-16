@@ -246,6 +246,29 @@ def test_authenticated_processing_start_and_empty_application(client):
     assert empty_response.json()["documents_queued"] == 0
 
 
+def test_processing_start_runs_completeness_gate(client):
+    authenticate(client)
+    application_id, _ = create_application_with_documents(1)
+    response = client.post(f"{API}/applications/{application_id}/processing/start")
+    assert response.status_code == 200, response.text
+    summary = response.json()["completeness"]
+    assert summary is not None
+    assert summary["status"] == "INCOMPLETE"
+    assert summary["completion_percentage"] == 0.0
+    assert "ACCOUNT_MAINTENANCE_CERTIFICATE" in summary["missing_documents"]
+
+
+def test_enqueue_runs_completeness_gate(client):
+    authenticate(client)
+    application_id, _ = create_application_with_documents(1)
+    response = client.post(f"{API}/applications/{application_id}/queue/enqueue")
+    assert response.status_code == 200, response.text
+    summary = response.json()["completeness"]
+    assert summary is not None
+    assert summary["status"] == "INCOMPLETE"
+    assert summary["completion_percentage"] == 0.0
+
+
 def test_processing_progress_reports_business_language(client):
     authenticate(client)
     application_id, _ = create_application_with_documents(4)

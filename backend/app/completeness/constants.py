@@ -28,6 +28,7 @@ class CompletenessStatus(str, Enum):
 REQUIRED_DOCUMENT_TYPES: frozenset[DocumentType] = frozenset(
     {
         DocumentType.TRIPARTITE_AGREEMENT,
+        DocumentType.BILATERAL_AGREEMENT,
         DocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
         DocumentType.ONE_LINK_LETTER,
         DocumentType.AUTHORITY_LETTER,
@@ -40,13 +41,22 @@ REQUIRED_DOCUMENT_TYPES: frozenset[DocumentType] = frozenset(
 #: Document types an application may provide but does not have to.
 OPTIONAL_DOCUMENT_TYPES: frozenset[DocumentType] = frozenset(
     {
-        DocumentType.BILATERAL_AGREEMENT,
         DocumentType.OTHER_SUPPORTING_DOCUMENT,
     }
 )
 
-#: Every document type the pipeline recognises (required plus optional). Any
-#: document type outside this set is treated as unexpected.
+#: Document types that are internal processing artifacts rather than real
+#: onboarding documents (e.g. the BULK_UPLOAD placeholder that holds a bulk
+#: PDF until it is split). They are recognised -- never flagged as unexpected
+#: -- but contribute nothing to required or optional presence.
+PLACEHOLDER_DOCUMENT_TYPES: frozenset[DocumentType] = frozenset(
+    {
+        DocumentType.BULK_UPLOAD,
+    }
+)
+
+#: Every document type the pipeline recognises (required plus optional plus
+#: placeholders). Any document type outside this set is treated as unexpected.
 ALL_CONFIGURED_DOCUMENT_TYPES: frozenset[DocumentType] = (
-    REQUIRED_DOCUMENT_TYPES | OPTIONAL_DOCUMENT_TYPES
+    REQUIRED_DOCUMENT_TYPES | OPTIONAL_DOCUMENT_TYPES | PLACEHOLDER_DOCUMENT_TYPES
 )

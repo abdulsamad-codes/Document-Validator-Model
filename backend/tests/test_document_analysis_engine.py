@@ -13,6 +13,7 @@ from app.database.models.enums import ApplicationStatus, DocumentType
 from app.database.repositories.application_repository import ApplicationRepository
 from app.database.repositories.document_analysis_repository import DocumentAnalysisRepository
 from app.database.repositories.document_repository import DocumentRepository
+from app.database.repositories.ocr_repository import OCRRepository
 from app.document_analysis.constants import (
     AnalyzedDocumentType,
     VerificationStatus,
@@ -23,6 +24,8 @@ from app.document_analysis.extractors import (
     detect_document_type,
     extract_fields,
 )
+from app.document_analysis.schemas import AnalysisOutcome
+from app.document_analysis.services import DocumentAnalysisService
 from app.document_analysis.rules import (
     RulesEngine,
     compute_score,
@@ -118,6 +121,31 @@ Tehsil Municipal Administration Sample is authorized to deal with and \
 conduct correspondence and matters related to 1-Link and the Khyber \
 Pakhtunkhwa Information Technology Board (KPITB) on behalf of TMA Sample \
 District.
+"""
+
+ACCOUNT_MAINTENANCE_CERTIFICATE_TEXT = """FUTURE BANK LIMITED
+ACCOUNT MAINTENANCE CERTIFICATE
+
+This is to certify that the following account is maintained with us:
+
+Account Title: KHYBER PROVINCE UTILITIES BOARD
+Account Number: 01234567890123
+IBAN: PK36FUTB0000001123456702
+Bank Name: Future Bank Limited
+Branch Name: Main Branch, Peshawar
+Date of Issue: 15/08/2026
+"""
+
+TRIPARTITE_AGREEMENT_TEXT = """TRIPARTITE AGREEMENT
+This Tripartite Agreement is made and entered into by and between:
+1-Link (Private) Limited, having its registered office at 4th Floor, State Life Building, Karachi (hereinafter referred to as '1-Link')
+Khyber Pakhtunkhwa Information Technology Board, having its registered office at Civil Secretariat, Peshawar (hereinafter referred to as 'KPITB')
+Transport and Mass Transit Department, Government of Khyber Pakhtunkhwa, having its office at Peshawar (hereinafter referred to as the 'Sub-biller')
+
+Bank Details:
+Account Title: KHYBER PROVINCE UTILITIES BOARD
+Account Number: 01234567890123
+Branch: Main Branch, Peshawar
 """
 
 
@@ -286,6 +314,45 @@ def test_authority_letter_validators_and_scoring():
     )
     assert score > 0.0
     assert status is not VerificationStatus.FAILED
+
+
+def test_extract_account_maintenance_certificate_fields():
+    fields = extract_fields(
+        ACCOUNT_MAINTENANCE_CERTIFICATE_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_holder"] == "KHYBER PROVINCE UTILITIES BOARD"
+    assert fields["account_number"] == "01234567890123"
+    assert fields["iban"] == "PK36FUTB0000001123456702"
+    assert fields["bank_name"] == "Future Bank Limited"
+    assert fields["branch_name"] == "Main Branch, Peshawar"
+    assert fields["issue_date"] == "2026-08-15"
+
+
+def test_extract_tripartite_agreement_fields():
+    fields = extract_fields(
+        TRIPARTITE_AGREEMENT_TEXT,
+        AnalyzedDocumentType.TRIPARTITE_AGREEMENT,
+    )
+    assert fields["party_1link"] == "1-Link (Private) Limited"
+    assert fields["party_kpitb"] == "Khyber Pakhtunkhwa Information Technology Board"
+    assert "Transport and Mass Transit Department" in fields["party_subbiller"]
+    assert fields["account_holder"] == "KHYBER PROVINCE UTILITIES BOARD"
+    assert fields["account_number"] == "01234567890123"
+    assert fields["branch_code"] == "Main Branch, Peshawar"
+
+
+def test_checklist_field_labels_never_route_into_keyword_detection():
+    # The Account Maintenance Certificate's own field labels ("IBAN",
+    # "Account Number") are close enough to the bank-statement keyword table
+    # that OCR keyword detection misclassifies it. This is exactly why the
+    # service routes checklist types from the splitter's own classification
+    # *before* keyword detection -- so the assertion below documents the
+    # hazard rather than the expected classification.
+    assert (
+        detect_document_type(ACCOUNT_MAINTENANCE_CERTIFICATE_TEXT)
+        is not AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE
+    )
 
 
 def test_parse_amount_variants():
@@ -520,6 +587,49 @@ def _seed_application_and_document() -> tuple[int, int]:
             file_type="application/pdf",
         )
         return application.id, document.id
+    finally:
+        db.close()
+
+
+def _seed_amc_document_with_ocr() -> tuple[int, int]:
+    db = SessionLocal()
+    try:
+        application = ApplicationRepository(db).create(created_by="repo-test")
+        document = DocumentRepository(db).create(
+            application_id=application.id,
+            document_type=DocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+            original_filename="amc.pdf",
+            stored_file_path="applications/APP-test/amc.pdf",
+            file_type="application/pdf",
+        )
+        OCRRepository(db).create(
+            document_id=document.id,
+            raw_ocr_text=ACCOUNT_MAINTENANCE_CERTIFICATE_TEXT,
+            ocr_engine="test",
+        )
+        return application.id, document.id
+    finally:
+        db.close()
+
+
+def test_amc_document_is_routed_before_keyword_detection():
+    # The AMC OCR text alone would keyword-detect as a generic category (see
+    # test_checklist_field_labels_never_route_into_keyword_detection); the
+    # service must trust the splitter's storage-level classification instead
+    # and run the AMC extractor against it.
+    application_id, document_id = _seed_amc_document_with_ocr()
+    db = SessionLocal()
+    try:
+        response = DocumentAnalysisService(db).analyze(application_id=application_id)
+        item = next(i for i in response.items if i.document_id == document_id)
+        assert item.outcome is AnalysisOutcome.ANALYZED
+        row = DocumentAnalysisRepository(db).get_by_document(document_id)
+        assert (
+            row.document_type
+            == AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE.value
+        )
+        assert row.extracted_fields["account_holder"] == "KHYBER PROVINCE UTILITIES BOARD"
+        assert row.extracted_fields["iban"] == "PK36FUTB0000001123456702"
     finally:
         db.close()
 

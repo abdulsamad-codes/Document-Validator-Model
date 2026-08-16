@@ -15,7 +15,11 @@ import math
 import cv2
 import numpy as np
 
-from app.technical_validation.constants import _DOTS_PER_POINT
+from app.technical_validation.constants import (
+    BLANK_INK_GRAY_THRESHOLD,
+    BLANK_INK_RATIO,
+    _DOTS_PER_POINT,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +39,25 @@ def variance_of_laplacian(image: np.ndarray) -> float:
     """
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     return float(cv2.Laplacian(gray, cv2.CV_64F).var())
+
+
+def is_blank_image(image: np.ndarray) -> bool:
+    """Return whether an image contains essentially no content (blank page).
+
+    A blank page is a near-uniform background: the share of "ink" pixels
+    (significantly darker than the background) falls below
+    :data:`BLANK_INK_RATIO`. This is measured on the grayscale image so a
+    colored background still reads as blank when it carries no text or shapes.
+
+    Args:
+        image: An RGB (BGR) image as returned by OpenCV.
+
+    Returns:
+        ``True`` when the image is blank, ``False`` otherwise.
+    """
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    ink = float(np.count_nonzero(gray < BLANK_INK_GRAY_THRESHOLD))
+    return ink / gray.size < BLANK_INK_RATIO
 
 
 def estimate_rotation_angle(image: np.ndarray) -> float:

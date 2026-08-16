@@ -103,8 +103,8 @@ def test_complete_application(authenticated_client):
     assert report["missing_documents"] == []
     assert report["duplicate_documents"] == []
     assert report["unexpected_documents"] == []
-    assert len(report["uploaded_documents"]) == 7
-    assert len(report["required_documents"]) == 7
+    assert len(report["uploaded_documents"]) == 8
+    assert len(report["required_documents"]) == 8
     assert all(item["is_present"] for item in report["required_documents"])
     assert all(item["copy_count"] == 1 for item in report["required_documents"])
 
@@ -123,7 +123,7 @@ def test_missing_required_document(authenticated_client):
 
     assert report["status"] == "INCOMPLETE"
     assert report["missing_documents"] == [missing_type.value]
-    assert report["completion_percentage"] == round(100.0 * 6 / 7, 2)
+    assert report["completion_percentage"] == round(100.0 * 7 / 8, 2)
     assert report["duplicate_documents"] == []
     assert report["unexpected_documents"] == []
 
@@ -140,7 +140,7 @@ def test_multiple_missing_documents(authenticated_client):
         REQUIRED[0].value,
         REQUIRED[1].value,
     }
-    assert report["completion_percentage"] == round(100.0 * 5 / 7, 2)
+    assert report["completion_percentage"] == round(100.0 * 6 / 8, 2)
 
 
 def test_empty_application(authenticated_client):
@@ -177,15 +177,15 @@ def test_duplicate_mandatory_document(authenticated_client):
 def test_duplicate_optional_document(authenticated_client):
     application_id = create_application(authenticated_client)
     add_required_documents(application_id)
-    insert_document(application_id, DocumentType.BILATERAL_AGREEMENT)
-    insert_document(application_id, DocumentType.BILATERAL_AGREEMENT, "bilateral2.pdf")
+    insert_document(application_id, DocumentType.OTHER_SUPPORTING_DOCUMENT)
+    insert_document(application_id, DocumentType.OTHER_SUPPORTING_DOCUMENT, "other2.pdf")
 
     report = verify(authenticated_client, application_id)
 
     assert report["status"] == "DUPLICATE_DOCUMENTS"
     assert report["duplicate_documents"] == [
         {
-            "document_type": "BILATERAL_AGREEMENT",
+            "document_type": "OTHER_SUPPORTING_DOCUMENT",
             "copy_count": 2,
         }
     ]
@@ -235,7 +235,6 @@ def test_optional_documents_only(authenticated_client):
 def test_optional_documents_with_complete_set(authenticated_client):
     application_id = create_application(authenticated_client)
     add_required_documents(application_id)
-    insert_document(application_id, DocumentType.BILATERAL_AGREEMENT)
     insert_document(application_id, DocumentType.OTHER_SUPPORTING_DOCUMENT)
 
     report = verify(authenticated_client, application_id)
@@ -258,14 +257,14 @@ def test_unexpected_document_type(authenticated_client, monkeypatch):
     )
     application_id = create_application(authenticated_client)
     add_required_documents(application_id)
-    insert_document(application_id, DocumentType.BILATERAL_AGREEMENT)
+    insert_document(application_id, DocumentType.CNIC_FRONT)
 
     report = verify(authenticated_client, application_id)
 
     assert report["status"] == "INVALID_DOCUMENT_SET"
     assert report["unexpected_documents"] == [
         {
-            "document_type": "BILATERAL_AGREEMENT",
+            "document_type": "CNIC_FRONT",
             "copy_count": 1,
         }
     ]
@@ -284,7 +283,7 @@ def test_invalid_document_set_takes_precedence(authenticated_client, monkeypatch
     application_id = create_application(authenticated_client)
     add_required_documents(application_id)
     insert_document(application_id, DocumentType.TRIPARTITE_AGREEMENT, "scan2.pdf")
-    insert_document(application_id, DocumentType.BILATERAL_AGREEMENT)
+    insert_document(application_id, DocumentType.CNIC_FRONT)
 
     report = verify(authenticated_client, application_id)
 
@@ -361,7 +360,7 @@ def test_overlapping_configuration_raises(authenticated_client, monkeypatch):
     monkeypatch.setattr(
         "app.completeness.validators.REQUIRED_DOCUMENT_TYPES",
         frozenset(
-            REQUIRED_DOCUMENT_TYPES | {DocumentType.BILATERAL_AGREEMENT}
+            REQUIRED_DOCUMENT_TYPES | {DocumentType.OTHER_SUPPORTING_DOCUMENT}
         ),
     )
 

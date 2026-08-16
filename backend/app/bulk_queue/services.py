@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.bulk_queue.exceptions import ApplicationNotFound
 from app.bulk_queue.schemas import (
+    CompletenessSummary,
     EnqueueResponse,
     ProcessingActionResponse,
     ProcessingDocumentResponse,
@@ -37,6 +38,7 @@ class BulkQueueService:
         application = self._applications.get_by_id(application_id)
         if application is None:
             raise ApplicationNotFound()
+        completeness = self._completeness_gate(application_id)
         self._validate_uploaded_documents(application_id)
         jobs, created, existing = self._jobs.enqueue_uploaded_documents(
             application_id=application_id,
@@ -57,6 +59,7 @@ class BulkQueueService:
             jobs_existing=existing,
             total_jobs=len(jobs),
             jobs=list(jobs),
+            completeness=completeness,
         )
 
     def start_processing(self, *, application_id: int) -> ProcessingActionResponse:
@@ -64,6 +67,7 @@ class BulkQueueService:
         application = self._applications.get_by_id(application_id)
         if application is None:
             raise ApplicationNotFound()
+        completeness = self._completeness_gate(application_id)
         self._validate_uploaded_documents(application_id)
         jobs, created, _ = self._jobs.enqueue_uploaded_documents(
             application_id=application_id,
@@ -81,6 +85,7 @@ class BulkQueueService:
             application_id=application_id,
             documents_queued=created,
             documents_already_in_progress=max(active - created, 0),
+            completeness=completeness,
         )
 
     def progress(self, *, application_id: int) -> QueueProgressResponse:
@@ -151,6 +156,32 @@ class BulkQueueService:
             documents_queued=retried,
             documents_already_in_progress=0,
             documents_retried=retried,
+        )
+
+    def _completeness_gate(self, application_id: int) -> CompletenessSummary | None:
+        """Run the pre-processing completeness check for an application.
+
+        The pipeline treats completeness as a gate run before expensive
+        processing begins: the report is attached to the enqueue/start response
+        so the operator immediately sees which required documents are missing.
+        The check never blocks processing (documents already uploaded are still
+        enqueued); it surfaces the missing-document state so it is visible at
+        the moment expensive work starts instead of only at the end of the
+        pipeline's rule validation.
+
+        Returns:
+            The completeness summary, or ``None`` when the application no
+            longer exists.
+        """
+        from app.completeness.services import CompletenessService
+
+        report = CompletenessService(self._db).verify(application_id=application_id)
+        return CompletenessSummary(
+            status=report.status.value,
+            missing_documents=[
+                document_type.value for document_type in report.missing_documents
+            ],
+            completion_percentage=report.completion_percentage,
         )
 
     def _validate_uploaded_documents(self, application_id: int) -> None:

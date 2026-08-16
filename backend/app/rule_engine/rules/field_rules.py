@@ -92,65 +92,9 @@ class FieldBankNamePresenceRule(_FieldPresenceRule):
     field_name = "bank_name"
 
 
-class FieldStatementPeriodPresenceRule(_FieldPresenceRule):
-    """The AMC must carry a normalized statement period."""
-
-    id = "FLD_STATEMENT_PERIOD_PRESENT"
-    name = "Statement period present on account maintenance certificate"
-    field_name = "statement_period"
-
-
-class FieldBalancesPresenceRule(_FieldPresenceRule):
-    """The AMC must carry at least one of the account balances.
-
-    Opening and closing balances are both expected by the reconciliation
-    policy; this presence rule only requires that at least one exists so the
-    balance data is never silently empty.
-    """
-
-    id = "FLD_BALANCES_PRESENT"
-    name = "Account balances present on account maintenance certificate"
-    field_name = "opening_balance"
-
-    def evaluate(self, context: RuleContext) -> RuleResult:
-        balance_names = ("opening_balance", "closing_balance")
-        values = [
-            value
-            for value in context.fields
-            if value.field_name in balance_names
-            and value.document_type in {item.value for item in TARGET_DOCUMENT_TYPES}
-        ]
-        related_documents = sorted({value.document_id for value in values})
-        normalized = [
-            value for value in values if (value.normalized_value or "").strip()
-        ]
-        if not values:
-            return self.result(
-                ValidationStatus.FAIL,
-                "No account balance is present on the account maintenance certificate",
-                related_document_ids=related_documents,
-                related_field_names=list(balance_names),
-            )
-        if not normalized:
-            return self.result(
-                ValidationStatus.WARNING,
-                "Account balances are present but have no normalized values",
-                related_document_ids=related_documents,
-                related_field_names=list(balance_names),
-            )
-        return self.result(
-            ValidationStatus.PASS,
-            "At least one account balance is present with a normalized value",
-            related_document_ids=related_documents,
-            related_field_names=list(balance_names),
-        )
-
-
 __all__ = [
     "FieldIbanPresenceRule",
     "FieldAccountNumberPresenceRule",
     "FieldAccountHolderPresenceRule",
     "FieldBankNamePresenceRule",
-    "FieldStatementPeriodPresenceRule",
-    "FieldBalancesPresenceRule",
 ]

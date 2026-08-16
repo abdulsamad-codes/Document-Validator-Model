@@ -39,12 +39,6 @@ VALIDATION_RESULTS_URL = "/validation-results"
 
 RULE_ENGINE_VERSION = "1.0.0"
 
-#: A bank statement variant with a different account holder for cross-doc tests.
-MISMATCH_STATEMENT_TEXT = BANK_STATEMENT_TEXT.replace(
-    "Account Holder: John A. Doe",
-    "Account Holder: John B. Smith",
-)
-
 #: Synthetic Bilateral Agreement text (never real data) carrying the same
 #: account_holder/account_number/iban values as BANK_STATEMENT_TEXT, so the
 #: cross-document rules below can compare BILATERAL_AGREEMENT against
@@ -68,6 +62,52 @@ Account Number: 1234567890
 IBAN: DE89370400440532013000
 Effective Date: 2026-01-15
 """
+
+#: Synthetic (fabricated, non-real) Account Maintenance Certificate text
+#: carrying the same account_holder/account_number/iban values as
+#: BANK_STATEMENT_TEXT/BILATERAL_STATEMENT_TEXT, plus a full AMC field set
+#: (bank_name, branch_name, issue_date) so the certificate's template coverage
+#: is complete and every extracted field auto-verifies -- an AMC without its
+#: branch/issue details scores too low to be normalized without human review.
+#: Deliberately carries no statement_period or balances, which a real AMC never
+#: has (Master Rules section 3).
+ACCOUNT_MAINTENANCE_CERTIFICATE_CROSS_DOC_TEXT = """FUTURE BANK LIMITED
+ACCOUNT MAINTENANCE CERTIFICATE
+
+This is to certify that the following account is maintained with us:
+
+Account Title: John A. Doe
+Account Number: 1234567890
+IBAN: DE89370400440532013000
+Bank Name: Future Bank Limited
+Branch Name: Main Branch
+Date of Issue: 15/08/2026
+"""
+
+#: Synthetic (fabricated, non-real) Tripartite Agreement text carrying all six
+#: Tripartite extractor fields (parties + account/branch details) with the same
+#: account_holder/account_number values as the AMC/Bilateral fixtures above, so
+#: the cross-document rules can compare a real-shaped Tripartite Agreement.
+#: Deliberately has no iban/statement_period -- a Tripartite Agreement carries
+#: neither (see TripartiteAgreementExtractor's expected field set).
+TRIPARTITE_AGREEMENT_CROSS_DOC_TEXT = """TRIPARTITE AGREEMENT
+This Tripartite Agreement is made and entered into by and between:
+1-Link (Private) Limited, having its registered office at 4th Floor, State Life Building, Karachi (hereinafter referred to as '1-Link')
+Khyber Pakhtunkhwa Information Technology Board, having its registered office at Civil Secretariat, Peshawar (hereinafter referred to as 'KPITB')
+Transport and Mass Transit Department, Government of Khyber Pakhtunkhwa, having its office at Peshawar (hereinafter referred to as the 'Sub-biller')
+
+Bank Details:
+Account Title: John A. Doe
+Account Number: 1234567890
+Branch: Main Branch
+"""
+
+#: The Tripartite Agreement above with a different account holder, used by the
+#: cross-document mismatch test.
+TRIPARTITE_AGREEMENT_MISMATCH_TEXT = TRIPARTITE_AGREEMENT_CROSS_DOC_TEXT.replace(
+    "Account Title: John A. Doe",
+    "Account Title: John B. Smith",
+)
 
 
 def validate(client, application_id: int) -> dict:
@@ -97,6 +137,19 @@ def add_statement_with_type(
 ) -> int:
     """Add one analysed document of ``document_type`` to an application."""
     add_digital_pdf(storage_root, application_id, text, document_type=document_type)
+    run_processing(client, application_id)
+    analyze_documents(client, application_id)
+    return application_id
+
+
+def add_digital_amc(client, storage_root, application_id: int) -> int:
+    """Upload + process + analyze a digital Account Maintenance Certificate."""
+    add_digital_pdf(
+        storage_root,
+        application_id,
+        ACCOUNT_MAINTENANCE_CERTIFICATE_CROSS_DOC_TEXT,
+        document_type=DocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
     run_processing(client, application_id)
     analyze_documents(client, application_id)
     return application_id
@@ -143,7 +196,8 @@ def document_ids_by_type(application_id: int) -> dict[str, int]:
 
 
 def test_validate_digital_statement_full_chain(authenticated_client, storage_root):
-    application_id = add_digital_statement(authenticated_client, storage_root)
+    application_id = create_application(authenticated_client)
+    add_digital_amc(authenticated_client, storage_root, application_id)
     evaluate(authenticated_client, application_id)
     normalize(authenticated_client, application_id)
 
@@ -151,7 +205,7 @@ def test_validate_digital_statement_full_chain(authenticated_client, storage_roo
 
     assert result["application_id"] == application_id
     assert result["rule_engine_version"] == RULE_ENGINE_VERSION
-    assert result["summary"]["total"] == 49
+    assert result["summary"]["total"] == 47
     assert len(result["category_summary"]) == 8
 
     by_rule = {item["rule_id"]: item for item in result["results"]}
@@ -160,14 +214,16 @@ def test_validate_digital_statement_full_chain(authenticated_client, storage_roo
     assert by_rule["DOC_BILATERAL_PRESENT"]["status"] == "FAIL"
     assert by_rule["FLD_IBAN_PRESENT"]["status"] == "PASS"
     assert by_rule["FLD_ACCOUNT_HOLDER_PRESENT"]["status"] == "PASS"
-    assert by_rule["FLD_BALANCES_PRESENT"]["status"] == "PASS"
     assert by_rule["FMT_IBAN"]["status"] == "PASS"
     assert by_rule["FMT_ACCOUNT_NUMBER"]["status"] == "PASS"
-    assert by_rule["FMT_AMOUNT"]["status"] == "PASS"
-    assert by_rule["DATE_PERIOD_SEQUENCE"]["status"] == "PASS"
-    assert by_rule["DATE_PERIOD_WITHIN_RANGE"]["status"] in ("PASS", "WARNING")
-    assert by_rule["POL_BALANCE_RECONCILIATION"]["status"] == "PASS"
-    assert by_rule["POL_SINGLE_CURRENCY"]["status"] == "PASS"
+    # The AMC carries no amount/period/currency/transaction fields by design
+    # (see Master Rules section 3), so the bank-statement rules warn rather
+    # than pass on a real certificate.
+    assert by_rule["FMT_AMOUNT"]["status"] == "WARNING"
+    assert by_rule["DATE_PERIOD_SEQUENCE"]["status"] == "WARNING"
+    assert by_rule["DATE_PERIOD_WITHIN_RANGE"]["status"] == "WARNING"
+    assert by_rule["POL_BALANCE_RECONCILIATION"]["status"] == "WARNING"
+    assert by_rule["POL_SINGLE_CURRENCY"]["status"] == "WARNING"
     assert by_rule["POL_ACCOUNT_HOLDER_REAL"]["status"] == "PASS"
     assert by_rule["QUAL_TRANSACTION_COUNT"]["status"] == "PASS"
     assert by_rule["VIS_SIGNATURE_AMC"]["status"] == "PENDING_MANUAL_REVIEW"
@@ -186,15 +242,17 @@ def test_validate_persists_rule_results(authenticated_client, storage_root):
     stored = get_validation_results(authenticated_client, application_id)
 
     assert stored["application_id"] == application_id
-    assert stored["total"] == 49
+    assert stored["total"] == 47
     by_rule = {item["rule_id"]: item for item in stored["results"]}
     assert by_rule["FMT_IBAN"]["status"] == "PASS"
     assert by_rule["FMT_IBAN"]["severity"] == "INFO"
     assert by_rule["DOC_TRIPARTITE_PRESENT"]["severity"] == "ERROR"
-    assert by_rule["VIS_SIGNATURE_AMC"]["severity"] == "WARNING"
+    # The digital statement is not an AMC document, so the AMC-targeted visual
+    # rule fails as a missing document (ERROR) rather than pending review.
+    assert by_rule["VIS_SIGNATURE_AMC"]["severity"] == "ERROR"
     assert by_rule["VIS_SIGNATURE_AMC"]["category_label"] == "Visual verification"
     assert by_rule["FLD_IBAN_PRESENT"]["related_field_names"] == ["iban"]
-    assert by_rule["DOC_AMC_PRESENT"]["related_document_ids"]
+    assert by_rule["FMT_IBAN"]["related_document_ids"]
 
 
 def test_validate_is_idempotent_in_storage(authenticated_client, storage_root):
@@ -207,7 +265,7 @@ def test_validate_is_idempotent_in_storage(authenticated_client, storage_root):
     validate(authenticated_client, application_id)
     second = get_validation_results(authenticated_client, application_id)
 
-    assert first["total"] == second["total"] == 49
+    assert first["total"] == second["total"] == 47
     assert [item["rule_id"] for item in first["results"]] == [
         item["rule_id"] for item in second["results"]
     ]
@@ -234,7 +292,7 @@ def test_get_validation_results_excludes_technical_rows(authenticated_client, st
     validate(authenticated_client, application_id)
 
     stored = get_validation_results(authenticated_client, application_id)
-    assert stored["total"] == 49
+    assert stored["total"] == 47
     assert all(
         item["rule_category"] != "technical_validation" for item in stored["results"]
     )
@@ -257,7 +315,8 @@ def test_get_validation_results_filters_by_category(authenticated_client, storag
 
 
 def test_validate_visual_rules_pass_with_detections(authenticated_client, storage_root):
-    application_id = add_digital_statement(authenticated_client, storage_root)
+    application_id = create_application(authenticated_client)
+    add_digital_amc(authenticated_client, storage_root, application_id)
     evaluate(authenticated_client, application_id)
     normalize(authenticated_client, application_id)
     amc_id = document_ids_by_type(application_id)["ACCOUNT_MAINTENANCE_CERTIFICATE"]
@@ -272,7 +331,8 @@ def test_validate_visual_rules_pass_with_detections(authenticated_client, storag
 
 
 def test_validate_visual_rules_fail_when_absent(authenticated_client, storage_root):
-    application_id = add_digital_statement(authenticated_client, storage_root)
+    application_id = create_application(authenticated_client)
+    add_digital_amc(authenticated_client, storage_root, application_id)
     evaluate(authenticated_client, application_id)
     normalize(authenticated_client, application_id)
     amc_id = document_ids_by_type(application_id)["ACCOUNT_MAINTENANCE_CERTIFICATE"]
@@ -295,6 +355,7 @@ def test_validate_cross_document_rules_pass(authenticated_client, storage_root):
         storage_root,
         application_id,
         document_type=DocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+        text=ACCOUNT_MAINTENANCE_CERTIFICATE_CROSS_DOC_TEXT,
     )
     add_statement_with_type(
         authenticated_client,
@@ -308,6 +369,7 @@ def test_validate_cross_document_rules_pass(authenticated_client, storage_root):
         storage_root,
         application_id,
         document_type=DocumentType.TRIPARTITE_AGREEMENT,
+        text=TRIPARTITE_AGREEMENT_CROSS_DOC_TEXT,
     )
     evaluate(authenticated_client, application_id)
     normalize(authenticated_client, application_id)
@@ -335,6 +397,7 @@ def test_validate_cross_document_rules_fail_on_mismatch(authenticated_client, st
         storage_root,
         application_id,
         document_type=DocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+        text=ACCOUNT_MAINTENANCE_CERTIFICATE_CROSS_DOC_TEXT,
     )
     add_statement_with_type(
         authenticated_client,
@@ -348,7 +411,7 @@ def test_validate_cross_document_rules_fail_on_mismatch(authenticated_client, st
         storage_root,
         application_id,
         document_type=DocumentType.TRIPARTITE_AGREEMENT,
-        text=MISMATCH_STATEMENT_TEXT,
+        text=TRIPARTITE_AGREEMENT_MISMATCH_TEXT,
     )
     evaluate(authenticated_client, application_id)
     normalize(authenticated_client, application_id)
@@ -369,7 +432,7 @@ def test_validate_runs_without_extracted_fields(authenticated_client, storage_ro
 
     result = validate(authenticated_client, application_id)
 
-    assert result["summary"]["total"] == 49
+    assert result["summary"]["total"] == 47
     assert result["validation_status"] == "FAIL"
     by_rule = {item["rule_id"]: item for item in result["results"]}
     assert by_rule["DOC_AMC_PRESENT"]["status"] == "FAIL"

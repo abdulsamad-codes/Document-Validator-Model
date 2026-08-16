@@ -7,6 +7,14 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.database.models.enums import JobStatus
 
 
+class CompletenessSummary(BaseModel):
+    """Snapshot of the completeness check run before expensive processing."""
+
+    status: str
+    missing_documents: list[str] = Field(default_factory=list)
+    completion_percentage: float
+
+
 class QueueJobRead(BaseModel):
     """Public queue job metadata."""
 
@@ -33,6 +41,7 @@ class EnqueueResponse(BaseModel):
     jobs_existing: int
     total_jobs: int
     jobs: list[QueueJobRead]
+    completeness: CompletenessSummary | None = None
 
 
 class QueueProgressResponse(BaseModel):
@@ -85,6 +94,7 @@ class ProcessingActionResponse(BaseModel):
     documents_queued: int
     documents_already_in_progress: int
     documents_retried: int = 0
+    completeness: CompletenessSummary | None = None
 
 
 class QueueStatsResponse(BaseModel):
