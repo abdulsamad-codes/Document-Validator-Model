@@ -87,17 +87,20 @@ def run(rule_id: str, ctx: RuleContext) -> RuleResult:
 # --- Registry contract -------------------------------------------------------
 
 
-def test_registry_has_50_rules_in_8_categories():
+def test_registry_has_49_rules_in_8_categories():
     from collections import Counter
 
     rules = REGISTRY.rules()
-    assert len(rules) == 50
+    assert len(rules) == 49
     categories = Counter(rule.category for rule in rules)
     assert categories == {
         "document_completeness": 8,
         "field_presence": 6,
         "format": 6,
-        "cross_document": 4,
+        # CrossBranchCodeRule and CrossPeriodRule are implemented but
+        # deliberately not registered -- see the inline rationale in
+        # rule_engine/rules/__init__.py.
+        "cross_document": 3,
         "date": 7,
         "visual": 11,
         "policy": 4,

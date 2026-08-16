@@ -350,6 +350,78 @@ class TaxExtractor(RegexExtractor):
     }
 
 
+#: Platform names docs/Master_Rules_Combined.md requires the agreement to
+#: name explicitly (Section 7, "Platform Terminology"). Matched literally
+#: rather than via a labeled regex since the term appears embedded in prose,
+#: not after a "Field:" label.
+_KNOWN_PLATFORM_NAMES: tuple[str, ...] = ("Digital Muhasil", "PayMin", "Paymere BCX")
+
+
+def _as_platform_name(raw: str) -> str | None:
+    """Return whichever known platform name is present in ``raw``, if any."""
+    for name in _KNOWN_PLATFORM_NAMES:
+        if name.lower() in raw.lower():
+            return name
+    return None
+
+
+class BilateralAgreementExtractor(RegexExtractor):
+    """Extracts structured fields from a Bilateral Agreement (SLA).
+
+    Field patterns are based on docs/Master_Rules_Combined.md Section 7
+    ("Bilateral Agreement (SLA)") rather than a labeled-field layout the way
+    the other extractors are, since the master rules describe this document
+    as prose/section-numbered rather than a "Label: value" form. Real-sample
+    validation against Confidential Data/ is still pending -- see the
+    docstring note in docs/IMPLEMENTATION_ROADMAP.md Phase 1 on why a single
+    pattern per type can't be trusted blind; patterns here should be revisited
+    once validated against actual OCR text.
+    """
+
+    document_type = AnalyzedDocumentType.BILATERAL_AGREEMENT
+
+    _patterns = {
+        "organization_name": re.compile(
+            r"(?:Department|Organization|Organisation)\s*(?:Name)?\s*[:|-]\s*(.+)",
+            re.IGNORECASE | re.MULTILINE,
+        ),
+        "platform_name": re.compile(
+            r"(Digital Muhasil|PayMin|Paymere BCX)",
+            re.IGNORECASE,
+        ),
+        "transaction_charges": re.compile(
+            # Anchored to "Section 5.2" specifically (not a bare "Section 5" or
+            # "Transaction Charges" heading, which docs/Master_Rules_Combined.md
+            # Section 7 shows appearing earlier as a section title on its own
+            # line and would otherwise match first and capture the title, not
+            # the actual PKR charge line 5.2 introduces).
+            r"Section\s*5\.2\s*[:.\-]?\s*(.+)",
+            re.IGNORECASE | re.MULTILINE,
+        ),
+        "account_holder": re.compile(
+            r"(?:Account Title|Account Holder|Account Name)\s*[:|-]?\s*(.+)",
+            re.IGNORECASE | re.MULTILINE,
+        ),
+        "account_number": re.compile(
+            r"(?:Account Number|A/?C No\.?|Account No\.?)\s*[:|-]?\s*([A-Za-z0-9\-/ ]+)",
+            re.IGNORECASE | re.MULTILINE,
+        ),
+        "iban": re.compile(
+            r"\bIBAN\b\s*[:|-]?\s*([A-Z]{2}\d{2}[A-Z0-9]{10,30})",
+            re.IGNORECASE,
+        ),
+        "effective_date": re.compile(
+            r"(?:Effective Date|Date of Agreement)\s*[:|-]?\s*([A-Za-z0-9\-/.]+)",
+            re.IGNORECASE | re.MULTILINE,
+        ),
+    }
+
+    _post = {
+        "platform_name": _as_platform_name,
+        "effective_date": _as_iso_date,
+    }
+
+
 #: Detection keywords per analysed document type. Weights express how strongly a
 #: keyword identifies the type; scoring is order-independent and deterministic.
 _DETECTION_KEYWORDS: dict[AnalyzedDocumentType, list[tuple[str, int]]] = {
@@ -393,6 +465,7 @@ _EXTRACTORS: dict[AnalyzedDocumentType, RegexExtractor] = {
     AnalyzedDocumentType.PAYSLIP: PayslipExtractor(),
     AnalyzedDocumentType.ID_DOCUMENT: IdentityExtractor(),
     AnalyzedDocumentType.TAX_DOCUMENT: TaxExtractor(),
+    AnalyzedDocumentType.BILATERAL_AGREEMENT: BilateralAgreementExtractor(),
 }
 
 

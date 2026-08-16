@@ -81,6 +81,25 @@ Total Tax: 9,800.00
 Currency: EUR
 """
 
+#: Synthetic (fabricated, non-real) fixture mirroring the structural pattern
+#: docs/Master_Rules_Combined.md Section 7 describes for a Bilateral
+#: Agreement -- department name, PayMin/Digital Muhasil/Paymere BCX platform
+#: terminology, a Section 5.2 PKR transaction-charge line and a Section 6
+#: account block. Never real extracted values.
+BILATERAL_AGREEMENT_TEXT = """BILATERAL AGREEMENT
+This Agreement is made between the Bank and the Department.
+Department: Sample Regional Development Authority
+
+Section 5 - Transaction Charges
+Section 5.2: As per prevailing charges of 1-Link, PKR 15 per transaction, payable via PayMin.
+
+Section 6 - Account Information
+Account Title: Sample Regional Development Authority
+Account Number: 9876543210
+IBAN: DE89370400440532013000
+Effective Date: 2026-01-15
+"""
+
 
 def _components(text: str):
     document_type = detect_document_type(text)
@@ -170,6 +189,41 @@ def test_extract_tax_fields():
 def test_extract_unknown_type_raises():
     with pytest.raises(UnsupportedDocumentType):
         extract_fields("some text", AnalyzedDocumentType.UNKNOWN)
+
+
+def test_extract_bilateral_agreement_fields():
+    fields = extract_fields(
+        BILATERAL_AGREEMENT_TEXT, AnalyzedDocumentType.BILATERAL_AGREEMENT
+    )
+    assert fields["organization_name"] == "Sample Regional Development Authority"
+    assert fields["platform_name"] == "PayMin"
+    assert "PKR 15 per transaction" in fields["transaction_charges"]
+    assert fields["account_holder"] == "Sample Regional Development Authority"
+    assert fields["account_number"] == "9876543210"
+    assert fields["iban"] == "DE89370400440532013000"
+    assert fields["effective_date"] == "2026-01-15"
+
+
+def test_bilateral_agreement_validators_and_scoring():
+    document_type = AnalyzedDocumentType.BILATERAL_AGREEMENT
+    fields = extract_fields(BILATERAL_AGREEMENT_TEXT, document_type)
+    validations = ValidatorEngine().run(document_type, fields)
+    by_field = {result["field"]: result for result in validations}
+    assert by_field["account_number"]["status"] == "valid"
+    assert by_field["iban"]["status"] == "valid"
+    assert by_field["effective_date"]["status"] == "valid"
+
+    consistency = RulesEngine().run(document_type, fields)
+    assert consistency == []  # no consistency rules registered yet for this type
+
+    *_components_rest, score, status = scoring_components(
+        document_type,
+        fields=fields,
+        validation_results=validations,
+        consistency_results=consistency,
+    )
+    assert score > 0.0
+    assert status is not VerificationStatus.FAILED
 
 
 def test_parse_amount_variants():

@@ -21,6 +21,12 @@ class AnalyzedDocumentType(str, Enum):
     PAYSLIP = "PAYSLIP"
     ID_DOCUMENT = "ID_DOCUMENT"
     TAX_DOCUMENT = "TAX_DOCUMENT"
+    #: Phase 1 of the required-document checklist (see
+    #: docs/IMPLEMENTATION_ROADMAP.md). Named identically to the storage-level
+    #: DocumentType.BILATERAL_AGREEMENT it corresponds to, but is a distinct
+    #: enum -- routed via document_analysis.services._CHECKLIST_TYPE_MAP, not
+    #: via detect_document_type's keyword table.
+    BILATERAL_AGREEMENT = "BILATERAL_AGREEMENT"
     UNKNOWN = "UNKNOWN"
 
 
@@ -98,6 +104,24 @@ EXPECTED_FIELDS: dict[AnalyzedDocumentType, frozenset[str]] = {
             "currency",
         }
     ),
+    #: Field names deliberately match app.rule_engine.rules.cross_document_rules
+    #: (account_holder, account_number, iban): those rules are already
+    #: registered and compare these exact names across BILATERAL_AGREEMENT,
+    #: TRIPARTITE_AGREEMENT and ACCOUNT_MAINTENANCE_CERTIFICATE, but until now
+    #: none of the three had any extractor, so the rules could only ever FAIL
+    #: on a real application ("field is missing from document"). This is the
+    #: first of the three to close that gap.
+    AnalyzedDocumentType.BILATERAL_AGREEMENT: frozenset(
+        {
+            "organization_name",
+            "platform_name",
+            "transaction_charges",
+            "account_holder",
+            "account_number",
+            "iban",
+            "effective_date",
+        }
+    ),
 }
 
 #: Fields whose absence forces the document into manual review regardless of
@@ -117,5 +141,12 @@ CRITICAL_FIELDS: dict[AnalyzedDocumentType, frozenset[str]] = {
     ),
     AnalyzedDocumentType.TAX_DOCUMENT: frozenset(
         {"taxpayer_name", "tax_reference_number", "tax_year", "gross_income"}
+    ),
+    #: organization_name, account_number and transaction_charges are the
+    #: fields docs/Master_Rules_Combined.md explicitly calls "required content"
+    #: for this document (Section 7). account_number is additionally critical
+    #: because the cross-document consistency rules can never pass without it.
+    AnalyzedDocumentType.BILATERAL_AGREEMENT: frozenset(
+        {"organization_name", "account_number", "transaction_charges"}
     ),
 }

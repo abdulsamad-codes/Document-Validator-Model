@@ -109,7 +109,7 @@ class RuleRegistry:
                 FormatDateShapeRule(),
                 FormatEStampRule(),
 
-                # Cross-document consistency (4).
+                # Cross-document consistency (2 registered of 4 implemented).
                 # CrossBranchCodeRule is implemented but deliberately not
                 # registered: its `branch_code` field has no extraction or
                 # normalization support anywhere in the pipeline (unlike the
@@ -119,10 +119,24 @@ class RuleRegistry:
                 # lacks the field. Registering it today would make every real
                 # application FAIL this rule permanently. Register it once
                 # branch-code extraction exists.
+                #
+                # CrossPeriodRule is the same failure mode, found 2026-08-16
+                # while adding real field extraction for BILATERAL_AGREEMENT
+                # (Phase 1, docs/IMPLEMENTATION_ROADMAP.md): it compares
+                # `statement_period` between ACCOUNT_MAINTENANCE_CERTIFICATE
+                # and BILATERAL_AGREEMENT, but neither document actually has
+                # a period in the real spec (docs/Master_Rules_Combined.md
+                # Sections 3 and 7) -- AMC is a certificate, and a Bilateral
+                # Agreement carries a single Effective Date, not a range.
+                # Once BILATERAL_AGREEMENT got a real (honest) extractor, this
+                # rule started FAILing every application unconditionally,
+                # since the field it compares can never be present on either
+                # side. Unregistered until a real period-like field is
+                # identified for both participants, or the rule is redesigned
+                # around fields that actually exist.
                 CrossAccountHolderRule(),
                 CrossAccountNumberRule(),
                 CrossIbanRule(),
-                CrossPeriodRule(),
 
                 # Date and period (7).
                 DatePeriodSequenceRule(),

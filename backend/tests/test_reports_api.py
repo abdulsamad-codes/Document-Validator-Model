@@ -7,7 +7,7 @@ never run rules or detections itself and must never write to the database.
 """
 
 from app.database.connection import SessionLocal
-from app.database.models.enums import ApplicationStatus
+from app.database.models.enums import ApplicationStatus, DocumentType
 from app.database.repositories.application_repository import ApplicationRepository
 from app.reports.constants import REPORT_GROUP_ORDER, VISUAL_TYPE_BY_RULE
 from app.rule_engine.constants import REQUIRED_DOCUMENT_TYPES
@@ -20,6 +20,7 @@ from tests.test_document_analysis_api import (
 )
 from tests.test_normalization_api import normalize
 from tests.test_rule_engine_api import (
+    BILATERAL_STATEMENT_TEXT,
     add_visual_detection,
     document_ids_by_type,
     validate,
@@ -34,11 +35,14 @@ SUMMARY_URL = "/validation-summary"
 
 REPORT_VERSION = "1.0.0"
 
-#: Per-group rule totals expected from the 50-rule ruleset.
+#: Per-group rule totals expected from the 49-rule ruleset (50 implemented,
+#: CrossPeriodRule unregistered -- see rule_engine/rules/__init__.py).
 EXPECTED_GROUP_TOTALS = {
     "Document Validation": 14,
     "Format Validation": 6,
-    "Cross Document Validation": 4,
+    # CrossPeriodRule is unregistered (see rule_engine/rules/__init__.py) --
+    # 3 of the 4 implemented cross-document rules are active.
+    "Cross Document Validation": 3,
     "Date Validation": 7,
     "Signature Validation": 6,
     "Stamp Validation": 5,
@@ -48,13 +52,26 @@ EXPECTED_GROUP_TOTALS = {
 
 
 def build_full_application(client, storage_root, *, with_detections: bool) -> int:
-    """Build an application carrying all eight required documents, analysed."""
+    """Build an application carrying all eight required documents, analysed.
+
+    BILATERAL_AGREEMENT gets its own Bilateral-Agreement-shaped text (Phase 1,
+    docs/IMPLEMENTATION_ROADMAP.md gave it a real extractor) carrying the same
+    account_holder/account_number/iban values as BANK_STATEMENT_TEXT, so the
+    cross-document consistency rules still agree; every other required type
+    still has no real extractor and keeps using BANK_STATEMENT_TEXT via the
+    generic keyword-based classifier, unaffected by that change.
+    """
     application_id = create_application(client)
     for document_type in REQUIRED_DOCUMENT_TYPES:
+        text = (
+            BILATERAL_STATEMENT_TEXT
+            if document_type is DocumentType.BILATERAL_AGREEMENT
+            else BANK_STATEMENT_TEXT
+        )
         add_digital_pdf(
             storage_root,
             application_id,
-            BANK_STATEMENT_TEXT,
+            text,
             document_type=document_type,
             filename=f"{document_type.value}.pdf",
         )
@@ -108,10 +125,10 @@ def test_report_approved_application(authenticated_client, storage_root):
     assert len(report["document_summary"]) == 8
 
     summary = report["rule_summary"]
-    assert summary["total"] == 50
+    assert summary["total"] == 49
     assert summary["failed"] == 0
     assert summary["pending_manual_review"] == 0
-    assert summary["passed"] + summary["warnings"] == 50
+    assert summary["passed"] + summary["warnings"] == 49
 
     assert [
         group["category"] for group in summary["by_category"]
@@ -144,7 +161,7 @@ def test_report_failed_application(authenticated_client, storage_root):
 
     assert report["overall_status"] == "FAILED"
     summary = report["rule_summary"]
-    assert summary["total"] == 50
+    assert summary["total"] == 49
     assert summary["failed"] > 0
     # Only the present AMC document's visual rules await detection; the rest
     # fail because their documents are missing.
@@ -209,8 +226,8 @@ def test_report_summary_condensed(authenticated_client, storage_root):
     assert summary["overall_status"] == "APPROVED"
     assert summary["application_status"] == "SUBMITTED"
     assert summary["document_count"] == 8
-    assert summary["rule_total"] == 50
-    assert summary["rule_passed"] + summary["rule_warnings"] == 50
+    assert summary["rule_total"] == 49
+    assert summary["rule_passed"] + summary["rule_warnings"] == 49
     assert summary["rule_failed"] == 0
     assert summary["rule_pending_review"] == 0
     assert summary["field_count"] > 0
@@ -272,3 +289,5 @@ def test_report_endpoints_application_not_found(authenticated_client):
         response = get_report(authenticated_client, 999999, url=url)
         assert response.status_code == 404
         assert response.json()["detail"] == "Application not found"
+
+

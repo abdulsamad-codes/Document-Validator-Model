@@ -45,6 +45,30 @@ MISMATCH_STATEMENT_TEXT = BANK_STATEMENT_TEXT.replace(
     "Account Holder: John B. Smith",
 )
 
+#: Synthetic Bilateral Agreement text (never real data) carrying the same
+#: account_holder/account_number/iban values as BANK_STATEMENT_TEXT, so the
+#: cross-document rules below can compare BILATERAL_AGREEMENT against
+#: ACCOUNT_MAINTENANCE_CERTIFICATE/TRIPARTITE_AGREEMENT the same way they did
+#: before Phase 1 gave BILATERAL_AGREEMENT its own real extractor (previously
+#: BANK_STATEMENT_TEXT was reused verbatim and misrouted through the generic
+#: keyword-based classifier regardless of storage type -- see
+#: document_analysis/services.py's routing-precedence fix). Deliberately has
+#: no statement_period: a Bilateral Agreement doesn't carry one, so
+#: CROSS_PERIOD_MATCH is expected to FAIL below, not PASS.
+BILATERAL_STATEMENT_TEXT = """BILATERAL AGREEMENT
+This Agreement is made between the Bank and the Department.
+Department: Sample Regional Development Authority
+
+Section 5 - Transaction Charges
+Section 5.2: As per prevailing charges of 1-Link, PKR 15 per transaction, payable via PayMin.
+
+Section 6 - Account Information
+Account Title: John A. Doe
+Account Number: 1234567890
+IBAN: DE89370400440532013000
+Effective Date: 2026-01-15
+"""
+
 
 def validate(client, application_id: int) -> dict:
     """Call the validate endpoint and return the JSON response."""
@@ -127,7 +151,7 @@ def test_validate_digital_statement_full_chain(authenticated_client, storage_roo
 
     assert result["application_id"] == application_id
     assert result["rule_engine_version"] == RULE_ENGINE_VERSION
-    assert result["summary"]["total"] == 50
+    assert result["summary"]["total"] == 49
     assert len(result["category_summary"]) == 8
 
     by_rule = {item["rule_id"]: item for item in result["results"]}
@@ -162,7 +186,7 @@ def test_validate_persists_rule_results(authenticated_client, storage_root):
     stored = get_validation_results(authenticated_client, application_id)
 
     assert stored["application_id"] == application_id
-    assert stored["total"] == 50
+    assert stored["total"] == 49
     by_rule = {item["rule_id"]: item for item in stored["results"]}
     assert by_rule["FMT_IBAN"]["status"] == "PASS"
     assert by_rule["FMT_IBAN"]["severity"] == "INFO"
@@ -183,7 +207,7 @@ def test_validate_is_idempotent_in_storage(authenticated_client, storage_root):
     validate(authenticated_client, application_id)
     second = get_validation_results(authenticated_client, application_id)
 
-    assert first["total"] == second["total"] == 50
+    assert first["total"] == second["total"] == 49
     assert [item["rule_id"] for item in first["results"]] == [
         item["rule_id"] for item in second["results"]
     ]
@@ -210,7 +234,7 @@ def test_get_validation_results_excludes_technical_rows(authenticated_client, st
     validate(authenticated_client, application_id)
 
     stored = get_validation_results(authenticated_client, application_id)
-    assert stored["total"] == 50
+    assert stored["total"] == 49
     assert all(
         item["rule_category"] != "technical_validation" for item in stored["results"]
     )
@@ -277,6 +301,7 @@ def test_validate_cross_document_rules_pass(authenticated_client, storage_root):
         storage_root,
         application_id,
         document_type=DocumentType.BILATERAL_AGREEMENT,
+        text=BILATERAL_STATEMENT_TEXT,
     )
     add_statement_with_type(
         authenticated_client,
@@ -293,7 +318,11 @@ def test_validate_cross_document_rules_pass(authenticated_client, storage_root):
     assert by_rule["CROSS_ACCOUNT_HOLDER_MATCH"]["status"] == "PASS"
     assert by_rule["CROSS_ACCOUNT_NUMBER_MATCH"]["status"] == "PASS"
     assert by_rule["CROSS_IBAN_MATCH"]["status"] == "PASS"
-    assert by_rule["CROSS_PERIOD_MATCH"]["status"] == "PASS"
+    # CrossPeriodRule is unregistered (rule_engine/rules/__init__.py): a
+    # Bilateral Agreement doesn't carry a statement_period in the real spec,
+    # so the rule could never legitimately pass -- same treatment as
+    # CrossBranchCodeRule. Not present in by_rule at all.
+    assert "CROSS_PERIOD_MATCH" not in by_rule
     assert by_rule["DOC_AMC_PRESENT"]["status"] == "PASS"
     assert by_rule["DOC_BILATERAL_PRESENT"]["status"] == "PASS"
     assert by_rule["DOC_TRIPARTITE_PRESENT"]["status"] == "PASS"
@@ -312,6 +341,7 @@ def test_validate_cross_document_rules_fail_on_mismatch(authenticated_client, st
         storage_root,
         application_id,
         document_type=DocumentType.BILATERAL_AGREEMENT,
+        text=BILATERAL_STATEMENT_TEXT,
     )
     add_statement_with_type(
         authenticated_client,
@@ -339,7 +369,7 @@ def test_validate_runs_without_extracted_fields(authenticated_client, storage_ro
 
     result = validate(authenticated_client, application_id)
 
-    assert result["summary"]["total"] == 50
+    assert result["summary"]["total"] == 49
     assert result["validation_status"] == "FAIL"
     by_rule = {item["rule_id"]: item for item in result["results"]}
     assert by_rule["DOC_AMC_PRESENT"]["status"] == "FAIL"

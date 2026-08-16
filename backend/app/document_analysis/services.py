@@ -73,6 +73,16 @@ _UNCLASSIFIED_STORAGE_TYPES = frozenset(
     {DocumentType.OTHER_SUPPORTING_DOCUMENT, DocumentType.BULK_UPLOAD}
 )
 
+#: Storage-level checklist types that now have a real field-level extractor
+#: (app.document_analysis.extractors._EXTRACTORS), keyed to the matching
+#: AnalyzedDocumentType. A recognized checklist type not in this map still
+#: falls back to _persist_recognized_unsupported_type -- this is the Phase 1
+#: (docs/IMPLEMENTATION_ROADMAP.md) worklist, extended one document type at a
+#: time as each gets a real extractor and real-sample validation.
+_CHECKLIST_TYPE_MAP: dict[DocumentType, AnalyzedDocumentType] = {
+    DocumentType.BILATERAL_AGREEMENT: AnalyzedDocumentType.BILATERAL_AGREEMENT,
+}
+
 
 class DocumentAnalysisService:
     """Runs the analysis pipeline over an application's documents.
@@ -214,29 +224,52 @@ class DocumentAnalysisService:
             if ocr_result is None:
                 raise OCRResultNotFound()
 
-            document_type = detect_document_type(ocr_result.raw_ocr_text)
-            if document_type is AnalyzedDocumentType.UNKNOWN:
-                recognized_type = self._recognized_checklist_type(document.document_type)
-                if recognized_type is not None:
-                    logger.info(
-                        "Document id=%s recognized as %s by its storage-level "
-                        "classification but has no field-level extractor "
-                        "(application id=%s)",
+            recognized_type = self._recognized_checklist_type(document.document_type)
+            checklist_analyzed_type = (
+                _CHECKLIST_TYPE_MAP.get(recognized_type)
+                if recognized_type is not None
+                else None
+            )
+            if checklist_analyzed_type is not None:
+                # The splitter's classification is anchored to a title match
+                # in the page header (app/preprocessing/splitter.py), so it is
+                # trusted ahead of the generic keyword scorer below: a real
+                # checklist document's own required content (e.g. a Bilateral
+                # Agreement's Section 6 "Account Number"/"IBAN" fields) can
+                # otherwise score positively against detect_document_type's
+                # unrelated bank-statement keyword table and be misrouted.
+                logger.info(
+                    "Document id=%s recognized as %s by its storage-level "
+                    "classification; running its checklist-type extractor "
+                    "(application id=%s)",
+                    document.id,
+                    recognized_type.value,
+                    application_id,
+                )
+                document_type = checklist_analyzed_type
+            else:
+                document_type = detect_document_type(ocr_result.raw_ocr_text)
+                if document_type is AnalyzedDocumentType.UNKNOWN:
+                    if recognized_type is not None:
+                        logger.info(
+                            "Document id=%s recognized as %s by its storage-level "
+                            "classification but has no field-level extractor "
+                            "(application id=%s)",
+                            document.id,
+                            recognized_type.value,
+                            application_id,
+                        )
+                        elapsed_ms = int((time.perf_counter() - started) * 1000)
+                        return self._persist_recognized_unsupported_type(
+                            application_id, document, recognized_type, elapsed_ms
+                        )
+                    logger.warning(
+                        "Document type undetermined for document id=%s (application id=%s)",
                         document.id,
-                        recognized_type.value,
                         application_id,
                     )
                     elapsed_ms = int((time.perf_counter() - started) * 1000)
-                    return self._persist_recognized_unsupported_type(
-                        application_id, document, recognized_type, elapsed_ms
-                    )
-                logger.warning(
-                    "Document type undetermined for document id=%s (application id=%s)",
-                    document.id,
-                    application_id,
-                )
-                elapsed_ms = int((time.perf_counter() - started) * 1000)
-                return self._persist_undetermined_type(application_id, document, elapsed_ms)
+                    return self._persist_undetermined_type(application_id, document, elapsed_ms)
 
             fields = extract_fields(ocr_result.raw_ocr_text, document_type)
             validations = self._validators.run(document_type, fields)

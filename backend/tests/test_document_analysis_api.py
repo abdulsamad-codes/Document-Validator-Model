@@ -71,6 +71,22 @@ PLAIN_TEXT = (
     "quarterly board session for your records. Kind regards."
 )
 
+#: Synthetic (fabricated, non-real) fixture mirroring docs/Master_Rules_Combined.md
+#: Section 7's structure for a Bilateral Agreement. Never real extracted values.
+BILATERAL_AGREEMENT_TEXT = """BILATERAL AGREEMENT
+This Agreement is made between the Bank and the Department.
+Department: Sample Regional Development Authority
+
+Section 5 - Transaction Charges
+Section 5.2: As per prevailing charges of 1-Link, PKR 15 per transaction, payable via PayMin.
+
+Section 6 - Account Information
+Account Title: Sample Regional Development Authority
+Account Number: 9876543210
+IBAN: DE89370400440532013000
+Effective Date: 2026-01-15
+"""
+
 
 def make_text_pdf_bytes(text: str) -> bytes:
     """Build a digital PDF whose probed text is exactly ``text``."""
@@ -377,6 +393,47 @@ def test_analyze_every_checklist_type_is_recognized_not_unknown(
     assert item["document_type"] == document_type.value
     assert item["verification_status"] == "NEEDS_REVIEW"
     assert item["extracted_fields"] == {}
+
+
+def test_analyze_bilateral_agreement_runs_real_extraction(
+    authenticated_client, storage_root
+):
+    """BILATERAL_AGREEMENT now has a real extractor (Phase 1), unlike the
+    other 8 checklist types still covered by the "recognized but unsupported"
+    stub above. A document typed BILATERAL_AGREEMENT by the splitter must be
+    routed to real field extraction, not the stub message.
+    """
+    application_id = create_application(authenticated_client)
+    add_digital_pdf(
+        storage_root,
+        application_id,
+        BILATERAL_AGREEMENT_TEXT,
+        document_type=DocumentType.BILATERAL_AGREEMENT,
+        filename="bilateral.pdf",
+    )
+    run_processing(authenticated_client, application_id)
+
+    result = analyze_documents(authenticated_client, application_id)
+
+    assert result["total_analyzed"] == 1
+    assert result["total_failed"] == 0
+    item = result["items"][0]
+    assert item["outcome"] == "ANALYZED"
+    assert item["document_type"] == "BILATERAL_AGREEMENT"
+    fields = item["extracted_fields"]
+    assert fields["organization_name"] == "Sample Regional Development Authority"
+    assert fields["platform_name"] == "PayMin"
+    assert fields["account_number"] == "9876543210"
+    assert fields["iban"] == "DE89370400440532013000"
+    assert fields["effective_date"] == "2026-01-15"
+    assert item["confidence_score"] is not None
+    assert item["confidence_score"] > 0.0
+    assert item.get("message") is None
+
+    stored = get_analysis_results(authenticated_client, application_id)
+    stored_item = stored["items"][0]
+    assert stored_item["document_type"] == "BILATERAL_AGREEMENT"
+    assert stored_item["extracted_fields"]["account_number"] == "9876543210"
 
 
 def test_analyze_other_supporting_document_still_reports_unknown(
