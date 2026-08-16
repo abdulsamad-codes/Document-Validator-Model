@@ -422,6 +422,58 @@ class BilateralAgreementExtractor(RegexExtractor):
     }
 
 
+class AuthorityLetterExtractor(RegexExtractor):
+    """Extracts structured fields from an Authority Letter.
+
+    Real Authority Letters follow a standard prose template -- confirmed
+    against two independent real departments in Confidential Data/, almost
+    word-for-word identical: "It is hereby authorized that Mr. <name>,
+    <designation> is authorized to deal with and conduct correspondence and
+    matter(s) related to 1-Link and the Khyber Pakhtunkhwa Information
+    Technology Board (KPITB) on (the) behalf of <organization>." Only this
+    prose-embedded variant is validated. docs/IMPLEMENTATION_ROADMAP.md also
+    describes a labeled-block variant ("Name:"/"Designation:" fields) that
+    has not yet turned up in a real sample -- not built blind (see the
+    roadmap's Phase 1 "why this can't be done blind" note); a document using
+    that form will simply extract nothing here rather than guess.
+
+    Unlike docs/Master_Rules_Combined.md Section 2 ("account maintenance
+    details must appear at the top"), neither real sample reviewed so far
+    carries any bank account information at all -- account_holder/
+    account_number/iban are extracted opportunistically (reusing the same
+    patterns as BilateralAgreementExtractor) but are not critical fields,
+    see constants.CRITICAL_FIELDS.
+    """
+
+    document_type = AnalyzedDocumentType.AUTHORITY_LETTER
+
+    _patterns = {
+        "focal_person_name": re.compile(
+            r"Mr\.?\s+([A-Za-z][A-Za-z.'\- ]*?)\s*[,(]",
+        ),
+        "focal_person_designation": re.compile(
+            r"Mr\.?\s+[A-Za-z][A-Za-z.'\- ]*?[,(]\s*([^,()]+?)(?=[,()]|\s+is\s+authorized)",
+            re.IGNORECASE,
+        ),
+        "organization_name": re.compile(
+            r"on\s+(?:the\s+)?behalf\s+of\s+([^.\n]+)",
+            re.IGNORECASE,
+        ),
+        "account_holder": re.compile(
+            r"(?:Account Title|Account Holder|Account Name)\s*[:|-]?\s*(.+)",
+            re.IGNORECASE | re.MULTILINE,
+        ),
+        "account_number": re.compile(
+            r"(?:Account Number|A/?C No\.?|Account No\.?)\s*[:|-]?\s*([A-Za-z0-9\-/ ]+)",
+            re.IGNORECASE | re.MULTILINE,
+        ),
+        "iban": re.compile(
+            r"\bIBAN\b\s*[:|-]?\s*([A-Z]{2}\d{2}[A-Z0-9]{10,30})",
+            re.IGNORECASE,
+        ),
+    }
+
+
 #: Detection keywords per analysed document type. Weights express how strongly a
 #: keyword identifies the type; scoring is order-independent and deterministic.
 _DETECTION_KEYWORDS: dict[AnalyzedDocumentType, list[tuple[str, int]]] = {
@@ -466,6 +518,7 @@ _EXTRACTORS: dict[AnalyzedDocumentType, RegexExtractor] = {
     AnalyzedDocumentType.ID_DOCUMENT: IdentityExtractor(),
     AnalyzedDocumentType.TAX_DOCUMENT: TaxExtractor(),
     AnalyzedDocumentType.BILATERAL_AGREEMENT: BilateralAgreementExtractor(),
+    AnalyzedDocumentType.AUTHORITY_LETTER: AuthorityLetterExtractor(),
 }
 
 

@@ -87,6 +87,20 @@ IBAN: DE89370400440532013000
 Effective Date: 2026-01-15
 """
 
+#: Synthetic (fabricated, non-real) fixture mirroring the real prose-embedded
+#: Authority Letter template confirmed on two independent real departments in
+#: Confidential Data/. Never real extracted values. Deliberately mentions
+#: "Account" nowhere, matching real evidence that Authority Letters routinely
+#: omit bank details -- this is also what proves the routing-precedence fix:
+#: this text has zero bank-statement-shaped labels for detect_document_type's
+#: keyword table to latch onto.
+AUTHORITY_LETTER_TEXT = """AUTHORITY LETTER
+It is hereby authorized that Mr. Naveed Khan, Deputy Director Administration
+(BPS-18) is authorized to deal with and conduct correspondence and matter related
+to 1-Link and the Khyber Pakhtunkhwa Information Technology Board (KPITB) on the
+behalf of Directorate.
+"""
+
 
 def make_text_pdf_bytes(text: str) -> bytes:
     """Build a digital PDF whose probed text is exactly ``text``."""
@@ -434,6 +448,46 @@ def test_analyze_bilateral_agreement_runs_real_extraction(
     stored_item = stored["items"][0]
     assert stored_item["document_type"] == "BILATERAL_AGREEMENT"
     assert stored_item["extracted_fields"]["account_number"] == "9876543210"
+
+
+def test_analyze_authority_letter_runs_real_extraction(
+    authenticated_client, storage_root
+):
+    """AUTHORITY_LETTER now has a real extractor (Phase 1, second checklist
+    type). Also proves the routing-precedence fix: this text has no
+    bank-statement-shaped labels at all, so if detect_document_type's
+    keyword table ran first (instead of the splitter's own classification),
+    it would score 0 and report UNKNOWN rather than reaching this extractor.
+    """
+    application_id = create_application(authenticated_client)
+    add_digital_pdf(
+        storage_root,
+        application_id,
+        AUTHORITY_LETTER_TEXT,
+        document_type=DocumentType.AUTHORITY_LETTER,
+        filename="authority.pdf",
+    )
+    run_processing(authenticated_client, application_id)
+
+    result = analyze_documents(authenticated_client, application_id)
+
+    assert result["total_analyzed"] == 1
+    assert result["total_failed"] == 0
+    item = result["items"][0]
+    assert item["outcome"] == "ANALYZED"
+    assert item["document_type"] == "AUTHORITY_LETTER"
+    fields = item["extracted_fields"]
+    assert fields["focal_person_name"] == "Naveed Khan"
+    assert fields["focal_person_designation"] == "Deputy Director Administration"
+    assert fields["organization_name"] == "Directorate"
+    assert item["confidence_score"] is not None
+    assert item["confidence_score"] > 0.0
+    assert item.get("message") is None
+
+    stored = get_analysis_results(authenticated_client, application_id)
+    stored_item = stored["items"][0]
+    assert stored_item["document_type"] == "AUTHORITY_LETTER"
+    assert stored_item["extracted_fields"]["focal_person_name"] == "Naveed Khan"
 
 
 def test_analyze_other_supporting_document_still_reports_unknown(

@@ -81,6 +81,7 @@ _UNCLASSIFIED_STORAGE_TYPES = frozenset(
 #: time as each gets a real extractor and real-sample validation.
 _CHECKLIST_TYPE_MAP: dict[DocumentType, AnalyzedDocumentType] = {
     DocumentType.BILATERAL_AGREEMENT: AnalyzedDocumentType.BILATERAL_AGREEMENT,
+    DocumentType.AUTHORITY_LETTER: AnalyzedDocumentType.AUTHORITY_LETTER,
 }
 
 
@@ -230,7 +231,7 @@ class DocumentAnalysisService:
                 if recognized_type is not None
                 else None
             )
-            if checklist_analyzed_type is not None:
+            if recognized_type is not None and checklist_analyzed_type is not None:
                 # The splitter's classification is anchored to a title match
                 # in the page header (app/preprocessing/splitter.py), so it is
                 # trusted ahead of the generic keyword scorer below: a real

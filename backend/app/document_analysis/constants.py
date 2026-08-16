@@ -27,6 +27,10 @@ class AnalyzedDocumentType(str, Enum):
     #: enum -- routed via document_analysis.services._CHECKLIST_TYPE_MAP, not
     #: via detect_document_type's keyword table.
     BILATERAL_AGREEMENT = "BILATERAL_AGREEMENT"
+    #: Phase 1, second checklist type. Named identically to the storage-level
+    #: DocumentType.AUTHORITY_LETTER it corresponds to -- see the
+    #: BILATERAL_AGREEMENT comment above for the same routing note.
+    AUTHORITY_LETTER = "AUTHORITY_LETTER"
     UNKNOWN = "UNKNOWN"
 
 
@@ -122,6 +126,22 @@ EXPECTED_FIELDS: dict[AnalyzedDocumentType, frozenset[str]] = {
             "effective_date",
         }
     ),
+    #: account_holder/account_number/iban are opportunistic, not guaranteed:
+    #: docs/Master_Rules_Combined.md Section 2 says "account maintenance
+    #: details must appear at the top", but neither real sample reviewed so
+    #: far (two independent departments, Confidential Data/) carries any bank
+    #: account information at all -- real evidence overrides the spec's
+    #: framing here, see CRITICAL_FIELDS below.
+    AnalyzedDocumentType.AUTHORITY_LETTER: frozenset(
+        {
+            "focal_person_name",
+            "focal_person_designation",
+            "organization_name",
+            "account_holder",
+            "account_number",
+            "iban",
+        }
+    ),
 }
 
 #: Fields whose absence forces the document into manual review regardless of
@@ -148,5 +168,13 @@ CRITICAL_FIELDS: dict[AnalyzedDocumentType, frozenset[str]] = {
     #: because the cross-document consistency rules can never pass without it.
     AnalyzedDocumentType.BILATERAL_AGREEMENT: frozenset(
         {"organization_name", "account_number", "transaction_charges"}
+    ),
+    #: account_holder/account_number/iban deliberately excluded -- real
+    #: evidence (two independent departments) shows Authority Letters
+    #: routinely omit bank details entirely, despite the master-rules spec
+    #: implying they're required; treating them as critical would force every
+    #: real application into manual review for a field that's rarely there.
+    AnalyzedDocumentType.AUTHORITY_LETTER: frozenset(
+        {"focal_person_name", "focal_person_designation", "organization_name"}
     ),
 }

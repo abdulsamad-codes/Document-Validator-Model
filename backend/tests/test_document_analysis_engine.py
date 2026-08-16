@@ -100,6 +100,26 @@ IBAN: DE89370400440532013000
 Effective Date: 2026-01-15
 """
 
+#: Synthetic (fabricated, non-real) fixtures mirroring the real prose-embedded
+#: Authority Letter template confirmed on two independent real departments in
+#: Confidential Data/ -- structurally near-identical wording, one using a
+#: comma before the designation, the other parenthesizing it. Never real
+#: extracted values.
+AUTHORITY_LETTER_TEXT_COMMA_FORM = """AUTHORITY LETTER
+It is hereby authorized that Mr. Naveed Khan, Deputy Director Administration \
+(BPS-18) is authorized to deal with and conduct correspondence and matter \
+related to 1-Link and the Khyber Pakhtunkhwa Information Technology Board \
+(KPITB) on the behalf of Directorate.
+"""
+
+AUTHORITY_LETTER_TEXT_PAREN_FORM = """AUTHORITY LETTER
+It is hereby authorized that Mr. Salman Raza (Assistant Finance Officer) \
+Tehsil Municipal Administration Sample is authorized to deal with and \
+conduct correspondence and matters related to 1-Link and the Khyber \
+Pakhtunkhwa Information Technology Board (KPITB) on behalf of TMA Sample \
+District.
+"""
+
 
 def _components(text: str):
     document_type = detect_document_type(text)
@@ -212,6 +232,48 @@ def test_bilateral_agreement_validators_and_scoring():
     assert by_field["account_number"]["status"] == "valid"
     assert by_field["iban"]["status"] == "valid"
     assert by_field["effective_date"]["status"] == "valid"
+
+    consistency = RulesEngine().run(document_type, fields)
+    assert consistency == []  # no consistency rules registered yet for this type
+
+    *_components_rest, score, status = scoring_components(
+        document_type,
+        fields=fields,
+        validation_results=validations,
+        consistency_results=consistency,
+    )
+    assert score > 0.0
+    assert status is not VerificationStatus.FAILED
+
+
+def test_extract_authority_letter_fields_comma_form():
+    fields = extract_fields(
+        AUTHORITY_LETTER_TEXT_COMMA_FORM, AnalyzedDocumentType.AUTHORITY_LETTER
+    )
+    assert fields["focal_person_name"] == "Naveed Khan"
+    assert fields["focal_person_designation"] == "Deputy Director Administration"
+    assert fields["organization_name"] == "Directorate"
+
+
+def test_extract_authority_letter_fields_paren_form():
+    fields = extract_fields(
+        AUTHORITY_LETTER_TEXT_PAREN_FORM, AnalyzedDocumentType.AUTHORITY_LETTER
+    )
+    assert fields["focal_person_name"] == "Salman Raza"
+    assert fields["focal_person_designation"] == "Assistant Finance Officer"
+    assert fields["organization_name"] == "TMA Sample District"
+
+
+def test_authority_letter_validators_and_scoring():
+    document_type = AnalyzedDocumentType.AUTHORITY_LETTER
+    fields = extract_fields(AUTHORITY_LETTER_TEXT_COMMA_FORM, document_type)
+    validations = ValidatorEngine().run(document_type, fields)
+    by_field = {result["field"]: result for result in validations}
+    # No account fields in this real-shaped fixture -- must be reported
+    # missing, not invalid, and must not force a critical failure (they are
+    # deliberately not critical fields for this type).
+    assert by_field["account_number"]["status"] == "missing"
+    assert by_field["iban"]["status"] == "missing"
 
     consistency = RulesEngine().run(document_type, fields)
     assert consistency == []  # no consistency rules registered yet for this type

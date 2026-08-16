@@ -13,6 +13,7 @@ from app.reports.constants import REPORT_GROUP_ORDER, VISUAL_TYPE_BY_RULE
 from app.rule_engine.constants import REQUIRED_DOCUMENT_TYPES
 from tests.test_confidence_api import add_digital_statement, evaluate
 from tests.test_document_analysis_api import (
+    AUTHORITY_LETTER_TEXT,
     BANK_STATEMENT_TEXT,
     add_digital_pdf,
     analyze_documents,
@@ -54,20 +55,25 @@ EXPECTED_GROUP_TOTALS = {
 def build_full_application(client, storage_root, *, with_detections: bool) -> int:
     """Build an application carrying all eight required documents, analysed.
 
-    BILATERAL_AGREEMENT gets its own Bilateral-Agreement-shaped text (Phase 1,
-    docs/IMPLEMENTATION_ROADMAP.md gave it a real extractor) carrying the same
-    account_holder/account_number/iban values as BANK_STATEMENT_TEXT, so the
-    cross-document consistency rules still agree; every other required type
-    still has no real extractor and keeps using BANK_STATEMENT_TEXT via the
-    generic keyword-based classifier, unaffected by that change.
+    BILATERAL_AGREEMENT and AUTHORITY_LETTER each get their own real-shaped
+    text (Phase 1, docs/IMPLEMENTATION_ROADMAP.md gave both real extractors).
+    BILATERAL_AGREEMENT's text carries the same account_holder/account_number/
+    iban values as BANK_STATEMENT_TEXT, so the cross-document consistency
+    rules still agree; AUTHORITY_LETTER's CRITICAL_FIELDS are all non-bank
+    fields (focal_person_name/designation/organization_name -- see
+    AuthorityLetterExtractor's docstring), so no cross-document account value
+    needs to line up. Every other required type still has no real extractor
+    and keeps using BANK_STATEMENT_TEXT via the generic keyword-based
+    classifier, unaffected by either change.
     """
     application_id = create_application(client)
     for document_type in REQUIRED_DOCUMENT_TYPES:
-        text = (
-            BILATERAL_STATEMENT_TEXT
-            if document_type is DocumentType.BILATERAL_AGREEMENT
-            else BANK_STATEMENT_TEXT
-        )
+        if document_type is DocumentType.BILATERAL_AGREEMENT:
+            text = BILATERAL_STATEMENT_TEXT
+        elif document_type is DocumentType.AUTHORITY_LETTER:
+            text = AUTHORITY_LETTER_TEXT
+        else:
+            text = BANK_STATEMENT_TEXT
         add_digital_pdf(
             storage_root,
             application_id,
@@ -147,7 +153,11 @@ def test_report_approved_application(authenticated_client, storage_root):
     extraction = report["extraction_summary"]
     assert extraction["total_fields"] > 0
     assert extraction["auto_verified"] == extraction["total_fields"]
-    assert extraction["overall_confidence"] == 1.0
+    # AUTHORITY_LETTER's EXPECTED_FIELDS includes account_holder/account_number/
+    # iban, which real Authority Letters never carry (see AuthorityLetterExtractor's
+    # docstring) -- its template coverage is honestly 0.5, pulling the fleet-wide
+    # mean confidence just under 1.0.
+    assert extraction["overall_confidence"] == 0.9926
 
     assert [item["code"] for item in report["recommendations"]] == [
         "NO_ACTION_REQUIRED"
@@ -231,7 +241,8 @@ def test_report_summary_condensed(authenticated_client, storage_root):
     assert summary["rule_failed"] == 0
     assert summary["rule_pending_review"] == 0
     assert summary["field_count"] > 0
-    assert summary["overall_confidence"] == 1.0
+    # See test_report_approved_application's overall_confidence comment.
+    assert summary["overall_confidence"] == 0.9926
     assert summary["recommendation_count"] == 1
 
 

@@ -192,6 +192,10 @@ _FIELD_VALIDATORS: dict[AnalyzedDocumentType, dict[str, tuple[str, Validator]]] 
         "iban": ("iban_checksum", validate_iban),
         "effective_date": ("date", validate_date),
     },
+    AnalyzedDocumentType.AUTHORITY_LETTER: {
+        "account_number": ("account_number", validate_account_number),
+        "iban": ("iban_checksum", validate_iban),
+    },
 }
 
 
@@ -235,6 +239,8 @@ _FIELD_LABELS: dict[str, str] = {
     "platform_name": "Platform name",
     "transaction_charges": "Transaction charges",
     "effective_date": "Effective date",
+    "focal_person_name": "Focal person name",
+    "focal_person_designation": "Focal person designation",
 }
 
 
