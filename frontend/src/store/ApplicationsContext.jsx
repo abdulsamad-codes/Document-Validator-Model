@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
-import { createApplication, listApplications } from '../services/applications';
+import { createApplication, getApplication, listApplications } from '../services/applications';
 import { listDocuments, replaceDocument, uploadDocument } from '../services/documents';
 import { deleteDocument } from '../services/documents';
 import { getApiErrorMessage } from '../utils/apiError';
@@ -55,6 +55,18 @@ export function ApplicationsProvider({ children }) {
     return load();
   }, [load]);
 
+  const refreshApplication = useCallback(async (applicationId) => {
+    try {
+      const application = await getApplication(applicationId);
+      setApplications((items) =>
+        items.map((item) => (item.id === application.id ? application : item))
+      );
+      return { ok: true, application };
+    } catch (err) {
+      return { ok: false, error: getApiErrorMessage(err) };
+    }
+  }, []);
+
   const create = useCallback(async ({ notes }) => {
     try {
       const application = await createApplication({ notes });
@@ -107,6 +119,7 @@ export function ApplicationsProvider({ children }) {
       loading,
       error,
       reload,
+      refreshApplication,
       create,
       documentsByApplication,
       loadDocuments,
@@ -119,6 +132,7 @@ export function ApplicationsProvider({ children }) {
       loading,
       error,
       reload,
+      refreshApplication,
       create,
       documentsByApplication,
       loadDocuments,

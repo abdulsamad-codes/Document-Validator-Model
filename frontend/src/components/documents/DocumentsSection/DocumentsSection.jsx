@@ -43,7 +43,10 @@ function groupDocuments(documents) {
     items: documents
       .filter((document) => {
         const config = getDocumentTypeConfig(document.document_type);
-        return config.type === entry.type;
+        return (
+          config.type === document.document_type ||
+          config.slotTypes?.includes(document.document_type)
+        ) && config.type === entry.type;
       })
       .sort((a, b) => (a.copy_number ?? 1) - (b.copy_number ?? 1)),
   })).filter((group) => group.items.length > 0);
@@ -83,15 +86,21 @@ function DocumentsSection({ applicationId }) {
         </div>
       ) : error ? (
         <ErrorState message="Unable to load documents." onRetry={reload} />
-      ) : documents.length === 0 ? (
+      ) : groups.length === 0 ? (
         <EmptyState
-          title="No documents uploaded yet"
-          message="Upload the required financial documents to begin verification."
+          title={documents.length === 0 ? 'No documents uploaded yet' : 'No required documents found'}
+          message={
+            documents.length === 0
+              ? 'Upload the required financial documents to begin verification.'
+              : 'Uploaded files are still being processed or are not yet assigned to a required document type.'
+          }
           action={
-            <Link to={`/applications/${applicationId}/upload`} className={styles.uploadLink}>
-              <UploadCloud aria-hidden="true" />
-              Upload Documents
-            </Link>
+            documents.length === 0 ? (
+              <Link to={`/applications/${applicationId}/upload`} className={styles.uploadLink}>
+                <UploadCloud aria-hidden="true" />
+                Upload Documents
+              </Link>
+            ) : undefined
           }
         />
       ) : (

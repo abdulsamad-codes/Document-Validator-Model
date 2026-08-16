@@ -18,7 +18,8 @@ import { useApplicationsStore } from '../store/ApplicationsContext';
  * @param {number|string} applicationId Application id.
  */
 export function useDocuments(applicationId) {
-  const { documentsByApplication, loadDocuments, setDocumentItems } = useApplicationsStore();
+  const { documentsByApplication, loadDocuments, setDocumentItems, refreshApplication } =
+    useApplicationsStore();
   const [pending, setPending] = useState({});
 
   const state = documentsByApplication[applicationId] ?? {};
@@ -105,13 +106,16 @@ export function useDocuments(applicationId) {
 
         clearPending(operationKey);
         upsertDocument(document);
+        // The first upload may give the application its display name; refresh the
+        // store's copy so the Applications list and dashboard reflect it.
+        refreshApplication(applicationId);
         return { ok: true, document };
       } catch (err) {
         clearPending(operationKey);
         return { ok: false, error: getApiErrorMessage(err) };
       }
     },
-    [applicationId, documents, findDocument, upsertDocument]
+    [applicationId, documents, findDocument, upsertDocument, refreshApplication]
   );
 
   const removeDocument = useCallback(
@@ -167,13 +171,16 @@ export function useDocuments(applicationId) {
         clearPending(operationKey);
         // We reload all documents so the newly extracted copies appear in the list.
         await reload();
+        // The bulk upload may give the application its display name; refresh the
+        // store's copy so the Applications list and dashboard reflect it.
+        refreshApplication(applicationId);
         return { ok: true, data: response };
       } catch (err) {
         clearPending(operationKey);
         return { ok: false, error: getApiErrorMessage(err) };
       }
     },
-    [applicationId, reload]
+    [applicationId, reload, refreshApplication]
   );
 
   return useMemo(

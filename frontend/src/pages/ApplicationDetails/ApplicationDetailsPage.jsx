@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 
 import { ArrowLeft, History, ShieldCheck, UploadCloud } from 'lucide-react';
 import ApplicationStatusBadge from '../../components/applications/ApplicationStatusBadge/ApplicationStatusBadge';
@@ -38,14 +38,17 @@ function PlaceholderCard({ icon: Icon, title, message }) {
  */
 function ApplicationDetailsPage() {
   const { applicationId } = useParams();
+  const location = useLocation();
   const { application, loading, error, reload } = useApplication(applicationId);
   const { recordOpened } = useLastOpenedApplication();
 
   useEffect(() => {
-    if (application) {
+    // Arriving via the "Resume Application" chip clears the stored id first, so
+    // don't immediately re-record it here or the chip would never disappear.
+    if (application && !location.state?.fromResume) {
       recordOpened(application.id);
     }
-  }, [application, recordOpened]);
+  }, [application, location.state?.fromResume, recordOpened]);
 
   if (loading) {
     return (

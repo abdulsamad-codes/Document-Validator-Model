@@ -10,6 +10,7 @@ import ApplicationTable from '../../components/applications/ApplicationTable/App
 import ErrorState from '../../components/common/ErrorState/ErrorState';
 import { useApplications } from '../../hooks/useApplications';
 import { useLastOpenedApplication } from '../../hooks/useLastOpenedApplication';
+import { useApplicationsStore } from '../../store/ApplicationsContext';
 import { getPreference } from '../../utils/preferences';
 import styles from './ApplicationsPage.module.css';
 
@@ -37,10 +38,17 @@ function ApplicationsPage() {
     onSortChange,
   } = useApplications();
 
-  const { lastOpenedId } = useLastOpenedApplication();
+  const { applications: storeApplications } = useApplicationsStore();
+  const { lastOpenedId, clear } = useLastOpenedApplication();
   const showResume = Boolean(
-    getPreference('rememberLastOpenedApplication', true) && lastOpenedId != null
+    getPreference('rememberLastOpenedApplication', true) &&
+      lastOpenedId != null &&
+      storeApplications.some((application) => application.id === lastOpenedId)
   );
+
+  const handleResume = () => {
+    clear();
+  };
 
   const hasFilters = Boolean(searchTerm.trim() || statusFilter);
 
@@ -71,7 +79,12 @@ function ApplicationsPage() {
           onChange={onStatusChange}
         />
         {showResume && (
-          <Link to={`/applications/${lastOpenedId}`} className={styles.resumeChip}>
+          <Link
+            to={`/applications/${lastOpenedId}`}
+            state={{ fromResume: true }}
+            className={styles.resumeChip}
+            onClick={handleResume}
+          >
             <History aria-hidden="true" />
             Resume Application #{lastOpenedId}
           </Link>
