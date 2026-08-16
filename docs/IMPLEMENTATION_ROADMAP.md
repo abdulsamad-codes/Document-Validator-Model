@@ -2,6 +2,8 @@
 
 Last updated: 2026-08-15. Written after a foundation audit, a remediation phase (4 issues fixed and shipped), and a first real-data end-to-end test that surfaced a critical splitter bug. This is a forward-looking plan — for what already happened, see `CONTEXT.md`.
 
+**Status as of 2026-08-16**: Phase 0 is done (verified on real data, `b040927`, plus a follow-up classifier fix `68d47d6` for a checklist-page false positive found while verifying it). Phase 1 is underway: item 1 (Bilateral Agreement) has a real extractor committed (`08bec31`), real-sample validation still pending; item 2 (Authority Letter) is in progress. See `CONTEXT.md` for the verified details — this file's phase descriptions below are left as originally written (the plan, not the log).
+
 **How to use this document**: each phase has a concrete definition of done. Phases are ordered by dependency and risk, not by how interesting they are — later phases are often blocked on earlier ones actually working. "Complete" is defined at the bottom; nothing here should be treated as done until its own definition-of-done is met and verified, ideally against a real file from `Confidential Data/`, not just synthetic tests.
 
 ---
