@@ -125,6 +125,31 @@ def test_split_consecutive_same_type_grouped():
     assert result[0][0] == DocumentType.SCHEDULE_OF_CHARGES
 
 
+def test_split_checklist_cover_page_is_not_misclassified():
+    """A checklist page listing required documents by name must not be
+    mistaken for one of the documents it lists.
+
+    Regression test for a real bug found 2026-08-16 on a real file in
+    Confidential Data/: a checklist/manifest cover page's first table row
+    ("Authority Letter of officer - Signed") fell inside the header zone and
+    strong-matched AUTHORITY_LETTER, producing a spurious second copy of a
+    document that only existed once for real -- confirmed by comparing the
+    real page's actual OCR text (a checklist titled "CHECKLIST FOR
+    ON-BOARDING...") against the real single genuine Authority Letter page
+    later in the same file.
+    """
+    types = _doc_types([
+        "CHECKLIST\nAuthority Letter of officer - Signed\n"
+        "Account Maintenance Certificate from Bank",
+        "AUTHORITY LETTER\nIt is hereby authorized that the officer may act "
+        "on our behalf.",
+    ])
+    assert types == [
+        DocumentType.OTHER_SUPPORTING_DOCUMENT,
+        DocumentType.AUTHORITY_LETTER,
+    ]
+
+
 def test_classify_text_authority_letter():
     """The classifier should detect AUTHORITY LETTER keyword."""
     doc_type = DocumentSplitter._classify_text("AUTHORITY LETTER\nFrom the CEO")
