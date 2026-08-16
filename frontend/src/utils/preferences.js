@@ -13,7 +13,7 @@ export const PREFERENCE_DEFAULTS = {
   rememberLastOpenedApplication: true,
   confirmBeforeDeleteDocument: true,
   confirmBeforeRejectApplication: true,
-  autoStartProcessingAfterUpload: false,
+  autoStartProcessingAfterUpload: true,
   autoRefreshProcessingStatus: true,
   openReportOnProcessingComplete: false,
 };
