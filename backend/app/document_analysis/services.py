@@ -92,6 +92,7 @@ _CHECKLIST_TYPE_MAP: dict[DocumentType, AnalyzedDocumentType] = {
         AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE
     ),
     DocumentType.TRIPARTITE_AGREEMENT: AnalyzedDocumentType.TRIPARTITE_AGREEMENT,
+    DocumentType.BUSINESS_REQUIREMENT_DOCUMENT: AnalyzedDocumentType.BUSINESS_REQUIREMENT_DOCUMENT,
 }
 
 

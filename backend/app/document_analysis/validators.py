@@ -254,6 +254,8 @@ _FIELD_LABELS: dict[str, str] = {
     "party_1link": "1-Link party",
     "party_kpitb": "KPITB party",
     "party_subbiller": "Sub-biller party",
+    "digitization_intent_confirmed": "Digitization intent confirmation",
+    "revenue_services_listed": "Revenue-generating services list",
 }
 
 

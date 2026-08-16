@@ -30,6 +30,10 @@ class AnalyzedDocumentType(str, Enum):
     AUTHORITY_LETTER = "AUTHORITY_LETTER"
     ACCOUNT_MAINTENANCE_CERTIFICATE = "ACCOUNT_MAINTENANCE_CERTIFICATE"
     TRIPARTITE_AGREEMENT = "TRIPARTITE_AGREEMENT"
+    #: Phase 1, fourth checklist type. Named identically to the storage-level
+    #: DocumentType.BUSINESS_REQUIREMENT_DOCUMENT it corresponds to -- see the
+    #: BILATERAL_AGREEMENT comment above for the same routing note.
+    BUSINESS_REQUIREMENT_DOCUMENT = "BUSINESS_REQUIREMENT_DOCUMENT"
     UNKNOWN = "UNKNOWN"
 
 
@@ -167,6 +171,14 @@ EXPECTED_FIELDS: dict[AnalyzedDocumentType, frozenset[str]] = {
             "branch_code",
         }
     ),
+    #: docs/Master_Rules_Combined.md Section 10 requires the BRD to both
+    #: confirm digitization intent and list the revenue-generating services.
+    #: Real BRDs (three independent departments, Confidential Data/) satisfy
+    #: both but with no shared template -- see CRITICAL_FIELDS below for why
+    #: only one of the two is treated as reliably detectable.
+    AnalyzedDocumentType.BUSINESS_REQUIREMENT_DOCUMENT: frozenset(
+        {"digitization_intent_confirmed", "revenue_services_listed"}
+    ),
 }
 
 #: Fields whose absence forces the document into manual review regardless of
@@ -207,5 +219,27 @@ CRITICAL_FIELDS: dict[AnalyzedDocumentType, frozenset[str]] = {
     ),
     AnalyzedDocumentType.TRIPARTITE_AGREEMENT: frozenset(
         {"party_1link", "party_kpitb", "party_subbiller", "account_holder", "account_number"}
+    ),
+    #: digitization_intent_confirmed only. Master rules require BOTH this and
+    #: revenue_services_listed (Section 10: "confirms... digitized" and
+    #: "identifies and lists... services", neither hedged) -- unlike Authority
+    #: Letter's bank fields, real evidence doesn't contradict either
+    #: requirement; both are genuinely present in all three real samples
+    #: reviewed. But the two differ sharply in extraction reliability.
+    #: digitization_intent_confirmed is anchored on "KPITB('s) Fin(-)Tech
+    #: Unit" -- a specific institutional name that must appear verbatim in
+    #: any real onboarding-intent statement, near-templated the same way
+    #: Authority Letter's core sentence was, so one regex generalizes with
+    #: real confidence. revenue_services_listed's real-world phrasing has no
+    #: such anchor -- the three samples express it as informal single-fee
+    #: prose, a numbered list, and a categorized bullet breakdown
+    #: respectively, three structurally incompatible forms. The regex here is
+    #: anchored on those three known phrasings and will plausibly miss a
+    #: fourth department's own wording -- a real extraction-reliability gap,
+    #: not a documented absence, so treating it as critical would risk
+    #: failing real, compliant BRDs whose services list just isn't phrased
+    #: one of the three known ways.
+    AnalyzedDocumentType.BUSINESS_REQUIREMENT_DOCUMENT: frozenset(
+        {"digitization_intent_confirmed"}
     ),
 }

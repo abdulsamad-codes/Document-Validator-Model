@@ -148,6 +148,70 @@ Account Number: 01234567890123
 Branch: Main Branch, Peshawar
 """
 
+#: Synthetic (fabricated, non-real) fixtures mirroring the three real BRD
+#: structural variants confirmed in Confidential Data/ (three independent
+#: departments) -- unlike Authority Letter, no shared template exists, so
+#: each fixture mirrors a different real department's actual shape rather
+#: than one clean case. Never real extracted values.
+BRD_TEXT_PROSE_FORM = """BUSINESS REQUIREMENT DOCUMENT
+The Directorate of Sample Affairs, Sample Province, was established in 1995
+and provides recreational facilities across the region. Visitors register
+for membership and pay the prescribed fees at each facility office.
+For ease and transparency, this office is already collaborating with KPITB
+on a Management Information System and plans to integrate digital payment
+solutions through KPITB's FinTech Unit within the system.
+"""
+
+BRD_TEXT_NUMBERED_LIST_FORM = """BUSINESS REQUIREMENT DOCUMENTS
+Tehsil Municipal Administration Sample is a local government entity
+responsible for providing Municipal Services to the general public. The
+major sources of Income of this TMA are:
+1. General Bus Stand
+2. Cattle Fair Sample
+3. Service Fee
+INTENTION TO ON-BOARD DEPARTMENT FOR THE ENABLEMENT OF THE DIGITAL
+PAYMENTS VIA KPITB's FIN TECH UNIT
+This Office intends to go towards Digital Payments via KPITB'S FIN TECH
+UNIT.
+"""
+
+BRD_TEXT_CATEGORIZED_BULLETS_FORM = """Business Requirement Document
+1. Brief Background of Department:
+The Sample Development Authority is a government organization responsible
+for planning and development in the Sample region.
+2. SERVICES OFFERED:
+Revenue Collection
+Taxes (Property Tax, Water Tax)
+Miscellaneous (Registration Fee, Lease Renewal, Rents)
+4. Intention to on-board department for the enablement of the digital
+payments via KPITB's FinTech Unit
+The Authority intends to collaborate with KPITB's FinTech Unit to digitize
+all revenue streams.
+"""
+
+#: Missing the digitization-intent confirmation entirely -- a real BRD would
+#: never omit this per docs/Master_Rules_Combined.md Section 10, but the
+#: extractor must still degrade honestly (missing, not invalid) rather than
+#: raise.
+BRD_TEXT_NO_DIGITIZATION_MENTION = """BUSINESS REQUIREMENT DOCUMENT
+The Directorate of Sample Affairs was established in 1995 and provides
+recreational facilities across the region. Visitors pay the prescribed
+fees at each facility office.
+"""
+
+#: Missing the services-list mention -- unlike the digitization-intent case
+#: above, this field is non-critical, but Section 10 still requires it, so
+#: its absence must stay visible to a human reviewer (a "missing" validation
+#: result and a downgraded, non-VERIFIED status) rather than being hidden by
+#: the non-critical classification.
+BRD_TEXT_NO_SERVICES_MENTION = """BUSINESS REQUIREMENT DOCUMENT
+The Directorate of Sample Affairs, Sample Province, was established in 1995
+and provides recreational facilities across the region.
+For ease and transparency, this office is already collaborating with KPITB
+on a Management Information System and plans to integrate digital payment
+solutions through KPITB's FinTech Unit within the system.
+"""
+
 
 def _components(text: str):
     document_type = detect_document_type(text)
@@ -353,6 +417,99 @@ def test_checklist_field_labels_never_route_into_keyword_detection():
         detect_document_type(ACCOUNT_MAINTENANCE_CERTIFICATE_TEXT)
         is not AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE
     )
+
+
+def test_extract_brd_fields_prose_form():
+    fields = extract_fields(
+        BRD_TEXT_PROSE_FORM, AnalyzedDocumentType.BUSINESS_REQUIREMENT_DOCUMENT
+    )
+    assert fields["digitization_intent_confirmed"] == "KPITB's FinTech Unit"
+    assert fields["revenue_services_listed"] == "prescribed fees"
+
+
+def test_extract_brd_fields_numbered_list_form():
+    fields = extract_fields(
+        BRD_TEXT_NUMBERED_LIST_FORM,
+        AnalyzedDocumentType.BUSINESS_REQUIREMENT_DOCUMENT,
+    )
+    assert fields["digitization_intent_confirmed"] == "KPITB's FIN TECH UNIT"
+    assert fields["revenue_services_listed"] == "sources of Income"
+
+
+def test_extract_brd_fields_categorized_bullets_form():
+    fields = extract_fields(
+        BRD_TEXT_CATEGORIZED_BULLETS_FORM,
+        AnalyzedDocumentType.BUSINESS_REQUIREMENT_DOCUMENT,
+    )
+    assert fields["digitization_intent_confirmed"] == "KPITB's FinTech Unit"
+    assert fields["revenue_services_listed"] == "SERVICES OFFERED"
+
+
+def test_brd_missing_digitization_mention_is_missing_not_invalid():
+    document_type = AnalyzedDocumentType.BUSINESS_REQUIREMENT_DOCUMENT
+    fields = extract_fields(BRD_TEXT_NO_DIGITIZATION_MENTION, document_type)
+    assert "digitization_intent_confirmed" not in fields
+
+    validations = ValidatorEngine().run(document_type, fields)
+    by_field = {result["field"]: result for result in validations}
+    assert by_field["digitization_intent_confirmed"]["status"] == "missing"
+
+    *_components_rest, score, status = scoring_components(
+        document_type,
+        fields=fields,
+        validation_results=validations,
+        consistency_results=RulesEngine().run(document_type, fields),
+    )
+    # digitization_intent_confirmed is critical -- its absence must force
+    # manual review, not a silent pass.
+    assert status is VerificationStatus.NEEDS_REVIEW
+
+
+def test_brd_missing_services_list_is_visible_but_not_blocking():
+    document_type = AnalyzedDocumentType.BUSINESS_REQUIREMENT_DOCUMENT
+    fields = extract_fields(BRD_TEXT_NO_SERVICES_MENTION, document_type)
+    assert fields["digitization_intent_confirmed"] == "KPITB's FinTech Unit"
+    assert "revenue_services_listed" not in fields
+
+    validations = ValidatorEngine().run(document_type, fields)
+    by_field = {result["field"]: result for result in validations}
+    # revenue_services_listed is non-critical, but Section 10 requires it --
+    # its absence must still surface to a reviewer as "missing", not vanish
+    # from the results just because it isn't critical.
+    assert by_field["revenue_services_listed"]["status"] == "missing"
+    assert by_field["digitization_intent_confirmed"]["status"] == "valid"
+
+    *_components_rest, score, status = scoring_components(
+        document_type,
+        fields=fields,
+        validation_results=validations,
+        consistency_results=RulesEngine().run(document_type, fields),
+    )
+    # Non-critical, so this alone must not force NEEDS_REVIEW -- but it must
+    # still cost something: not a full VERIFIED pass either.
+    assert status is not VerificationStatus.NEEDS_REVIEW
+    assert status is not VerificationStatus.VERIFIED
+
+
+def test_brd_validators_and_scoring():
+    document_type = AnalyzedDocumentType.BUSINESS_REQUIREMENT_DOCUMENT
+    fields = extract_fields(BRD_TEXT_NUMBERED_LIST_FORM, document_type)
+    validations = ValidatorEngine().run(document_type, fields)
+    by_field = {result["field"]: result for result in validations}
+    assert by_field["digitization_intent_confirmed"]["status"] == "valid"
+    assert by_field["revenue_services_listed"]["status"] == "valid"
+
+    consistency = RulesEngine().run(document_type, fields)
+    assert consistency == []  # no consistency rules registered yet for this type
+
+    *_components_rest, score, status = scoring_components(
+        document_type,
+        fields=fields,
+        validation_results=validations,
+        consistency_results=consistency,
+    )
+    assert score > 0.0
+    assert status is not VerificationStatus.FAILED
 
 
 def test_parse_amount_variants():

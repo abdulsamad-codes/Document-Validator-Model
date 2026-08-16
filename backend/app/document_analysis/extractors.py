@@ -474,6 +474,43 @@ class AuthorityLetterExtractor(RegexExtractor):
     }
 
 
+class BusinessRequirementDocumentExtractor(RegexExtractor):
+    """Extracts presence signals from a Business Requirement Document (BRD).
+
+    docs/Master_Rules_Combined.md Section 10 requires the BRD to (a) confirm
+    that payments are required to be digitized and (b) identify/list the
+    revenue-generating services being digitized. Real BRDs (three independent
+    departments, Confidential Data/) satisfy both requirements but express
+    them with no shared template at all -- unlike Bilateral Agreement or
+    Authority Letter, there is no labeled field or single consistent sentence
+    grammar here; department history, section headers and list format (a
+    numbered list, a categorized bullet breakdown, or unstructured prose all
+    turned up across the three samples) differ per department. So neither
+    field extracts a *value* in the usual sense -- both are presence
+    detectors whose captured group is the anchor phrase that triggered them,
+    kept as the field's value for a human reviewer's context.
+
+    digitization_intent_confirmed is anchored on "KPITB('s) Fin(-)Tech Unit"
+    -- confirmed verbatim (case/spacing aside) in all three real samples,
+    the one genuinely consistent element, the same way Authority Letter had
+    one consistent core sentence. See constants.CRITICAL_FIELDS for why only
+    this field, not revenue_services_listed, is treated as critical.
+    """
+
+    document_type = AnalyzedDocumentType.BUSINESS_REQUIREMENT_DOCUMENT
+
+    _patterns = {
+        "digitization_intent_confirmed": re.compile(
+            r"(KPITB'?S?\s+Fin\s*Tech\s+Unit)",
+            re.IGNORECASE,
+        ),
+        "revenue_services_listed": re.compile(
+            r"(sources? of income|services offered|revenue[- ]generating services|prescribed fees?)",
+            re.IGNORECASE,
+        ),
+    }
+
+
 #: Detection keywords per analysed document type. Weights express how strongly a
 #: keyword identifies the type; scoring is order-independent and deterministic.
 _DETECTION_KEYWORDS: dict[AnalyzedDocumentType, list[tuple[str, int]]] = {
@@ -608,6 +645,7 @@ _EXTRACTORS: dict[AnalyzedDocumentType, RegexExtractor] = {
     AnalyzedDocumentType.AUTHORITY_LETTER: AuthorityLetterExtractor(),
     AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE: AccountMaintenanceCertificateExtractor(),
     AnalyzedDocumentType.TRIPARTITE_AGREEMENT: TripartiteAgreementExtractor(),
+    AnalyzedDocumentType.BUSINESS_REQUIREMENT_DOCUMENT: BusinessRequirementDocumentExtractor(),
 }
 
 

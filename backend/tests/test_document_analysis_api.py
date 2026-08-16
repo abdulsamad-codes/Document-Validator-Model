@@ -128,6 +128,20 @@ to 1-Link and the Khyber Pakhtunkhwa Information Technology Board (KPITB) on the
 behalf of Directorate.
 """
 
+#: Synthetic (fabricated, non-real), mirroring the "prose form" BRD variant
+#: confirmed in Confidential Data/ (one of three real structural shapes, see
+#: test_document_analysis_engine.py's BRD fixtures for the other two). Has no
+#: bank-statement-shaped labels, proving the same routing-precedence fix
+#: Authority Letter's test proves.
+BUSINESS_REQUIREMENT_DOCUMENT_TEXT = """BUSINESS REQUIREMENT DOCUMENT
+The Directorate of Sample Affairs, Sample Province, was established in
+1995 and provides recreational facilities across the region. Visitors
+register for membership and pay the prescribed fees at each facility
+office. This office is already collaborating with KPITB on a Management
+Information System and plans to integrate digital payment solutions
+through KPITB's FinTech Unit within the system.
+"""
+
 
 def make_text_pdf_bytes(text: str) -> bytes:
     """Build a digital PDF whose probed text is exactly ``text``."""
@@ -604,6 +618,48 @@ def test_analyze_authority_letter_runs_real_extraction(
     stored_item = stored["items"][0]
     assert stored_item["document_type"] == "AUTHORITY_LETTER"
     assert stored_item["extracted_fields"]["focal_person_name"] == "Naveed Khan"
+
+
+def test_analyze_business_requirement_document_runs_real_extraction(
+    authenticated_client, storage_root
+):
+    """BUSINESS_REQUIREMENT_DOCUMENT now has a real extractor (Phase 1, third
+    checklist type). Also proves the routing-precedence fix: this text has no
+    bank-statement-shaped labels at all, so if detect_document_type's
+    keyword table ran first (instead of the splitter's own classification),
+    it would score 0 and report UNKNOWN rather than reaching this extractor.
+    """
+    application_id = create_application(authenticated_client)
+    add_digital_pdf(
+        storage_root,
+        application_id,
+        BUSINESS_REQUIREMENT_DOCUMENT_TEXT,
+        document_type=DocumentType.BUSINESS_REQUIREMENT_DOCUMENT,
+        filename="brd.pdf",
+    )
+    run_processing(authenticated_client, application_id)
+
+    result = analyze_documents(authenticated_client, application_id)
+
+    assert result["total_analyzed"] == 1
+    assert result["total_failed"] == 0
+    item = result["items"][0]
+    assert item["outcome"] == "ANALYZED"
+    assert item["document_type"] == "BUSINESS_REQUIREMENT_DOCUMENT"
+    fields = item["extracted_fields"]
+    assert fields["digitization_intent_confirmed"] == "KPITB's FinTech Unit"
+    assert fields["revenue_services_listed"] == "prescribed fees"
+    assert item["confidence_score"] is not None
+    assert item["confidence_score"] > 0.0
+    assert item.get("message") is None
+
+    stored = get_analysis_results(authenticated_client, application_id)
+    stored_item = stored["items"][0]
+    assert stored_item["document_type"] == "BUSINESS_REQUIREMENT_DOCUMENT"
+    assert (
+        stored_item["extracted_fields"]["digitization_intent_confirmed"]
+        == "KPITB's FinTech Unit"
+    )
 
 
 def test_analyze_other_supporting_document_still_reports_unknown(
