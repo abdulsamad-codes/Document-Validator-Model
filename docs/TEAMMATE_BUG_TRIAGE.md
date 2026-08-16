@@ -6,10 +6,30 @@ issue, six standalone UI/pipeline complaints, a 25-item Critical/High/Medium/Low
 severity list, and a root-cause chain for "uploaded documents never get processed."
 
 Every item below was independently verified against the current codebase (read-only,
-no fixes applied as part of this triage). **Corrected tally: 29 CONFIRMED, 3 FALSE,
+no fixes applied as part of this triage). **Corrected tally: 28 CONFIRMED, 4 FALSE,
 0 unverifiable, out of 32 total.**
 
-None of the 29 confirmed bugs have been fixed yet — this file is a record of what
+**Correction (2026-08-17, second pass)**: Critical #1 ("missing auth on 40+
+endpoints") was originally marked CONFIRMED in this file's first pass, based on
+grepping each route file individually for `_CURRENT_USER` usage. That grep missed
+`backend/app/api/__init__.py`, which wraps every one of the flagged routers —
+`technical_validation`, `completeness`, `reports`, `document_processing`,
+`document_analysis`, `rule_engine`, `feedback`, `continuous_learning`,
+`normalization`, `validation`, `confidence`, and `upload` — in a single
+`protected_router = APIRouter(dependencies=[Depends(get_current_user)])`, applied
+router-wide on 2026-08-14 (see `backend/tests/test_auth_enforcement.py`, the
+dedicated regression test for this exact gap). Ran that test directly:
+`test_protected_endpoint_inventory_has_53_entries`,
+`test_unauthenticated_requests_rejected_everywhere`, and
+`test_health_and_auth_remain_reachable_without_a_session` all pass — all 53
+protected endpoints reject unauthenticated requests with 401 today, no code
+changes needed. The per-route `_CURRENT_USER` usage this triage found in
+`upload/routes.py`, `confidence/routes.py`, and `human_verification/routes.py`
+isn't the auth gate at all — those specific handlers pull `current_user.name` for
+business data (`created_by`, `reviewer_name`), on top of auth already enforced
+globally. Moved to FALSE below; tally corrected from 29/3 to 28/4.
+
+None of the 28 confirmed bugs have been fixed yet — this file is a record of what
 was found, not a changelog of what was done. See "Suggested fix order" at the bottom
 for a proposed starting point, pending an explicit scope decision on when to pick
 this up.
@@ -17,7 +37,7 @@ this up.
 No real PII or `Confidential Data/` content appears anywhere in this file — every
 finding below is a pure code/file:line reference.
 
-## FALSE (3)
+## FALSE (4)
 
 **`queue_jobs.job_type` missing migration** — reported as: uploading a file gives a
 500 because the `queue_jobs.job_type` column doesn't exist, and the fix is to run
@@ -46,7 +66,14 @@ ProcessingProgress.jsx:64-69` intentionally shows only queued/processing/attenti
 same backend numbers consistently; a completed document not appearing in the
 three-part breakdown is by design, not a data bug.
 
-## CONFIRMED (29)
+**"Missing auth on 40+ endpoints"** — moved here from CONFIRMED, see the
+correction note at the top of this file. `backend/app/api/__init__.py` wraps every
+flagged router in `protected_router = APIRouter(dependencies=
+[Depends(get_current_user)])`, applied globally on 2026-08-14.
+`backend/tests/test_auth_enforcement.py` (3 tests) empirically confirms all 53
+protected endpoints reject unauthenticated requests with 401 right now. Not a bug.
+
+## CONFIRMED (28)
 
 ### Frontend build
 
@@ -78,15 +105,9 @@ three-part breakdown is by design, not a data bug.
 
 ### Critical
 
-1. **Missing auth on 40+ endpoints** — `_CURRENT_USER`/`get_current_user` is
-   completely absent from `technical_validation/routes.py`, `completeness/
-   routes.py`, `reports/routes.py`, `document_processing/routes.py`,
-   `document_analysis/routes.py`, `rule_engine/routes.py`, `feedback/routes.py`,
-   `continuous_learning/routes.py`, `normalization/routes.py`, and `validation/
-   routes.py`. `confidence/routes.py` defines it (line 32) but never uses it on
-   either of its 2 handlers. `upload/routes.py` defines it and uses it on only 1 of
-   10 endpoints (`create_application`, line 95). Contrast with `bulk_queue/
-   routes.py` and `human_verification/routes.py`, which apply it consistently.
+(#1, "missing auth on 40+ endpoints," moved to FALSE above — see the correction
+note at the top of this file. Numbering below is kept as originally reported for
+cross-reference, so this section starts at #2.)
 
 2. **Refresh endpoint always sets `remember=True`** —
    `backend/app/auth/routes.py:221`: `_set_refresh_cookie(response,
@@ -248,15 +269,31 @@ services.py:180-274`) unconditionally enqueues via
 `QueueJobRepository.enqueue_uploaded_documents` (lines 254-258) regardless of any
 preference.
 
+## Notes (informational, not bugs)
+
+**`human_verification/routes.py` per-route auth is inconsistent, but not a security
+gap.** Found while re-establishing ground truth for Critical #1 (above): only
+`submit_human_review` (line 138-143) declares `current_user: _CURRENT_USER` in its
+signature. `get_human_review` (103-106) and `get_human_review_history` (178-181)
+have no per-route auth parameter at all. This does **not** mean those two GET
+endpoints are reachable without a session — `app/api/__init__.py`'s
+`protected_router` wraps `human_verification_router` the same as every other
+module, so all three still require a valid session. It's a real, previously
+undocumented inconsistency in this file's own style (two handlers don't need the
+`current_user` object and so never declared it; `submit_human_review` does need
+it, for `reviewer_name`), worth knowing about if this file is ever touched for an
+unrelated reason — not something to fix on its own.
+
 ## Suggested fix order (not started)
 
-The teammate's own suggested order is a reasonable starting point, not yet acted on:
+The teammate's own suggested order, minus #1 (authentication on routes — already
+fixed 2026-08-14, see the correction note at the top), is a reasonable starting
+point, not yet acted on:
 
-1. Authentication on routes (Critical #1)
-2. Refresh token `remember` flag (Critical #2)
-3. Document statuses display (High #5)
-4. `useVerification` race condition (High #4)
-5. Transaction/audit ordering (High #6)
+1. Refresh token `remember` flag (Critical #2)
+2. Document statuses display (High #5)
+3. `useVerification` race condition (High #4)
+4. Transaction/audit ordering (High #6)
 
 Picking this up is a scope decision for whoever owns it next — this file only
 records what was found and verified.
