@@ -29,10 +29,13 @@ isn't the auth gate at all — those specific handlers pull `current_user.name` 
 business data (`created_by`, `reviewer_name`), on top of auth already enforced
 globally. Moved to FALSE below; tally corrected from 29/3 to 28/4.
 
-None of the 28 confirmed bugs have been fixed yet — this file is a record of what
-was found, not a changelog of what was done. See "Suggested fix order" at the bottom
-for a proposed starting point, pending an explicit scope decision on when to pick
-this up.
+**2 of the 28 confirmed bugs have since been fixed** (the `react-error-boundary`
+devDependency item under "Frontend build" and the `autoStartProcessingAfterUpload`
+default under "Root cause: uploaded documents never get processed" — both marked
+below), by commit `91307f8` on `feature/zarghuna-bulk-queue`, merged to `main` via
+PR #6. The remaining 26 have not been fixed yet — this file is a record of what was
+found, not a changelog of what was done. See "Suggested fix order" at the bottom for
+a proposed starting point, pending an explicit scope decision on when to pick this up.
 
 No real PII or `Confidential Data/` content appears anywhere in this file — every
 finding below is a pure code/file:line reference.
@@ -82,6 +85,9 @@ protected endpoints reject unauthenticated requests with 401 right now. Not a bu
   `frontend/src/components/common/ErrorBoundary/ErrorBoundary.jsx:2`, which wraps
   the entire app at `frontend/src/main.jsx:11` (the root render call). Vite won't
   bundle it in a production build. Fix: move to `dependencies`, reinstall.
+  **Fixed by `91307f8`** — moved to `dependencies` in both `package.json` and
+  `package-lock.json`. Confirmed by reading the diff directly, not assumed from
+  the commit title.
 
 ### UI / pipeline complaints
 
@@ -268,6 +274,29 @@ touches the queue at all, while `upload_bulk` (`backend/app/upload/
 services.py:180-274`) unconditionally enqueues via
 `QueueJobRepository.enqueue_uploaded_documents` (lines 254-258) regardless of any
 preference.
+**Fixed by `91307f8`** — `autoStartProcessingAfterUpload` default flipped to `true`
+in both `preferences.js` and `UploadDocumentsPage.jsx`. Verified this is a complete
+fix, not partial: `startProcessing()` (now called unconditionally after a
+successful upload) hits a real, already-working, separate backend endpoint
+(`POST /applications/{id}/processing/start`, `backend/app/bulk_queue/routes.py:85`)
+— the backend note above explains why the frontend default mattered, it doesn't
+describe a missing backend capability.
+
+## Found during real-sample validation of merged extractors (not from the original teammate report)
+
+Two issues below were found 2026-08-16 empirically validating `AccountMaintenanceCertificateExtractor`
+(`bb3ebfb`, merged via PR #6) against the 5 real cached AMC samples in
+`Confidential Data/.ocr_cache/` — separate provenance from the 32-item teammate
+report above, kept in its own section so this doesn't get folded into that tally.
+Neither is fixed; both are flagged for a scope decision, same framing as the
+`branch_code`/`branch_name` gap documented in `CONTEXT.md`. Not attributed as
+anyone's mistake — the extractor was built and unit-tested before any real AMC
+sample was available to validate against, same situation every Phase 1 extractor
+this session has started from.
+
+**Garbage (not missing) `account_number` value on a combined "Account No/IBAN" label format.** One real sample (Allied Bank, `GDA_Abbotabad__ACCOUNT_MAINTENANCE_CERTIFICATE_copy1.txt`) labels account number and IBAN as a single combined field. `AccountMaintenanceCertificateExtractor`'s `account_number` pattern (`document_analysis/extractors.py`) matches the "Account No" portion of the label, then its capture group (`[A-Za-z0-9\-/ ]+`, which includes `/`) grabs the leading `/IBAN` text before the line's colon — empirically confirmed by direct call: `extract_fields()` returns `account_number == "/IBAN"` for this file. This is not a silent miss: `validate_account_number()` correctly flags it `invalid` ("Account number length is not plausible" — 0 digits after stripping), and end-to-end `scoring_components()` confirms the application lands on `NEEDS_REVIEW` (score 0.55), same practical outcome as if the field were honestly missing. The problem is what a reviewer sees in the meantime: a wrong, garbage-looking value (`/IBAN`) rather than an honest blank. Not fixed — needs either a stricter capture class (excluding `/`) or a dedicated combined-field pattern for this label shape.
+
+**All three critical fields (`account_holder`, `account_number`, `iban`) come back empty for one real sample, root cause confirmed by direct regex testing, not the originally-suspected cause.** `DG_Sports_KP_Onboarding_Documents__ACCOUNT_MAINTENANCE_CERTIFICATE_copy1.txt` (Bank of Khyber) extracts nothing at all. Root cause, confirmed against the actual production regexes (not inferred from a generic label/value layout heuristic, which gave a misleading first read): this bank's certificate lists three parallel account entries as a migration history (old system → current system → Islamic-banking variant), and each entry's label is immediately followed **on the same line** by a bracketed system-name qualifier before any colon/dash separator (structurally: `<label> (<system qualifier>)`, value on the following line). For `account_number`, the regex *does* match — but its capture group can't cross the bracket (not in its allowed character class) and captures only the whitespace between label and bracket, which trims to empty and is correctly dropped as "missing" by the extractor's own trim-and-drop logic. For `account_holder` and `iban`, there's no match at all: no `account_holder`-style label appears anywhere in this file (the holder is only named in narrative prose), and `iban`'s capture group requires a strict IBAN-shaped value immediately following the label, which the next-line-only real value can never satisfy. All three fields being critical, this document deterministically routes to `NEEDS_REVIEW` — not a probabilistic risk, a certainty for this file's exact shape. **Blast radius checked against the other 4 real samples**: this exact same-line-bracket-then-next-line-value pattern was not found in any of them — all 4 captured real, correctly-shaped values for the fields their labels covered. So this specific failure mode is not something already silently degrading a currently-passing extraction elsewhere; it's demonstrated in 1 of 5 real samples, not a broader pattern already in play. It remains a real forward risk, though: the triggering layout (a bracketed account-system/type qualifier appended directly to a field label) is a bank-specific formatting choice already proven to occur once in these 5 samples, so it's plausible on a 6th, 7th, etc. department's certificate, not merely hypothetical. Not fixed — needs either a capture class that tolerates trailing bracketed qualifiers, or falling back to a next-line value when the same-line capture is empty.
 
 ## Notes (informational, not bugs)
 

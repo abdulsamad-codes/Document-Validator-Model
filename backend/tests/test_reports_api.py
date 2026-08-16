@@ -38,6 +38,20 @@ SUMMARY_URL = "/validation-summary"
 
 REPORT_VERSION = "1.0.0"
 
+#: Synthetic (fabricated, non-real) fixture giving BUSINESS_REQUIREMENT_DOCUMENT
+#: its own real-shaped text, same as BILATERAL_AGREEMENT/AUTHORITY_LETTER/AMC/
+#: TRIPARTITE_AGREEMENT above -- BRD now has a real extractor too (routed via
+#: document_analysis.services._CHECKLIST_TYPE_MAP), so feeding it BANK_STATEMENT_TEXT
+#: (the generic fallback for "no extractor yet" types) would extract nothing and
+#: drag the fleet-wide mean confidence down for a reason unrelated to what this
+#: test is actually checking.
+BUSINESS_REQUIREMENT_DOCUMENT_TEXT = """BUSINESS REQUIREMENT DOCUMENT
+The Sample Development Authority is a government organization responsible for
+regional development. The major sources of income of this Authority are the
+prescribed fees collected at each facility office.
+This office intends to go towards Digital Payments via KPITB's FinTech Unit.
+"""
+
 #: Per-group rule totals expected from the 47-rule ruleset (49 implemented,
 #: CrossPeriodRule unregistered -- see rule_engine/rules/__init__.py -- plus
 #: FieldStatementPeriodPresenceRule and FieldBalancesPresenceRule removed
@@ -59,16 +73,17 @@ EXPECTED_GROUP_TOTALS = {
 def build_full_application(client, storage_root, *, with_detections: bool) -> int:
     """Build an application carrying all eight required documents, analysed.
 
-    BILATERAL_AGREEMENT, AUTHORITY_LETTER, ACCOUNT_MAINTENANCE_CERTIFICATE and
-    TRIPARTITE_AGREEMENT each get their own real-shaped text, since all four
-    now have real extractors (Phase 1 + Track B). The AMC, Bilateral and
-    Tripartite texts carry the same account_holder/account_number values, so
-    the cross-document consistency rules still agree. AUTHORITY_LETTER's
-    CRITICAL_FIELDS are all non-bank fields (focal_person_name/designation/
-    organization_name -- see AuthorityLetterExtractor's docstring), so no
-    cross-document account value needs to line up. Every other required type
-    still has no real extractor and keeps using BANK_STATEMENT_TEXT via the
-    generic keyword-based classifier, unaffected by either change.
+    BILATERAL_AGREEMENT, AUTHORITY_LETTER, ACCOUNT_MAINTENANCE_CERTIFICATE,
+    TRIPARTITE_AGREEMENT and BUSINESS_REQUIREMENT_DOCUMENT each get their own
+    real-shaped text, since all five now have real extractors (Phase 1 + Track
+    B). The AMC, Bilateral and Tripartite texts carry the same
+    account_holder/account_number values, so the cross-document consistency
+    rules still agree. AUTHORITY_LETTER's CRITICAL_FIELDS are all non-bank
+    fields (focal_person_name/designation/organization_name -- see
+    AuthorityLetterExtractor's docstring), so no cross-document account value
+    needs to line up. Every other required type still has no real extractor
+    and keeps using BANK_STATEMENT_TEXT via the generic keyword-based
+    classifier, unaffected by either change.
     """
     application_id = create_application(client)
     for document_type in REQUIRED_DOCUMENT_TYPES:
@@ -80,6 +95,8 @@ def build_full_application(client, storage_root, *, with_detections: bool) -> in
             text = ACCOUNT_MAINTENANCE_CERTIFICATE_CROSS_DOC_TEXT
         elif document_type is DocumentType.TRIPARTITE_AGREEMENT:
             text = TRIPARTITE_AGREEMENT_CROSS_DOC_TEXT
+        elif document_type is DocumentType.BUSINESS_REQUIREMENT_DOCUMENT:
+            text = BUSINESS_REQUIREMENT_DOCUMENT_TEXT
         else:
             text = BANK_STATEMENT_TEXT
         add_digital_pdf(
@@ -172,8 +189,15 @@ def test_report_approved_application(authenticated_client, storage_root):
     # AUTHORITY_LETTER's EXPECTED_FIELDS includes account_holder/account_number/
     # iban, which real Authority Letters never carry (see AuthorityLetterExtractor's
     # docstring) -- its template coverage is honestly 0.5, pulling the fleet-wide
-    # mean confidence just under 1.0.
-    assert extraction["overall_confidence"] == 0.9865
+    # mean confidence just under 1.0. Value recalibrated 2026-08-16: previously
+    # BUSINESS_REQUIREMENT_DOCUMENT fell through to BANK_STATEMENT_TEXT (no real
+    # extractor existed for it yet), contributing as a fully-covered 9-field bank
+    # statement. It now has its own real extractor (see
+    # BUSINESS_REQUIREMENT_DOCUMENT_TEXT above) and is fully covered on its own
+    # narrower 2-field template (confirmed via extract_fields against the exact
+    # PDF-probed text, 0 missing) -- the fleet-wide mean shifted because the
+    # field-count composition of the fleet changed, not because of a new gap.
+    assert extraction["overall_confidence"] == 0.9844
 
     assert [item["code"] for item in report["recommendations"]] == [
         "NO_ACTION_REQUIRED"
@@ -258,7 +282,7 @@ def test_report_summary_condensed(authenticated_client, storage_root):
     assert summary["rule_pending_review"] == 0
     assert summary["field_count"] > 0
     # See test_report_approved_application's overall_confidence comment.
-    assert summary["overall_confidence"] == 0.9865
+    assert summary["overall_confidence"] == 0.9844
     assert summary["recommendation_count"] == 1
 
 
