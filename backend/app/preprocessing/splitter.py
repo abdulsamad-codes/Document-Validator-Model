@@ -83,15 +83,18 @@ _STRONG_TITLE_PHRASES: list[tuple[DocumentType, tuple[str, ...]]] = [
     (DocumentType.FORMAL_REQUEST_LETTER, ("FORMAL REQUEST LETTER", "FORMAL REQUEST")),
 ]
 
-#: Marks a manifest/checklist cover page -- confirmed on a real file in
-#: Confidential Data/: such a page lists every required document by name
-#: (e.g. "1. Authority Letter of officer - Signed", "2. Account Maintenance
-#: Certificate from concerned Bank..."), so its own table rows can satisfy a
-#: _STRONG_TITLE_PHRASES entry inside the header zone even though the page
-#: itself is not that document. A real checklist page's first row
-#: ("Authority Letter of officer - Signed") strong-matched AUTHORITY_LETTER
-#: this way, producing a spurious second copy of a document that only
-#: existed once for real. See the check in _classify_page below.
+#: Marks a manifest/checklist cover page -- confirmed on two independent real
+#: files in Confidential Data/: such a page lists every required document by
+#: name (e.g. "Authority Letter", "Account Maintenance Certificate"), so its
+#: own table rows can satisfy a _STRONG_TITLE_PHRASES entry inside the header
+#: zone even though the page itself is not that document. Real titles seen so
+#: far: plain "CHECKLIST" on one file, "MASTER CHECKLIST" on another -- a
+#: prefix check (startswith) caught the first but silently missed the second,
+#: so this is matched as a substring rather than a prefix. Both real pages'
+#: own "Authority Letter"/"Authority Letter of officer - Signed" row
+#: strong-matched AUTHORITY_LETTER this way, producing a spurious second copy
+#: of a document that only existed once for real. See the check in
+#: _classify_page below.
 _CHECKLIST_PAGE_MARKER = "CHECKLIST"
 
 #: Header phrases shared by both faces of a CNIC. A page anchored with one of
@@ -308,8 +311,11 @@ class DocumentSplitter:
             # A checklist page can never be one of the documents it lists --
             # bail out before any title matching (strong or the weak
             # _classify_text fallback below, which would hit the same table
-            # row as a substring match) so it can't masquerade as one.
-            if text.startswith(_CHECKLIST_PAGE_MARKER):
+            # row as a substring match) so it can't masquerade as one. Matched
+            # as a substring, not a prefix: real titles seen include both a
+            # plain "CHECKLIST" and a "MASTER CHECKLIST" that a prefix check
+            # would silently miss.
+            if _CHECKLIST_PAGE_MARKER in text:
                 return None, False
             for phrase in _CNIC_HEADER_PHRASES:
                 if text.startswith(phrase):

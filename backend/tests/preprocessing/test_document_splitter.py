@@ -150,6 +150,28 @@ def test_split_checklist_cover_page_is_not_misclassified():
     ]
 
 
+def test_split_master_checklist_cover_page_is_not_misclassified():
+    """A "MASTER CHECKLIST" cover page must also be excluded, not just plain
+    "CHECKLIST".
+
+    Regression test for a second real file found 2026-08-16 with the exact
+    same underlying bug but a different checklist title: a prefix
+    (startswith) check on "CHECKLIST" caught a real file titled plain
+    "CHECKLIST" but silently missed this real file's "MASTER CHECKLIST",
+    whose own "Authority Letter" table row (this time with no trailing
+    text) again strong-matched AUTHORITY_LETTER.
+    """
+    types = _doc_types([
+        "MASTER CHECKLIST\nAuthority Letter\nAccount Maintenance Certificate",
+        "AUTHORITY LETTER\nIt is hereby authorized that the officer may act "
+        "on our behalf.",
+    ])
+    assert types == [
+        DocumentType.OTHER_SUPPORTING_DOCUMENT,
+        DocumentType.AUTHORITY_LETTER,
+    ]
+
+
 def test_classify_text_authority_letter():
     """The classifier should detect AUTHORITY LETTER keyword."""
     doc_type = DocumentSplitter._classify_text("AUTHORITY LETTER\nFrom the CEO")
