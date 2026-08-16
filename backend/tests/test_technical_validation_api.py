@@ -378,6 +378,51 @@ def test_rotated_image(authenticated_client, storage_root):
     assert item["readability_status"] == "PARTIALLY_READABLE"
 
 
+# --- Blank pages -------------------------------------------------------------
+
+
+def test_blank_image(authenticated_client, storage_root):
+    application_id = create_application(authenticated_client)
+    blank = np.full((1600, 2200, 3), 255, dtype=np.uint8)
+    add_document(
+        storage_root,
+        application_id,
+        DocumentType.ONE_LINK_LETTER,
+        "blank.png",
+        encode_png(blank),
+        "image/png",
+    )
+
+    item = run_validation(authenticated_client, application_id)["items"][0]
+
+    assert item["validation_status"] == "FAIL"
+    assert "Page is not blank" in item["failed_checks"]
+    assert item["readability_status"] == "UNREADABLE"
+    assert any("contains content" in rec for rec in item["recommendations"])
+
+
+def test_blank_pdf_first_page(authenticated_client, storage_root):
+    application_id = create_application(authenticated_client)
+    document = pymupdf.open()
+    document.new_page(width=595, height=842)
+    content = document.tobytes()
+    document.close()
+
+    add_document(
+        storage_root,
+        application_id,
+        DocumentType.TRIPARTITE_AGREEMENT,
+        "blank.pdf",
+        content,
+        "application/pdf",
+    )
+
+    item = run_validation(authenticated_client, application_id)["items"][0]
+
+    assert item["validation_status"] == "FAIL"
+    assert "Page is not blank" in item["failed_checks"]
+
+
 # --- Application-level behaviour --------------------------------------------
 
 

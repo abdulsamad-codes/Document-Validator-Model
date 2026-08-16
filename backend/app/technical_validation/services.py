@@ -39,6 +39,7 @@ from app.technical_validation.constants import (
     CHECK_PDF_RENDER,
     CHECK_READABILITY,
     CHECK_ROTATION,
+    CHECK_BLANK_PAGE,
     FileFormat,
     MIN_IMAGE_HEIGHT,
     MIN_IMAGE_WIDTH,
@@ -67,6 +68,7 @@ from app.technical_validation.schemas import (
 )
 from app.technical_validation.utils import (
     estimate_rotation_angle,
+    is_blank_image,
     render_pdf_first_page,
     variance_of_laplacian,
 )
@@ -98,6 +100,7 @@ _CHECK_NAMES: dict[str, str] = {
     CHECK_IMAGE_RESOLUTION: "Image resolution meets minimum",
     CHECK_BLUR: "Image is not blurry",
     CHECK_ROTATION: "Document is not rotated",
+    CHECK_BLANK_PAGE: "Page is not blank",
     CHECK_READABILITY: "Document readability",
 }
 
@@ -119,6 +122,7 @@ _RECOMMENDATIONS: dict[str, str] = {
     ),
     "Image is not blurry": "Re-scan the document so the image is in focus",
     "Document is not rotated": "Re-scan the document so its content is oriented upright",
+    "Page is not blank": "Re-scan the document so the page contains content",
 }
 
 #: Rule ids that make up the PDF structural checks.
@@ -725,6 +729,16 @@ class TechnicalValidationService:
             )
         rotation_check.rotation_angle = round(angle, 2)
         checks.append(rotation_check)
+
+        if is_blank_image(image):
+            checks.append(
+                _fail_check(
+                    CHECK_BLANK_PAGE,
+                    "Page contains no readable content (blank)",
+                )
+            )
+        else:
+            checks.append(_pass_check(CHECK_BLANK_PAGE, "Page contains readable content"))
 
     def _readability_check(self, checks: list[_Check]) -> None:
         """Append the aggregate readability check to the check list.
