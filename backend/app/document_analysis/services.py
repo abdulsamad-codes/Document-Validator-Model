@@ -79,9 +79,19 @@ _UNCLASSIFIED_STORAGE_TYPES = frozenset(
 #: falls back to _persist_recognized_unsupported_type -- this is the Phase 1
 #: (docs/IMPLEMENTATION_ROADMAP.md) worklist, extended one document type at a
 #: time as each gets a real extractor and real-sample validation.
+#:
+#: These are routed straight from the splitter's own title-anchored
+#: classification (``document.document_type``) so the generic OCR keyword
+#: table in :func:`detect_document_type` never sees them -- a document's own
+#: field labels (e.g. an AMC's "IBAN" or "Account Number") must not be able
+#: to misroute it into the unrelated generic keyword scoring.
 _CHECKLIST_TYPE_MAP: dict[DocumentType, AnalyzedDocumentType] = {
     DocumentType.BILATERAL_AGREEMENT: AnalyzedDocumentType.BILATERAL_AGREEMENT,
     DocumentType.AUTHORITY_LETTER: AnalyzedDocumentType.AUTHORITY_LETTER,
+    DocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE: (
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE
+    ),
+    DocumentType.TRIPARTITE_AGREEMENT: AnalyzedDocumentType.TRIPARTITE_AGREEMENT,
 }
 
 
@@ -452,8 +462,11 @@ class DocumentAnalysisService:
         payslip, ID document, tax document). When keyword detection reports
         ``UNKNOWN``, this checks whether the splitter already knows the real
         type, so that type can be stored honestly instead of a generic
-        "undetermined" -- without pretending an extractor ran for it (none
-        exists for any checklist category yet).
+        "undetermined" -- without pretending an extractor ran for it. By the
+        time this is reached (keyword detection already reported ``UNKNOWN``),
+        every checklist category with a real extractor has already been routed
+        away by ``_analyze_document``'s checklist-type branch, so this only
+        ever persists the recognised-but-not-yet-extracted categories.
 
         Returns ``None`` for ``OTHER_SUPPORTING_DOCUMENT`` (the splitter's own
         catch-all for a page matching no checklist keyword) and

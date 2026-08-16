@@ -21,16 +21,15 @@ class AnalyzedDocumentType(str, Enum):
     PAYSLIP = "PAYSLIP"
     ID_DOCUMENT = "ID_DOCUMENT"
     TAX_DOCUMENT = "TAX_DOCUMENT"
-    #: Phase 1 of the required-document checklist (see
+#: Phase 1 of the required-document checklist (see
     #: docs/IMPLEMENTATION_ROADMAP.md). Named identically to the storage-level
-    #: DocumentType.BILATERAL_AGREEMENT it corresponds to, but is a distinct
-    #: enum -- routed via document_analysis.services._CHECKLIST_TYPE_MAP, not
-    #: via detect_document_type's keyword table.
+    #: DocumentType they correspond to, but distinct enums -- routed via
+    #: document_analysis.services._CHECKLIST_TYPE_MAP, not via
+    #: detect_document_type's keyword table.
     BILATERAL_AGREEMENT = "BILATERAL_AGREEMENT"
-    #: Phase 1, second checklist type. Named identically to the storage-level
-    #: DocumentType.AUTHORITY_LETTER it corresponds to -- see the
-    #: BILATERAL_AGREEMENT comment above for the same routing note.
     AUTHORITY_LETTER = "AUTHORITY_LETTER"
+    ACCOUNT_MAINTENANCE_CERTIFICATE = "ACCOUNT_MAINTENANCE_CERTIFICATE"
+    TRIPARTITE_AGREEMENT = "TRIPARTITE_AGREEMENT"
     UNKNOWN = "UNKNOWN"
 
 
@@ -108,7 +107,7 @@ EXPECTED_FIELDS: dict[AnalyzedDocumentType, frozenset[str]] = {
             "currency",
         }
     ),
-    #: Field names deliberately match app.rule_engine.rules.cross_document_rules
+#: Field names deliberately match app.rule_engine.rules.cross_document_rules
     #: (account_holder, account_number, iban): those rules are already
     #: registered and compare these exact names across BILATERAL_AGREEMENT,
     #: TRIPARTITE_AGREEMENT and ACCOUNT_MAINTENANCE_CERTIFICATE, but until now
@@ -142,6 +141,32 @@ EXPECTED_FIELDS: dict[AnalyzedDocumentType, frozenset[str]] = {
             "iban",
         }
     ),
+    # Real required-document checklist categories with field-level extractors.
+    # Field names deliberately match the cross-document consistency rules
+    # (app/rule_engine/rules/cross_document_rules.py): account_holder,
+    # account_number, iban, statement_period and branch_code must keep their
+    # exact names so the normalization stage can compare them across
+    # Bilateral / Tripartite / AMC documents.
+    AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE: frozenset(
+        {
+            "account_holder",
+            "account_number",
+            "iban",
+            "bank_name",
+            "branch_name",
+            "issue_date",
+        }
+    ),
+    AnalyzedDocumentType.TRIPARTITE_AGREEMENT: frozenset(
+        {
+            "party_1link",
+            "party_kpitb",
+            "party_subbiller",
+            "account_holder",
+            "account_number",
+            "branch_code",
+        }
+    ),
 }
 
 #: Fields whose absence forces the document into manual review regardless of
@@ -162,7 +187,7 @@ CRITICAL_FIELDS: dict[AnalyzedDocumentType, frozenset[str]] = {
     AnalyzedDocumentType.TAX_DOCUMENT: frozenset(
         {"taxpayer_name", "tax_reference_number", "tax_year", "gross_income"}
     ),
-    #: organization_name, account_number and transaction_charges are the
+#: organization_name, account_number and transaction_charges are the
     #: fields docs/Master_Rules_Combined.md explicitly calls "required content"
     #: for this document (Section 7). account_number is additionally critical
     #: because the cross-document consistency rules can never pass without it.
@@ -176,5 +201,11 @@ CRITICAL_FIELDS: dict[AnalyzedDocumentType, frozenset[str]] = {
     #: real application into manual review for a field that's rarely there.
     AnalyzedDocumentType.AUTHORITY_LETTER: frozenset(
         {"focal_person_name", "focal_person_designation", "organization_name"}
+    ),
+    AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE: frozenset(
+        {"account_holder", "account_number", "iban"}
+    ),
+    AnalyzedDocumentType.TRIPARTITE_AGREEMENT: frozenset(
+        {"party_1link", "party_kpitb", "party_subbiller", "account_holder", "account_number"}
     ),
 }
