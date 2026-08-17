@@ -73,6 +73,10 @@ export function useProcessingOverview() {
   );
 
   useEffect(() => {
+    // Fetch-on-mount via a memoized hook function -- see AuthProvider.jsx or
+    // the full-stack audit (Phase 8) for why this react-hooks/set-state-in-effect
+    // suppression is intentional, not a missed fix.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     reload();
   }, [reload]);

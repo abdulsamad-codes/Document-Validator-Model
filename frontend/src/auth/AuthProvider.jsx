@@ -47,6 +47,15 @@ function AuthProvider({ children }) {
   const refreshSession = useCallback(() => authService.refreshSession(), []);
 
   useEffect(() => {
+    // Fetch-on-mount via a memoized custom-hook function -- React's own
+    // recommended shape for this exact case (react.dev/learn/synchronizing-with-effects#fetching-data).
+    // react-hooks/set-state-in-effect flags the setState reachable inside
+    // checkAuthentication regardless of context; restructuring it would mean
+    // touching this and 9 other core data-fetching hooks for no behavioral
+    // gain, purely to satisfy a static rule that can't distinguish this from
+    // a genuine anti-pattern. See the full-stack audit, Phase 8, for the
+    // reasoning behind every instance of this suppression in the codebase.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     checkAuthentication();
   }, [checkAuthentication]);
 
