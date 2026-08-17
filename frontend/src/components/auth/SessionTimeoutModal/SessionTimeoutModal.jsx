@@ -12,13 +12,23 @@ const ACTIVITY_EVENTS = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'
 
 function SessionTimeoutModal() {
   const { refreshSession, logout } = useAuth();
-  const lastActivity = useRef(Date.now());
+  // Date.now() is impure, so it can't run directly during render (see the
+  // linked purity rule below) -- initialize the ref to null and set the real
+  // mount-time baseline in an effect instead, the sanctioned place for
+  // one-time impure work. The 15s check interval never fires before this
+  // effect runs, so there's no practical gap where a stale/missing value
+  // could affect the idle-time calculation.
+  const lastActivity = useRef(null);
   const [warning, setWarning] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const handleActivity = useCallback(() => {
     lastActivity.current = Date.now();
     setWarning(false);
+  }, []);
+
+  useEffect(() => {
+    lastActivity.current = Date.now();
   }, []);
 
   useEffect(() => {
