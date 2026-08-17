@@ -64,6 +64,12 @@ export const DOCUMENT_TYPES = [
     slotTypes: ['CNIC_FRONT', 'CNIC_BACK'],
     slotLabels: ['Front', 'Back'],
   },
+  {
+    type: 'FORMAL_REQUEST_LETTER',
+    label: 'Formal Request Letter',
+    group: DOCUMENT_GROUP_REQUIRED,
+    requiredCopies: 1,
+  },
 ];
 
 export const REQUIRED_DOCUMENT_TYPES = DOCUMENT_TYPES.filter(
@@ -76,7 +82,7 @@ export const SUPPORTING_DOCUMENT_TYPES = DOCUMENT_TYPES.filter(
 
 /**
  * Total number of required uploads per application
- * (1 + 1 + 3 + 3 + 6 + 1 + 1 + 2).
+ * (1 + 1 + 3 + 3 + 6 + 1 + 1 + 2 + 1).
  */
 export const TOTAL_REQUIRED_DOCUMENTS = REQUIRED_DOCUMENT_TYPES.reduce(
   (sum, entry) => sum + entry.requiredCopies,
