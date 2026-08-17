@@ -64,7 +64,6 @@ function ValidationReportPage() {
     report,
     completeness,
     technical,
-    rules,
     analysis,
     normalized,
     loading,

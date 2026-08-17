@@ -1,8 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import { createApplication, getApplication, listApplications } from '../services/applications';
-import { listDocuments, replaceDocument, uploadDocument } from '../services/documents';
-import { deleteDocument } from '../services/documents';
+import { listDocuments } from '../services/documents';
 import { getApiErrorMessage } from '../utils/apiError';
 import { sortBy } from '../utils/sort';
 
@@ -128,7 +127,6 @@ export function ApplicationsProvider({ children }) {
     [
       applications,
       recentApplications,
-      applications.length,
       loading,
       error,
       reload,

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 import { Info, RefreshCw } from 'lucide-react';
 
@@ -81,21 +81,30 @@ function HumanReviewPage() {
   const [corrections, setCorrections] = useState([]);
   const [pendingRejectPayload, setPendingRejectPayload] = useState(null);
 
-  useEffect(() => {
+  // Reset the review form whenever the selected queue row changes, adjusting
+  // state during render (React's recommended pattern) rather than in an
+  // effect, so the reset is visible in the same commit as the selection
+  // change instead of one render later.
+  const [resetForSelectedId, setResetForSelectedId] = useState(selectedId);
+  if (selectedId !== resetForSelectedId) {
+    setResetForSelectedId(selectedId);
     setDecision('');
     setComments('');
     setRejectionReason('');
     setCorrections([]);
-  }, [selectedId]);
+  }
 
-  useEffect(() => {
+  const checklistSource = reviewScreen?.checklist;
+  const [checklistBuiltFrom, setChecklistBuiltFrom] = useState(checklistSource);
+  if (checklistSource !== checklistBuiltFrom) {
+    setChecklistBuiltFrom(checklistSource);
     setChecklist(
-      (reviewScreen?.checklist ?? []).reduce((acc, item) => {
+      (checklistSource ?? []).reduce((acc, item) => {
         acc[item.item_name] = item.is_checked;
         return acc;
       }, {})
     );
-  }, [reviewScreen?.checklist]);
+  }
 
   const checklistItems = reviewScreen?.checklist ?? [];
   const checklistPayload = checklistItems.map((item) => ({

@@ -14,7 +14,6 @@ import { useDocuments } from '../../hooks/useDocuments';
 import { getPreference } from '../../utils/preferences';
 import { startProcessing } from '../../services/processing';
 import { REQUIRED_DOCUMENT_TYPES } from '../../data/documents';
-import { getApiErrorMessage } from '../../utils/apiError';
 import styles from './UploadDocumentsPage.module.css';
 
 /**
