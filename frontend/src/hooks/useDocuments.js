@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { replaceDocument, uploadDocument } from '../services/documents';
+import { replaceDocument, uploadDocument, uploadBulkDocument } from '../services/documents';
 import { deleteDocument } from '../services/documents';
 import { getApiErrorMessage } from '../utils/apiError';
 import { useApplicationsStore } from '../store/ApplicationsContext';
@@ -161,7 +161,6 @@ export function useDocuments(applicationId) {
       };
 
       try {
-        const { uploadBulkDocument } = await import('../services/documents');
         const response = await uploadBulkDocument({
           applicationId,
           file,
