@@ -94,6 +94,8 @@ EXPECTED_FIELDS: dict[AnalyzedDocumentType, frozenset[str]] = {
             "statement_period",
             "opening_balance",
             "closing_balance",
+            "total_credits",
+            "total_debits",
             "currency",
             "transaction_count",
         }
@@ -115,6 +117,7 @@ EXPECTED_FIELDS: dict[AnalyzedDocumentType, frozenset[str]] = {
             "date_of_birth",
             "document_number",
             "nationality",
+            "issue_date",
             "expiry_date",
         }
     ),
