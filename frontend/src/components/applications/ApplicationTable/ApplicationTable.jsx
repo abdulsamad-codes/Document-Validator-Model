@@ -4,6 +4,25 @@ import ApplicationRow from '../ApplicationRow/ApplicationRow';
 import styles from './ApplicationTable.module.css';
 
 /**
+ * Sort-direction indicator for one column header.
+ *
+ * Module-level (not defined inside ApplicationTable) so React treats it as
+ * a stable component type across renders instead of remounting it on every
+ * render of the table.
+ *
+ * @param {object} props
+ * @param {string} props.column This icon's column key.
+ * @param {string} props.sortKey Currently active sort field.
+ * @param {'asc'|'desc'} props.sortDir Current sort direction.
+ */
+function SortIcon({ column, sortKey, sortDir }) {
+  if (column !== sortKey) {
+    return <ArrowUpDown aria-hidden="true" />;
+  }
+  return sortDir === 'asc' ? <ArrowUp aria-hidden="true" /> : <ArrowDown aria-hidden="true" />;
+}
+
+/**
  * Table of applications with sortable columns.
  *
  * Renders a full table on desktop and collapses each row into a card on small
@@ -32,17 +51,6 @@ function ApplicationTable({ applications, sortKey, sortDir, onSortChange }) {
     return sortDir === 'asc' ? 'ascending' : 'descending';
   };
 
-  const SortIcon = ({ column }) => {
-    if (column !== sortKey) {
-      return <ArrowUpDown aria-hidden="true" />;
-    }
-    return sortDir === 'asc' ? (
-      <ArrowUp aria-hidden="true" />
-    ) : (
-      <ArrowDown aria-hidden="true" />
-    );
-  };
-
   return (
     <div className={styles.tableWrap}>
       <table className={styles.table}>
@@ -55,7 +63,7 @@ function ApplicationTable({ applications, sortKey, sortDir, onSortChange }) {
                 onClick={() => toggleSort('id')}
               >
                 ID
-                <SortIcon column="id" />
+                <SortIcon column="id" sortKey={sortKey} sortDir={sortDir} />
               </button>
             </th>
             <th scope="col">Name</th>
@@ -67,7 +75,7 @@ function ApplicationTable({ applications, sortKey, sortDir, onSortChange }) {
                 onClick={() => toggleSort('submitted_at')}
               >
                 Submission Date
-                <SortIcon column="submitted_at" />
+                <SortIcon column="submitted_at" sortKey={sortKey} sortDir={sortDir} />
               </button>
             </th>
             <th scope="col" aria-sort={ariaSortFor('updated_at')}>
@@ -77,7 +85,7 @@ function ApplicationTable({ applications, sortKey, sortDir, onSortChange }) {
                 onClick={() => toggleSort('updated_at')}
               >
                 Last Updated
-                <SortIcon column="updated_at" />
+                <SortIcon column="updated_at" sortKey={sortKey} sortDir={sortDir} />
               </button>
             </th>
             <th scope="col">Created By</th>
