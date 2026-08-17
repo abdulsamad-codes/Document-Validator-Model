@@ -77,6 +77,21 @@ def _as_iso_date(raw: str) -> str | None:
     return parsed.isoformat() if parsed is not None else None
 
 
+def _as_iso_date_dotted(raw: str) -> str | None:
+    """Parse a dot-separated ``DD.MM.YYYY`` date (the format printed on a real
+    Pakistani CNIC) and return it as an ISO ``YYYY-MM-DD`` string.
+
+    Deliberately separate from :func:`_as_iso_date`/:func:`_parse_date`: the
+    real CNIC samples this was built against use dots, not the slash/ISO/
+    textual-month formats those already handle, and adding dots there would
+    change parsing behaviour for every other extractor that reuses them.
+    """
+    try:
+        return datetime.strptime(raw.strip(), "%d.%m.%Y").date().isoformat()
+    except ValueError:
+        return None
+
+
 def _as_float(raw: str) -> float | None:
     """Parse an amount and return it as a float."""
     return _parse_amount(raw)
@@ -589,6 +604,82 @@ class OneLinkLetterExtractor(RegexExtractor):
     }
 
 
+class CnicFrontExtractor(RegexExtractor):
+    """Extracts fields from a real Pakistani CNIC's front face.
+
+    Front only -- DocumentType.CNIC_BACK has zero real samples anywhere in
+    this session's cache (see CONTEXT.md), so back-face extraction is not
+    attempted; a back upload still falls through to the generic ID_DOCUMENT
+    classifier exactly as it did before this extractor existed.
+
+    Built against 3 real cached samples (Confidential Data/.ocr_cache/,
+    DG_Sports_KP_Onboarding_Documents__CNIC_FRONT_copy1/2/3.txt), all one
+    organization -- real organizational diversity here is 1, not 3, stated
+    honestly rather than implied. 2 of the 3 samples OCR'd with a clean,
+    consistently ordered label-then-value layout (each label line immediately
+    followed by its value line, or -- for adjacent label pairs like "Identity
+    Number"/"Date of Birth" -- a label-block immediately followed by a
+    value-block in the same order). The third sample OCR'd with the labels
+    and values scrambled out of that order entirely (a genuinely different
+    OCR read-order, not corrupted content -- copy2's contamination, documented
+    separately in CONTEXT.md, is a distinct splitter merge-artifact bug, not
+    this same issue). Every pattern below is anchored on the *clean* layout
+    shape; on the scrambled sample a field either still happens to line up
+    (document_number, full_name) or honestly misses (date_of_expiry) rather
+    than risk pairing a label with the wrong value -- the same failure-
+    avoidance principle as AMC's "/IBAN" garbage-capture lesson and 1-Link
+    Letter's multi-bank-table miss.
+
+    document_number is anchored purely on the canonical CNIC shape
+    (5-7-1 digit groups, hyphen-separated) with no label dependency at all,
+    so it is the one field that also extracts correctly on the scrambled
+    sample -- confirmed against all 3 real samples. Deliberately named
+    document_number, not cnic_number, to reuse
+    app.rule_engine.rules.format_rules.FormatCnicRule's existing format
+    validation (field_names=("document_number", "tax_reference_number")) for
+    free, the same way branch_code was named to match CrossBranchCodeRule.
+
+    full_name is anchored on a line that is exactly "Name" (not "Father
+    Name", which the exact-line anchor deliberately excludes) followed by
+    its value on the next line. Confirmed correct on all 3 real samples,
+    including the scrambled one, where this specific label happened to still
+    sit directly before its value despite everything else being out of
+    order -- real evidence, not an assumption that the pattern generalizes.
+    father_name was not attempted: the identical anchor shape only holds on
+    2 of 3 samples for that label, and with only one real organization on
+    file there isn't enough evidence yet to judge whether that is a real
+    OCR-order pattern or coincidence.
+
+    date_of_expiry is anchored on the exact two-line label block "Date of
+    Issue" then "Date of Expiry" being immediately followed by a two-line
+    value block, taking the second value as the expiry date. Confirmed
+    correct on the 2 clean samples (both show a 10-year gap between the
+    captured issue and expiry values, consistent with real CNIC validity
+    periods -- a plausibility check, not proof, but supportive). Honestly
+    misses on the scrambled sample, where this block shape does not occur
+    intact. date_of_birth and date_of_issue were not attempted this pass to
+    keep the first real-sample-validated version scoped to what
+    docs/Master_Rules_Combined.md Section 12 actually asks for by name
+    (format, expiry, readability, consistency) rather than extracting every
+    field just because the layout partially allows it.
+    """
+
+    document_type = AnalyzedDocumentType.CNIC_FRONT
+
+    _patterns = {
+        "document_number": re.compile(r"\b(\d{5}-\d{7}-\d)\b"),
+        "full_name": re.compile(r"(?m)^Name[ \t]*$\r?\n(.+)$"),
+        "date_of_expiry": re.compile(
+            r"(?m)^Date of Issue[ \t]*$\r?\n^Date of Expiry[ \t]*$\r?\n"
+            r"[\d.]+[ \t]*\r?\n([\d.]+)"
+        ),
+    }
+
+    _post = {
+        "date_of_expiry": _as_iso_date_dotted,
+    }
+
+
 #: Detection keywords per analysed document type. Weights express how strongly a
 #: keyword identifies the type; scoring is order-independent and deterministic.
 _DETECTION_KEYWORDS: dict[AnalyzedDocumentType, list[tuple[str, int]]] = {
@@ -725,6 +816,7 @@ _EXTRACTORS: dict[AnalyzedDocumentType, RegexExtractor] = {
     AnalyzedDocumentType.TRIPARTITE_AGREEMENT: TripartiteAgreementExtractor(),
     AnalyzedDocumentType.BUSINESS_REQUIREMENT_DOCUMENT: BusinessRequirementDocumentExtractor(),
     AnalyzedDocumentType.ONE_LINK_LETTER: OneLinkLetterExtractor(),
+    AnalyzedDocumentType.CNIC_FRONT: CnicFrontExtractor(),
 }
 
 

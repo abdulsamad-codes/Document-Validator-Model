@@ -268,6 +268,81 @@ Operating Guidelines.
 """
 
 
+#: Synthetic (fabricated, non-real), mirroring the clean label-then-value
+#: layout confirmed in 2 of 3 real cached samples (Confidential Data/.ocr_cache/,
+#: DG_Sports_KP_Onboarding_Documents__CNIC_FRONT_copy1/2.txt): each label sits
+#: on its own line, immediately followed by its value -- single labels get a
+#: single value line, adjacent label pairs get a matching value-pair.
+CNIC_FRONT_TEXT_CLEAN = """PAKISTAN
+National Identity Card
+ISLAMIC REPUBLIC OF PAKISTAN
+Name
+Samia Naz
+Father Name
+Nasir Mehmood
+Gender
+Country of Stay
+F
+Pakistan
+Identity Number
+Date of Birth
+12345-1234567-1
+01.01.1990
+Date of Issue
+Date of Expiry
+01.01.2020
+01.01.2030
+Holder's Signature
+12345-1234567-1
+Registrar General of Pakistan
+"""
+
+#: Synthetic (fabricated, non-real), mirroring the scrambled read-order
+#: confirmed in the third real cached sample (copy3.txt): labels and values
+#: are interleaved out of order except for the "Name" label, which -- by the
+#: same coincidence seen in the real sample -- still sits directly before its
+#: value. document_number and full_name must still extract; date_of_expiry's
+#: two-label/two-value block never occurs intact, so it must honestly miss.
+CNIC_FRONT_TEXT_SCRAMBLED = """76494
+ISLAMIC REPUBLIC OF PAKISTAN
+PAKISTAN
+Date of Issue
+Identity Number
+GenderCountry of Stay
+01.01.2020
+12345-1234567-1
+Father Name
+F
+Name
+Samia Naz
+Nasir Mehmood
+Pakistan
+Date of Expiry
+Date of Birth
+National Identity Card
+01.01.1990
+Holder's Signature
+"""
+
+#: Missing only the "Name" clause -- document_number and date_of_expiry both
+#: still extract, so this isolates full_name's absence from the other two
+#: expected fields (unlike a text missing everything, which would drag the
+#: score down for unrelated reasons and force review regardless of full_name).
+CNIC_FRONT_TEXT_NO_NAME = """PAKISTAN
+National Identity Card
+ISLAMIC REPUBLIC OF PAKISTAN
+Identity Number
+Date of Birth
+12345-1234567-1
+01.01.1990
+Date of Issue
+Date of Expiry
+01.01.2020
+01.01.2030
+Holder's Signature
+"""
+
+
 def _components(text: str):
     document_type = detect_document_type(text)
     fields = extract_fields(text, document_type)
@@ -636,6 +711,79 @@ def test_onelink_letter_validators_and_scoring():
     )
     assert score == 1.0
     assert status is VerificationStatus.VERIFIED
+
+
+def test_extract_cnic_front_fields_clean_layout():
+    fields = extract_fields(CNIC_FRONT_TEXT_CLEAN, AnalyzedDocumentType.CNIC_FRONT)
+    assert fields["document_number"] == "12345-1234567-1"
+    assert fields["full_name"] == "Samia Naz"
+    assert fields["date_of_expiry"] == "2030-01-01"
+
+
+def test_extract_cnic_front_fields_scrambled_layout():
+    document_type = AnalyzedDocumentType.CNIC_FRONT
+    fields = extract_fields(CNIC_FRONT_TEXT_SCRAMBLED, document_type)
+    # document_number (format-anchored) and full_name (lucky adjacency, same
+    # as the real scrambled sample) still extract correctly.
+    assert fields["document_number"] == "12345-1234567-1"
+    assert fields["full_name"] == "Samia Naz"
+    # date_of_expiry's two-label/two-value block never occurs intact here --
+    # must honestly miss, not guess from out-of-order values.
+    assert "date_of_expiry" not in fields
+
+    validations = ValidatorEngine().run(document_type, fields)
+    by_field = {result["field"]: result["status"] for result in validations}
+    assert by_field["date_of_expiry"] == "missing"
+    assert by_field["document_number"] == "valid"
+
+    *_components_rest, score, status = scoring_components(
+        document_type,
+        fields=fields,
+        validation_results=validations,
+        consistency_results=RulesEngine().run(document_type, fields),
+    )
+    # date_of_expiry is non-critical, so its absence alone must not force review.
+    assert status is not VerificationStatus.NEEDS_REVIEW
+
+
+def test_cnic_front_missing_name_does_not_force_review():
+    document_type = AnalyzedDocumentType.CNIC_FRONT
+    fields = extract_fields(CNIC_FRONT_TEXT_NO_NAME, document_type)
+    assert "full_name" not in fields
+    assert fields["document_number"] == "12345-1234567-1"
+    assert fields["date_of_expiry"] == "2030-01-01"
+
+    validations = ValidatorEngine().run(document_type, fields)
+    consistency = RulesEngine().run(document_type, fields)
+    *_components_rest, score, status = scoring_components(
+        document_type,
+        fields=fields,
+        validation_results=validations,
+        consistency_results=consistency,
+    )
+    # full_name is non-critical -- its absence alone must not force review,
+    # even though the fleet-wide field-coverage score dips below VERIFIED.
+    assert status is VerificationStatus.PARTIALLY_VERIFIED
+
+
+def test_cnic_front_missing_document_number_forces_review():
+    document_type = AnalyzedDocumentType.CNIC_FRONT
+    text = "PAKISTAN\nNational Identity Card\nName\nSamia Naz\n"
+    fields = extract_fields(text, document_type)
+    assert "document_number" not in fields
+
+    validations = ValidatorEngine().run(document_type, fields)
+    by_field = {result["field"]: result["status"] for result in validations}
+    assert by_field["document_number"] == "missing"
+
+    *_components_rest, score, status = scoring_components(
+        document_type,
+        fields=fields,
+        validation_results=validations,
+        consistency_results=RulesEngine().run(document_type, fields),
+    )
+    # document_number is critical -- its absence must force manual review.
+    assert status is VerificationStatus.NEEDS_REVIEW
 
 
 def test_parse_amount_variants():

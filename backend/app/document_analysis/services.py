@@ -94,6 +94,9 @@ _CHECKLIST_TYPE_MAP: dict[DocumentType, AnalyzedDocumentType] = {
     DocumentType.TRIPARTITE_AGREEMENT: AnalyzedDocumentType.TRIPARTITE_AGREEMENT,
     DocumentType.BUSINESS_REQUIREMENT_DOCUMENT: AnalyzedDocumentType.BUSINESS_REQUIREMENT_DOCUMENT,
     DocumentType.ONE_LINK_LETTER: AnalyzedDocumentType.ONE_LINK_LETTER,
+    #: Front only -- DocumentType.CNIC_BACK deliberately excluded, see
+    #: AnalyzedDocumentType.CNIC_FRONT's comment in constants.py.
+    DocumentType.CNIC_FRONT: AnalyzedDocumentType.CNIC_FRONT,
 }
 
 

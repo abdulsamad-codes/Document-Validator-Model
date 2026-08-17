@@ -149,6 +149,37 @@ through KPITB's FinTech Unit within the system.
 #: for the other, ambiguous multi-bank-table shape). Real samples turned out to
 #: be a Participation Memorandum, not docs/Master_Rules_Combined.md Section 4's
 #: Application Form -- see OneLinkLetterExtractor's docstring and CONTEXT.md.
+#: Synthetic (fabricated, non-real), mirroring the clean label-then-value
+#: layout confirmed in 2 of 3 real cached samples -- see
+#: test_document_analysis_engine.py's CNIC_FRONT_TEXT_CLEAN for the source
+#: shape and CnicFrontExtractor's docstring for the full real-sample finding
+#: (all 3 real samples come from one organization; a third has a scrambled
+#: read order handled separately at the engine-test level).
+CNIC_FRONT_TEXT = """PAKISTAN
+National Identity Card
+ISLAMIC REPUBLIC OF PAKISTAN
+Name
+Sample Holder
+Father Name
+Sample Father
+Gender
+Country of Stay
+M
+Pakistan
+Identity Number
+Date of Birth
+99999-9999999-9
+01.01.1990
+Date of Issue
+Date of Expiry
+01.01.2020
+01.01.2030
+Holder's Signature
+99999-9999999-9
+Registrar General of Pakistan
+"""
+
+
 ONE_LINK_LETTER_TEXT = """PARTICIPATION MEMORANDUM FOR BILLER/SUB-BILLERS/BILL AGGREGATOR MEMBERS
 (v)
 hereby authorize 1LINK for each transaction to carry out settlement and clearing functions as per
@@ -729,6 +760,46 @@ def test_analyze_one_link_letter_runs_real_extraction(authenticated_client, stor
         stored_item["extracted_fields"]["organization_name"]
         == "SAMPLE TEHSIL MUNICIPAL ADMINISTRATION"
     )
+
+
+def test_analyze_cnic_front_runs_real_extraction(authenticated_client, storage_root):
+    """CNIC_FRONT now has a real extractor (Phase 1, sixth checklist type,
+    front face only -- see CnicFrontExtractor's docstring for why
+    DocumentType.CNIC_BACK stays unmapped). Before this, a real CNIC upload
+    was silently misclassified as ID_DOCUMENT via the generic keyword
+    classifier rather than honestly falling to NEEDS_REVIEW -- see
+    CONTEXT.md's CNIC findings entry. This test proves the routing-precedence
+    fix the same way every other checklist-type test does.
+    """
+    application_id = create_application(authenticated_client)
+    add_digital_pdf(
+        storage_root,
+        application_id,
+        CNIC_FRONT_TEXT,
+        document_type=DocumentType.CNIC_FRONT,
+        filename="cnic_front.pdf",
+    )
+    run_processing(authenticated_client, application_id)
+
+    result = analyze_documents(authenticated_client, application_id)
+
+    assert result["total_analyzed"] == 1
+    assert result["total_failed"] == 0
+    item = result["items"][0]
+    assert item["outcome"] == "ANALYZED"
+    assert item["document_type"] == "CNIC_FRONT"
+    fields = item["extracted_fields"]
+    assert fields["document_number"] == "99999-9999999-9"
+    assert fields["full_name"] == "Sample Holder"
+    assert fields["date_of_expiry"] == "2030-01-01"
+    assert item["confidence_score"] == 1.0
+    assert item["verification_status"] == "VERIFIED"
+    assert item.get("message") is None
+
+    stored = get_analysis_results(authenticated_client, application_id)
+    stored_item = stored["items"][0]
+    assert stored_item["document_type"] == "CNIC_FRONT"
+    assert stored_item["extracted_fields"]["document_number"] == "99999-9999999-9"
 
 
 def test_analyze_other_supporting_document_still_reports_unknown(

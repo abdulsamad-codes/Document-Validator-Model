@@ -43,6 +43,14 @@ class AnalyzedDocumentType(str, Enum):
     #: and CONTEXT.md for the full finding; this extractor is grounded in
     #: what's really there, not the unvalidated spec document.
     ONE_LINK_LETTER = "ONE_LINK_LETTER"
+    #: Phase 1, sixth checklist type -- front face only. Named identically to
+    #: the storage-level DocumentType.CNIC_FRONT it corresponds to -- see the
+    #: BILATERAL_AGREEMENT comment above for the same routing note.
+    #: DocumentType.CNIC_BACK stays unmapped: zero real CNIC_BACK samples
+    #: exist anywhere in this session's cache (see CONTEXT.md), so back-face
+    #: extraction has no real-sample validation and is explicitly out of
+    #: scope until a sample turns up -- see CnicFrontExtractor's docstring.
+    CNIC_FRONT = "CNIC_FRONT"
     UNKNOWN = "UNKNOWN"
 
 
@@ -196,6 +204,16 @@ EXPECTED_FIELDS: dict[AnalyzedDocumentType, frozenset[str]] = {
     AnalyzedDocumentType.ONE_LINK_LETTER: frozenset(
         {"organization_name", "branch_code"}
     ),
+    #: document_number deliberately reuses the same field name IdentityExtractor
+    #: (ID_DOCUMENT) already produces, so app.rule_engine.rules.format_rules.
+    #: FormatCnicRule (field_names=("document_number", "tax_reference_number"))
+    #: validates it automatically -- see CnicFrontExtractor's docstring for why
+    #: full_name and date_of_expiry are the other two fields real samples
+    #: support, and why date_of_birth/date_of_issue/father_name were not
+    #: attempted this pass.
+    AnalyzedDocumentType.CNIC_FRONT: frozenset(
+        {"document_number", "full_name", "date_of_expiry"}
+    ),
 }
 
 #: Fields whose absence forces the document into manual review regardless of
@@ -271,4 +289,16 @@ CRITICAL_FIELDS: dict[AnalyzedDocumentType, frozenset[str]] = {
     #: organization into permanent manual review for a field this pass
     #: correctly declines to guess.
     AnalyzedDocumentType.ONE_LINK_LETTER: frozenset({"organization_name"}),
+    #: document_number only. This is the field docs/Master_Rules_Combined.md
+    #: Section 12's core check ("CNIC follows the required format and is not
+    #: expired... information is consistent") is actually anchored on, and
+    #: it's the one field extracted reliably (format-anchored, position-
+    #: independent) across all 3 real samples including the one with a
+    #: scrambled label/value reading order. full_name and date_of_expiry are
+    #: both deliberately non-critical -- see CnicFrontExtractor's docstring:
+    #: full_name is reliable but only validated against a single real
+    #: organization's samples; date_of_expiry only extracts cleanly on 2 of
+    #: 3 samples (the label/value block shape breaks on the scrambled one),
+    #: an honest extraction-reliability gap, not an absence.
+    AnalyzedDocumentType.CNIC_FRONT: frozenset({"document_number"}),
 }
