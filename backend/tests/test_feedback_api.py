@@ -375,7 +375,10 @@ def test_statistics_over_pipeline_data(authenticated_client, storage_root, monke
     assert body["corrections_by_reviewer"] == {"Test Operator": 3}
     assert body["corrections_by_document_type"] == {
         "ACCOUNT_MAINTENANCE_CERTIFICATE": 2,
-        "ONE_LINK_LETTER": 1,
+        # low_confidence_corrected() -> add_scanned_statement() in
+        # test_confidence_api.py, swapped from ONE_LINK_LETTER to
+        # SCHEDULE_OF_CHARGES once ONE_LINK_LETTER got a real extractor.
+        "SCHEDULE_OF_CHARGES": 1,
     }
     assert body["average_confidence"] is not None
     assert {item["field_name"] for item in body["most_corrected_fields"]} == {

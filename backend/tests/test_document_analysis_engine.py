@@ -213,6 +213,61 @@ solutions through KPITB's FinTech Unit within the system.
 """
 
 
+#: Synthetic (fabricated, non-real) fixture mirroring the real single-account
+#: clause-(v)/clause-(x) shape found in one of the two real organizations
+#: (Confidential Data/.ocr_cache/TMA_Khal_Dir_Lower__ONE_LINK_LETTER_copy1.txt):
+#: one specific account stated in one sentence, with an unambiguous branch code
+#: in a nested parenthetical. Never real extracted values.
+ONE_LINK_LETTER_TEXT_SINGLE_ACCOUNT = """PARTICIPATION MEMORANDUM FOR BILLER/SUB-BILLERS/BILL AGGREGATOR MEMBERS
+(v)
+hereby authorize 1LINK for each transaction to carry out settlement and clearing functions as per
+Operating Guidelines, in the bank account number (IBAN) PK00SAMP0000000000000000 titled as Sample General Account
+SAMPLE TEHSIL MUNICIPAL ADMINISTRATION maintained with (SAMPLE BANK) in its
+branch (Sample Road Branch (0099)):
+(x)
+shall ensure business continuity planning (BCP) and disaster recovery (DR) at their side. SAMPLE
+TEHSIL MUNICIPAL ADMINISTRATION hereby authorizes 1LINK to take actions, as it deems
+necessary, to ensure BCP, DR, business operations and network connectivity and SAMPLE
+TEHSIL MUNICIPAL ADMINISTRATION will accept such measures.
+"""
+
+#: Synthetic (fabricated, non-real) fixture mirroring the real multi-bank
+#: reference-table shape found in the other real organization (Confidential
+#: Data/.ocr_cache/GDA_Abbotabad__ONE_LINK_LETTER_copy1-3.txt): organization
+#: name is still present via clause (x), but clause (v)'s bank details are a
+#: table of several banks with no textual indication of which is operative --
+#: branch_code must come back missing here, not a guessed row. Never real
+#: extracted values.
+ONE_LINK_LETTER_TEXT_MULTI_BANK_TABLE = """PARTICIPATION MEMORANDUM FOR BILLER/SUB-BILLERS/BILL AGGREGATOR MEMBERS
+(x)
+shall ensure business continuity planning (BCP) and disaster recovery (DR) at their side. SAMPLE
+DEVELOPMENT AUTHORITY hereby authorizes 1LINK to take actions, as it deems
+necessary, to ensure BCP, DR, business operations and network connectivity and SAMPLE
+DEVELOPMENT AUTHORITY accept such measures.
+(v)
+Agreement or as communicated through 1LINK Schedule of Charges from time to time, in the
+FOLLOWING bank accounts:
+Sr No. Bank Name Account No
+1. Sample Bank One
+Sample Branch
+PK00 SAMP 0000 0000 0000 0000
+2. Sample Bank Two
+Sample Road Branch (0099)
+PK00 SAMB 0000 0000 0000 0001
+"""
+
+#: Missing the organization-name clause entirely -- organization_name is
+#: critical for this type, so its absence must force manual review rather
+#: than a silent pass.
+ONE_LINK_LETTER_TEXT_NO_ORG_NAME = """PARTICIPATION MEMORANDUM FOR BILLER/SUB-BILLERS/BILL AGGREGATOR MEMBERS
+(v)
+hereby authorize 1LINK for each transaction to carry out settlement and clearing functions.
+(vi)
+for each Transaction carried out by the Sub-Billers/Bill Aggregator Member, shall abide by the
+Operating Guidelines.
+"""
+
+
 def _components(text: str):
     document_type = detect_document_type(text)
     fields = extract_fields(text, document_type)
@@ -510,6 +565,77 @@ def test_brd_validators_and_scoring():
     )
     assert score > 0.0
     assert status is not VerificationStatus.FAILED
+
+
+def test_extract_onelink_letter_fields_single_account_form():
+    fields = extract_fields(
+        ONE_LINK_LETTER_TEXT_SINGLE_ACCOUNT, AnalyzedDocumentType.ONE_LINK_LETTER
+    )
+    assert fields["organization_name"] == "SAMPLE TEHSIL MUNICIPAL ADMINISTRATION"
+    assert fields["branch_code"] == "0099"
+
+
+def test_extract_onelink_letter_fields_multi_bank_table_form():
+    document_type = AnalyzedDocumentType.ONE_LINK_LETTER
+    fields = extract_fields(ONE_LINK_LETTER_TEXT_MULTI_BANK_TABLE, document_type)
+    assert fields["organization_name"] == "SAMPLE DEVELOPMENT AUTHORITY"
+    # The reference table has no single operative row -- branch_code must be
+    # honestly missing, not a guessed value from an arbitrary row.
+    assert "branch_code" not in fields
+
+    validations = ValidatorEngine().run(document_type, fields)
+    by_field = {result["field"]: result["status"] for result in validations}
+    assert by_field["branch_code"] == "missing"
+    assert by_field["organization_name"] == "valid"
+
+    *_components_rest, score, status = scoring_components(
+        document_type,
+        fields=fields,
+        validation_results=validations,
+        consistency_results=RulesEngine().run(document_type, fields),
+    )
+    # branch_code is non-critical, so this alone must not force NEEDS_REVIEW.
+    assert status is not VerificationStatus.NEEDS_REVIEW
+
+
+def test_onelink_letter_missing_organization_name_forces_review():
+    document_type = AnalyzedDocumentType.ONE_LINK_LETTER
+    fields = extract_fields(ONE_LINK_LETTER_TEXT_NO_ORG_NAME, document_type)
+    assert "organization_name" not in fields
+
+    validations = ValidatorEngine().run(document_type, fields)
+    by_field = {result["field"]: result["status"] for result in validations}
+    assert by_field["organization_name"] == "missing"
+
+    *_components_rest, score, status = scoring_components(
+        document_type,
+        fields=fields,
+        validation_results=validations,
+        consistency_results=RulesEngine().run(document_type, fields),
+    )
+    # organization_name is critical -- its absence must force manual review.
+    assert status is VerificationStatus.NEEDS_REVIEW
+
+
+def test_onelink_letter_validators_and_scoring():
+    document_type = AnalyzedDocumentType.ONE_LINK_LETTER
+    fields = extract_fields(ONE_LINK_LETTER_TEXT_SINGLE_ACCOUNT, document_type)
+    validations = ValidatorEngine().run(document_type, fields)
+    by_field = {result["field"]: result["status"] for result in validations}
+    assert by_field["organization_name"] == "valid"
+    assert by_field["branch_code"] == "valid"
+
+    consistency = RulesEngine().run(document_type, fields)
+    assert consistency == []  # CrossBranchCodeRule is not registered yet
+
+    *_components_rest, score, status = scoring_components(
+        document_type,
+        fields=fields,
+        validation_results=validations,
+        consistency_results=consistency,
+    )
+    assert score == 1.0
+    assert status is VerificationStatus.VERIFIED
 
 
 def test_parse_amount_variants():

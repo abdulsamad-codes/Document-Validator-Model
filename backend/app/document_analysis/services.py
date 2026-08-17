@@ -93,6 +93,7 @@ _CHECKLIST_TYPE_MAP: dict[DocumentType, AnalyzedDocumentType] = {
     ),
     DocumentType.TRIPARTITE_AGREEMENT: AnalyzedDocumentType.TRIPARTITE_AGREEMENT,
     DocumentType.BUSINESS_REQUIREMENT_DOCUMENT: AnalyzedDocumentType.BUSINESS_REQUIREMENT_DOCUMENT,
+    DocumentType.ONE_LINK_LETTER: AnalyzedDocumentType.ONE_LINK_LETTER,
 }
 
 

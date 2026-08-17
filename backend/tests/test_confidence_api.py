@@ -71,12 +71,21 @@ def add_scanned_statement(
     *,
     confidence: float = 0.2,
 ) -> int:
-    """Upload + validate + OCR a scanned bank statement; return its id."""
+    """Upload + validate + OCR a scanned bank statement; return its id.
+
+    Uses DocumentType.SCHEDULE_OF_CHARGES as a storage type with no real
+    extractor of its own, so BANK_STATEMENT_TEXT below reaches the generic
+    OCR-keyword classifier instead of being routed to a checklist-type
+    extractor (app.document_analysis.services._CHECKLIST_TYPE_MAP). Was
+    DocumentType.ONE_LINK_LETTER until that type got a real extractor (Phase
+    1, fifth checklist type) -- see the same swap and rationale in
+    test_document_analysis_api.py's test_analyze_payslip_from_scanned_image.
+    """
     application_id = create_application(client)
     add_document(
         storage_root,
         application_id,
-        DocumentType.ONE_LINK_LETTER,
+        DocumentType.SCHEDULE_OF_CHARGES,
         "statement.png",
         encode_png(make_document_image()),
         "image/png",

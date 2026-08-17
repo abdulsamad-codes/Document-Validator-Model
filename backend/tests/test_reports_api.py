@@ -15,6 +15,7 @@ from tests.test_confidence_api import evaluate
 from tests.test_document_analysis_api import (
     AUTHORITY_LETTER_TEXT,
     BANK_STATEMENT_TEXT,
+    ONE_LINK_LETTER_TEXT,
     add_digital_pdf,
     analyze_documents,
     run_processing,
@@ -74,16 +75,16 @@ def build_full_application(client, storage_root, *, with_detections: bool) -> in
     """Build an application carrying all eight required documents, analysed.
 
     BILATERAL_AGREEMENT, AUTHORITY_LETTER, ACCOUNT_MAINTENANCE_CERTIFICATE,
-    TRIPARTITE_AGREEMENT and BUSINESS_REQUIREMENT_DOCUMENT each get their own
-    real-shaped text, since all five now have real extractors (Phase 1 + Track
-    B). The AMC, Bilateral and Tripartite texts carry the same
-    account_holder/account_number values, so the cross-document consistency
-    rules still agree. AUTHORITY_LETTER's CRITICAL_FIELDS are all non-bank
-    fields (focal_person_name/designation/organization_name -- see
-    AuthorityLetterExtractor's docstring), so no cross-document account value
-    needs to line up. Every other required type still has no real extractor
-    and keeps using BANK_STATEMENT_TEXT via the generic keyword-based
-    classifier, unaffected by either change.
+    TRIPARTITE_AGREEMENT, BUSINESS_REQUIREMENT_DOCUMENT and ONE_LINK_LETTER
+    each get their own real-shaped text, since all six now have real
+    extractors (Phase 1 + Track B). The AMC, Bilateral and Tripartite texts
+    carry the same account_holder/account_number values, so the
+    cross-document consistency rules still agree. AUTHORITY_LETTER's
+    CRITICAL_FIELDS are all non-bank fields (focal_person_name/designation/
+    organization_name -- see AuthorityLetterExtractor's docstring), so no
+    cross-document account value needs to line up. Every other required type
+    still has no real extractor and keeps using BANK_STATEMENT_TEXT via the
+    generic keyword-based classifier, unaffected by either change.
     """
     application_id = create_application(client)
     for document_type in REQUIRED_DOCUMENT_TYPES:
@@ -97,6 +98,8 @@ def build_full_application(client, storage_root, *, with_detections: bool) -> in
             text = TRIPARTITE_AGREEMENT_CROSS_DOC_TEXT
         elif document_type is DocumentType.BUSINESS_REQUIREMENT_DOCUMENT:
             text = BUSINESS_REQUIREMENT_DOCUMENT_TEXT
+        elif document_type is DocumentType.ONE_LINK_LETTER:
+            text = ONE_LINK_LETTER_TEXT
         else:
             text = BANK_STATEMENT_TEXT
         add_digital_pdf(
@@ -197,7 +200,12 @@ def test_report_approved_application(authenticated_client, storage_root):
     # narrower 2-field template (confirmed via extract_fields against the exact
     # PDF-probed text, 0 missing) -- the fleet-wide mean shifted because the
     # field-count composition of the fleet changed, not because of a new gap.
-    assert extraction["overall_confidence"] == 0.9844
+    # Recalibrated again 2026-08-17: ONE_LINK_LETTER now has its own real
+    # extractor too (see ONE_LINK_LETTER_TEXT above) instead of falling
+    # through to BANK_STATEMENT_TEXT -- fully covered on its own 2-field
+    # template (organization_name + branch_code, 0 missing), same shift
+    # pattern as BUSINESS_REQUIREMENT_DOCUMENT above.
+    assert extraction["overall_confidence"] == 0.9814
 
     assert [item["code"] for item in report["recommendations"]] == [
         "NO_ACTION_REQUIRED"
@@ -282,7 +290,7 @@ def test_report_summary_condensed(authenticated_client, storage_root):
     assert summary["rule_pending_review"] == 0
     assert summary["field_count"] > 0
     # See test_report_approved_application's overall_confidence comment.
-    assert summary["overall_confidence"] == 0.9844
+    assert summary["overall_confidence"] == 0.9814
     assert summary["recommendation_count"] == 1
 
 

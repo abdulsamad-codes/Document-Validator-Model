@@ -34,6 +34,15 @@ class AnalyzedDocumentType(str, Enum):
     #: DocumentType.BUSINESS_REQUIREMENT_DOCUMENT it corresponds to -- see the
     #: BILATERAL_AGREEMENT comment above for the same routing note.
     BUSINESS_REQUIREMENT_DOCUMENT = "BUSINESS_REQUIREMENT_DOCUMENT"
+    #: Phase 1, fifth checklist type. Named identically to the storage-level
+    #: DocumentType.ONE_LINK_LETTER it corresponds to -- see the
+    #: BILATERAL_AGREEMENT comment above for the same routing note. In every
+    #: real sample seen so far this slot is actually populated by a
+    #: Participation Memorandum, not the docs/Master_Rules_Combined.md
+    #: Section 4 Application Form -- see OneLinkLetterExtractor's docstring
+    #: and CONTEXT.md for the full finding; this extractor is grounded in
+    #: what's really there, not the unvalidated spec document.
+    ONE_LINK_LETTER = "ONE_LINK_LETTER"
     UNKNOWN = "UNKNOWN"
 
 
@@ -179,6 +188,14 @@ EXPECTED_FIELDS: dict[AnalyzedDocumentType, frozenset[str]] = {
     AnalyzedDocumentType.BUSINESS_REQUIREMENT_DOCUMENT: frozenset(
         {"digitization_intent_confirmed", "revenue_services_listed"}
     ),
+    #: branch_code deliberately named to match
+    #: app.rule_engine.rules.cross_document_rules.CrossBranchCodeRule, which
+    #: already lists ONE_LINK_LETTER as a participant. See OneLinkLetterExtractor's
+    #: docstring for why branch_code is extracted from only one of the two real
+    #: clause-(v) shapes found (single-account sentence, not the multi-bank table).
+    AnalyzedDocumentType.ONE_LINK_LETTER: frozenset(
+        {"organization_name", "branch_code"}
+    ),
 }
 
 #: Fields whose absence forces the document into manual review regardless of
@@ -242,4 +259,16 @@ CRITICAL_FIELDS: dict[AnalyzedDocumentType, frozenset[str]] = {
     AnalyzedDocumentType.BUSINESS_REQUIREMENT_DOCUMENT: frozenset(
         {"digitization_intent_confirmed"}
     ),
+    #: organization_name only. branch_code deliberately excluded -- real
+    #: evidence (2 independent organizations, 4 real samples) shows the
+    #: clause naming a bank account has two incompatible real shapes: one
+    #: organization states a single specific account/branch in one sentence
+    #: (extractable), the other lists a reference table of 5 different banks
+    #: with no textual indication of which one is operative (not safely
+    #: extractable -- see OneLinkLetterExtractor's docstring for why guessing
+    #: a row would be worse than an honest miss). Treating branch_code as
+    #: critical would force every application shaped like the second real
+    #: organization into permanent manual review for a field this pass
+    #: correctly declines to guess.
+    AnalyzedDocumentType.ONE_LINK_LETTER: frozenset({"organization_name"}),
 }

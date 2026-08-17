@@ -143,6 +143,26 @@ through KPITB's FinTech Unit within the system.
 """
 
 
+#: Synthetic (fabricated, non-real), mirroring the real single-account clause
+#: shape confirmed in Confidential Data/ (one of the two real organizational
+#: shapes -- see test_document_analysis_engine.py's ONE_LINK_LETTER fixtures
+#: for the other, ambiguous multi-bank-table shape). Real samples turned out to
+#: be a Participation Memorandum, not docs/Master_Rules_Combined.md Section 4's
+#: Application Form -- see OneLinkLetterExtractor's docstring and CONTEXT.md.
+ONE_LINK_LETTER_TEXT = """PARTICIPATION MEMORANDUM FOR BILLER/SUB-BILLERS/BILL AGGREGATOR MEMBERS
+(v)
+hereby authorize 1LINK for each transaction to carry out settlement and clearing functions as per
+Operating Guidelines, in the bank account number (IBAN) PK00SAMP0000000000000000 titled as Sample General Account
+SAMPLE TEHSIL MUNICIPAL ADMINISTRATION maintained with (SAMPLE BANK) in its
+branch (Sample Road Branch (0099)):
+(x)
+shall ensure business continuity planning (BCP) and disaster recovery (DR) at their side. SAMPLE
+TEHSIL MUNICIPAL ADMINISTRATION hereby authorizes 1LINK to take actions, as it deems
+necessary, to ensure BCP, DR, business operations and network connectivity and SAMPLE
+TEHSIL MUNICIPAL ADMINISTRATION will accept such measures.
+"""
+
+
 def make_text_pdf_bytes(text: str) -> bytes:
     """Build a digital PDF whose probed text is exactly ``text``."""
     document = pymupdf.open()
@@ -253,11 +273,18 @@ def test_analyze_bank_statement_end_to_end(authenticated_client, storage_root, m
 
 
 def test_analyze_payslip_from_scanned_image(authenticated_client, storage_root, monkeypatch):
+    """Proves the generic OCR-keyword classifier still runs for a checklist
+    storage type with no real extractor of its own. Was DocumentType.ONE_LINK_LETTER
+    until that type got a real extractor (Phase 1, fifth checklist type) --
+    swapped to SCHEDULE_OF_CHARGES, still unmapped in _CHECKLIST_TYPE_MAP, to
+    keep testing the same fallback path rather than this test's own premise
+    going stale.
+    """
     application_id = create_application(authenticated_client)
     add_document(
         storage_root,
         application_id,
-        DocumentType.ONE_LINK_LETTER,
+        DocumentType.SCHEDULE_OF_CHARGES,
         "payslip.png",
         encode_png(make_document_image()),
         "image/png",
@@ -659,6 +686,48 @@ def test_analyze_business_requirement_document_runs_real_extraction(
     assert (
         stored_item["extracted_fields"]["digitization_intent_confirmed"]
         == "KPITB's FinTech Unit"
+    )
+
+
+def test_analyze_one_link_letter_runs_real_extraction(authenticated_client, storage_root):
+    """ONE_LINK_LETTER now has a real extractor (Phase 1, fifth checklist type).
+
+    Real samples turned out to be a Participation Memorandum, not
+    docs/Master_Rules_Combined.md Section 4's Application Form -- see
+    OneLinkLetterExtractor's docstring and CONTEXT.md. This text has no
+    bank-statement-shaped labels, proving the same routing-precedence fix
+    Authority Letter's and BRD's tests prove.
+    """
+    application_id = create_application(authenticated_client)
+    add_digital_pdf(
+        storage_root,
+        application_id,
+        ONE_LINK_LETTER_TEXT,
+        document_type=DocumentType.ONE_LINK_LETTER,
+        filename="one_link_letter.pdf",
+    )
+    run_processing(authenticated_client, application_id)
+
+    result = analyze_documents(authenticated_client, application_id)
+
+    assert result["total_analyzed"] == 1
+    assert result["total_failed"] == 0
+    item = result["items"][0]
+    assert item["outcome"] == "ANALYZED"
+    assert item["document_type"] == "ONE_LINK_LETTER"
+    fields = item["extracted_fields"]
+    assert fields["organization_name"] == "SAMPLE TEHSIL MUNICIPAL ADMINISTRATION"
+    assert fields["branch_code"] == "0099"
+    assert item["confidence_score"] == 1.0
+    assert item["verification_status"] == "VERIFIED"
+    assert item.get("message") is None
+
+    stored = get_analysis_results(authenticated_client, application_id)
+    stored_item = stored["items"][0]
+    assert stored_item["document_type"] == "ONE_LINK_LETTER"
+    assert (
+        stored_item["extracted_fields"]["organization_name"]
+        == "SAMPLE TEHSIL MUNICIPAL ADMINISTRATION"
     )
 
 
