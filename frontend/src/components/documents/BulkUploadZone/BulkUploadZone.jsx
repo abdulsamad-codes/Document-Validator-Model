@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { UploadCloud } from 'lucide-react';
 import styles from './BulkUploadZone.module.css';
 

@@ -1,7 +1,6 @@
 import { AlertTriangle, Info } from 'lucide-react';
 
 import StatusChip from '../../common/StatusChip/StatusChip';
-import { getRuleResultStatus } from '../../../data/statuses';
 import styles from './ReportIssues.module.css';
 
 /**

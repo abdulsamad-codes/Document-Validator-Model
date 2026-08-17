@@ -6,19 +6,6 @@ import VerificationStatusBadge from '../VerificationStatusBadge/VerificationStat
 import styles from './DocumentDetailPanel.module.css';
 
 function RequirementRow({ rule }) {
-  const entry = (() => {
-    switch (rule.status) {
-      case 'PASS':
-        return { label: 'Passed', variant: 'success' };
-      case 'FAIL':
-        return { label: 'Failed', variant: 'danger' };
-      case 'WARNING':
-      case 'PENDING_MANUAL_REVIEW':
-      default:
-        return { label: 'Review Required', variant: 'warning' };
-    }
-  })();
-
   return (
     <li className={styles.requirement}>
       <div className={styles.requirementHeader}>

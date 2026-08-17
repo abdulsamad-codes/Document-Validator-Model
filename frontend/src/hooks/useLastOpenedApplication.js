@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react';
 
-import { getPreference, setPreference } from '../utils/preferences';
+import { getPreference } from '../utils/preferences';
 
 const LAST_OPENED_KEY = 'lastOpenedApplicationId';
 

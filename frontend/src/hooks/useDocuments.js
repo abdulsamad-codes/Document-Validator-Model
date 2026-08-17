@@ -115,7 +115,7 @@ export function useDocuments(applicationId) {
         return { ok: false, error: getApiErrorMessage(err) };
       }
     },
-    [applicationId, documents, findDocument, upsertDocument, refreshApplication]
+    [applicationId, findDocument, upsertDocument, refreshApplication]
   );
 
   const removeDocument = useCallback(
