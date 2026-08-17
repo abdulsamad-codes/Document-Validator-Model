@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 
 import { useMediaQuery } from '../../../hooks/useMediaQuery';
@@ -24,10 +24,13 @@ function DashboardLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  // Close the mobile drawer whenever the route changes.
-  useEffect(() => {
+  // Close the mobile drawer whenever the route changes, adjusted during
+  // render (React's recommended pattern) rather than in an effect.
+  const [drawerClosedForPath, setDrawerClosedForPath] = useState(location.pathname);
+  if (location.pathname !== drawerClosedForPath) {
+    setDrawerClosedForPath(location.pathname);
     setDrawerOpen(false);
-  }, [location.pathname]);
+  }
 
   const showMenuToggle = isTablet || isMobile;
   const navItem = findNavItem(location.pathname);
