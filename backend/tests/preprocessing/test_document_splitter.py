@@ -193,27 +193,56 @@ def test_split_genuine_application_form_title_is_one_link_letter():
     assert types == [DocumentType.AUTHORITY_LETTER, DocumentType.ONE_LINK_LETTER]
 
 
-def test_split_application_form_repeated_pages_become_separate_copies():
-    """A known, accepted side effect of the fix above: since the real
-    Application Form repeats its own title on every one of its pages (Form
-    A, the directors continuation, Form B), each page independently strong-
-    matches and starts its own document -- 3 separate ONE_LINK_LETTER copies,
-    not one merged 3-page document. Documented, not silently assumed: this
-    matches upload/constants.py::MAX_COPIES_BY_DOCUMENT_TYPE already
-    allowing up to 3 copies of this type, and mirrors the same per-page
-    strong-match behavior already covered by
-    test_split_repeated_same_type_copies for other types.
+def test_split_application_form_three_pages_group_into_one_document():
+    """Corrects a wrong assumption from an earlier pass of this fix: the
+    real Application Form's page count is NOT fixed at 3 -- checked against
+    4 real cached samples 2026-08-18, 3 files show 3 pages, a 4th
+    (GDA Abbotabad) shows 4. The form's own title repeats on every one of
+    its pages regardless of count, so each page independently strong-
+    matching used to produce N separate ONE_LINK_LETTER copies instead of
+    one logical document -- silently over-fragmenting the real form and, in
+    at least one real file, pushing the type past
+    MAX_COPIES_BY_DOCUMENT_TYPE's cap of 3 and hard-failing the entire bulk
+    upload (found the same day, TMA Khal Dir Lower.pdf: 3 form pages + 1
+    pre-existing genuine ONE_LINK_LETTER sample = 4, over the cap).
+
+    Fixed by _CONTINUATION_TITLE_PHRASES: a repeat of this exact phrase on
+    the immediately following strong-matched page extends the current
+    document instead of starting a new one. This is the 3-page case.
     """
     types = _doc_types([
         "Application Form (In-Direct Customer)\nForm A, company details.",
         "Application Form (In-Direct Customer)\nDirectors/partners table.",
         "Application Form (In-Direct Customer)\nForm B, business information.",
     ])
-    assert types == [
-        DocumentType.ONE_LINK_LETTER,
-        DocumentType.ONE_LINK_LETTER,
-        DocumentType.ONE_LINK_LETTER,
-    ]
+    assert types == [DocumentType.ONE_LINK_LETTER]
+
+
+def test_split_application_form_four_pages_group_into_one_document():
+    """Same fix, the 4-page case -- confirmed page-count-agnostic, not
+    hardcoded to 3. Matches the real GDA Abbotabad.pdf sample's own shape
+    (an extra page beyond the other 3 samples' 3-page structure).
+    """
+    types = _doc_types([
+        "Application Form (In-Direct Customer)\nForm A, company details.",
+        "Application Form (In-Direct Customer)\nDirectors/partners table.",
+        "Application Form (In-Direct Customer)\nLicense status table.",
+        "Application Form (In-Direct Customer)\nForm B, business information.",
+    ])
+    assert types == [DocumentType.ONE_LINK_LETTER]
+
+
+def test_split_application_form_ends_before_a_genuinely_different_document():
+    """The grouping above must stop cleanly once the repeating phrase
+    stops, so a real, different document immediately following the form
+    still starts its own document rather than being absorbed into it.
+    """
+    types = _doc_types([
+        "Application Form (In-Direct Customer)\nForm A, company details.",
+        "Application Form (In-Direct Customer)\nForm B, business information.",
+        "AUTHORITY LETTER\nA separate, unrelated document right after.",
+    ])
+    assert types == [DocumentType.ONE_LINK_LETTER, DocumentType.AUTHORITY_LETTER]
 
 
 def test_classify_text_authority_letter():

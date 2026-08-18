@@ -34,7 +34,7 @@ for page_num in range(num_pages):
     print(text[:1000] if text else "[No text extracted]")
     print("```\n")
     
-    detected_type, strong_evidence = DocumentSplitter._classify_page(page)
+    detected_type, strong_evidence, _matched_phrase = DocumentSplitter._classify_page(page)
     print(f"**Classification Result**: `{detected_type.name if detected_type else 'OTHER_SUPPORTING_DOCUMENT'}` (Strong Evidence: {strong_evidence})\n")
     print("---")
 

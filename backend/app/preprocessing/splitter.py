@@ -90,6 +90,24 @@ _STRONG_TITLE_PHRASES: list[tuple[DocumentType, tuple[str, ...]]] = [
     (DocumentType.FORMAL_REQUEST_LETTER, ("FORMAL REQUEST LETTER", "FORMAL REQUEST")),
 ]
 
+#: Strong-title phrases that mark a *continuation* of the same logical
+#: document when the identical phrase repeats on the immediately following
+#: strong-matched page, instead of starting a new copy (the default for
+#: every other strong match, including repeated copies of the same type --
+#: see the comment in split_bulk_pdf). Confirmed page-count-agnostic
+#: 2026-08-18 against 4 real files in Confidential Data/: the genuine
+#: Master_Rules_Combined.md Section 4 Application Form repeats this exact
+#: header on every one of its own pages (3 pages in 3 samples, 4 in a
+#: 4th), and no other real content has ever carried this phrase. Deliberately
+#: does not include the brand-prefixed "1LINK APPLICATION FORM" phrase --
+#: real repeated pages of that phrase are genuinely separate real forms per
+#: MAX_COPIES_BY_DOCUMENT_TYPE's own documented intent ("three 1-Link forms
+#: uploaded per application"), not sections of one form, and must keep
+#: counting as separate copies (see test_split_mixed_repeated_copies_and_pairs).
+_CONTINUATION_TITLE_PHRASES: frozenset[str] = frozenset(
+    {"APPLICATION FORM (IN-DIRECT CUSTOMER)"}
+)
+
 #: Marks a manifest/checklist cover page -- confirmed on two independent real
 #: files in Confidential Data/: such a page lists every required document by
 #: name (e.g. "Authority Letter", "Account Maintenance Certificate"), so its
@@ -237,13 +255,31 @@ class DocumentSplitter:
         split_documents: list[tuple[DocumentType, bytes]] = []
         current_type: DocumentType | None = None
         current_pages: list[int] = []
+        #: The strong-title phrase that opened/last extended current_pages,
+        #: when it's a _CONTINUATION_TITLE_PHRASES entry -- lets a repeat of
+        #: that exact phrase extend the same document instead of starting a
+        #: new copy. None for any other phrase (or no phrase yet).
+        current_continuation_phrase: str | None = None
 
         try:
             for page_num in range(len(document)):
                 page = document.load_page(page_num)
-                detected_type, strong_evidence = cls._classify_page(page, ocr_engine)
+                detected_type, strong_evidence, matched_phrase = cls._classify_page(
+                    page, ocr_engine
+                )
 
-                if strong_evidence:
+                if (
+                    strong_evidence
+                    and current_pages
+                    and matched_phrase is not None
+                    and matched_phrase == current_continuation_phrase
+                ):
+                    # The same continuation-eligible title repeats on this
+                    # strong-matched page: still the same logical multi-page
+                    # document (e.g. the 1-Link Application Form's own Form
+                    # A / directors / Form B sections), not a new copy.
+                    current_pages.append(page_num)
+                elif strong_evidence:
                     # Strong header/title evidence marks a fresh document —
                     # even when it equals the current type (repeated copies).
                     if current_pages:
@@ -252,6 +288,11 @@ class DocumentSplitter:
                         )
                     current_type = detected_type or DocumentType.OTHER_SUPPORTING_DOCUMENT
                     current_pages = [page_num]
+                    current_continuation_phrase = (
+                        matched_phrase
+                        if matched_phrase in _CONTINUATION_TITLE_PHRASES
+                        else None
+                    )
                 elif current_pages:
                     # No boundary evidence: a continuation page. Body keywords
                     # must never start a new document.
@@ -261,6 +302,7 @@ class DocumentSplitter:
                     # the document; never split on them.
                     current_type = detected_type or DocumentType.OTHER_SUPPORTING_DOCUMENT
                     current_pages = [page_num]
+                    current_continuation_phrase = None
 
             if current_pages:
                 split_documents.append((current_type, cls._create_pdf(document, current_pages)))
@@ -276,13 +318,18 @@ class DocumentSplitter:
         return split_documents
 
     @classmethod
-    def _classify_page(cls, page: fitz.Page, ocr_engine: object | None = None) -> tuple[DocumentType | None, bool]:
-        """Classify one page, returning ``(type, strong_evidence)``.
+    def _classify_page(
+        cls, page: fitz.Page, ocr_engine: object | None = None
+    ) -> tuple[DocumentType | None, bool, str | None]:
+        """Classify one page, returning ``(type, strong_evidence, matched_phrase)``.
 
         ``strong_evidence`` is only ever ``True`` for anchored title phrases in
         the header region of the page. The returned type without strong
         evidence is weak/full-text evidence, usable only for typing a document
-        that has no type yet.
+        that has no type yet. ``matched_phrase`` is the exact
+        _STRONG_TITLE_PHRASES entry that matched (``None`` otherwise) -- used
+        by split_bulk_pdf to detect a repeated _CONTINUATION_TITLE_PHRASES
+        entry across consecutive pages.
         """
         lines = _extract_lines(page)
         page_height = page.rect.height or 0
@@ -323,16 +370,16 @@ class DocumentSplitter:
             # plain "CHECKLIST" and a "MASTER CHECKLIST" that a prefix check
             # would silently miss.
             if _CHECKLIST_PAGE_MARKER in text:
-                return None, False
+                return None, False, None
             for phrase in _CNIC_HEADER_PHRASES:
                 if text.startswith(phrase):
-                    return cls._resolve_cnic_side(full_text), True
+                    return cls._resolve_cnic_side(full_text), True, None
             for doc_type, phrases in _STRONG_TITLE_PHRASES:
                 for phrase in phrases:
                     if text.startswith(phrase):
-                        return doc_type, True
+                        return doc_type, True, phrase
 
-        return cls._classify_text(full_text), False
+        return cls._classify_text(full_text), False, None
 
     @staticmethod
     def _classify_text(text: str) -> DocumentType | None:
