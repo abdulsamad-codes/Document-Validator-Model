@@ -7,6 +7,8 @@ directly; scanned images use the deterministic fake OCR engine so no PaddleOCR
 model is required.
 """
 
+import logging
+
 import pytest
 from sqlalchemy import inspect
 
@@ -36,6 +38,25 @@ API = "/api/v1"
 
 EVALUATE_URL = "/confidence/evaluate"
 REVIEW_URL = "/confidence/review"
+
+#: Synthetic (fabricated), unrelated to any real document -- matches none of
+#: _DETECTION_KEYWORDS' 4 categories, so it classifies as UNKNOWN and
+#: extracts zero fields. Deliberately dense/multi-line (not short, like
+#: PLAIN_TEXT elsewhere), to avoid tripping the unrelated pre-existing
+#: blank-page technical-validation regression on a too-sparse rendered page.
+UNRELATED_DENSE_TEXT = """MEETING MINUTES
+Date: 2026-01-15
+Attendees: Board of Directors
+Topic: Quarterly Review
+Location: Head Office, Conference Room A
+Chairperson: J. Smith
+Secretary: A. Jones
+Agenda Item 1: Welcome and apologies for absence.
+Agenda Item 2: Approval of previous minutes.
+Agenda Item 3: Overview presented by the treasurer.
+Agenda Item 4: Any other business.
+Next Meeting: 2026-04-15
+"""
 
 
 def evaluate(client, application_id: int) -> dict:
@@ -373,6 +394,56 @@ def test_evaluate_no_analysis_results(authenticated_client, storage_root):
     response = authenticated_client.post(f"{API}/applications/{application_id}{EVALUATE_URL}")
     assert response.status_code == 422
     assert "analysis" in response.json()["detail"].lower()
+
+
+def test_evaluate_with_zero_extracted_fields_does_not_500(
+    authenticated_client, storage_root, caplog
+):
+    """An application whose only analyzed document extracted zero fields must
+    still return a valid (if degenerate) response, not crash.
+
+    Regression test for a real bug found 2026-08-17 (see CONTEXT.md):
+    ConfidenceService.evaluate()'s completion log line formatted `overall`
+    with %.3f, but `overall` is None whenever no fields were collected --
+    unhandled, so this raised TypeError and 500'd instead of returning
+    overall_confidence=None (already the schema's own documented meaning for
+    "nothing was scored", matching the same None-not-zero convention used
+    independently in reports/services.py's own overall-confidence field).
+
+    caplog.set_level(logging.INFO) is required, not decorative: pytest's log
+    capture handler defaults to WARNING, and Python's %-style logging only
+    performs the actual substitution when a handler at-or-below the record's
+    level formats it -- so without this, the buggy %.3f line's TypeError
+    never fires during a test run at all (confirmed directly: this exact
+    test still passed with the bug still in place until this line was
+    added). This matches CONTEXT.md's own B.8 audit finding that the bug is
+    "dormant in tests, live in code" -- explains why, not just states it.
+
+    UNRELATED_DENSE_TEXT is deliberately long and label-dense (not short,
+    like PLAIN_TEXT elsewhere in this file) purely to avoid tripping the
+    unrelated pre-existing blank-page technical-validation regression
+    (fcc9fda, tracked in CONTEXT.md) on a too-sparse rendered page -- and
+    deliberately avoids every _DETECTION_KEYWORDS phrase (bank statement,
+    payslip, ID document, tax document) so it classifies as UNKNOWN and
+    genuinely extracts zero fields, the real condition this bug needs.
+    """
+    caplog.set_level(logging.INFO)
+    application_id = create_application(authenticated_client)
+    add_digital_pdf(
+        storage_root,
+        application_id,
+        UNRELATED_DENSE_TEXT,
+        filename="minutes.pdf",
+    )
+    run_processing(authenticated_client, application_id)
+    analysis = analyze_documents(authenticated_client, application_id)
+    assert analysis["total_analyzed"] == 1
+    assert analysis["items"][0]["document_type"] == "UNKNOWN"
+
+    result = evaluate(authenticated_client, application_id)
+
+    assert result["overall_confidence"] is None
+    assert result["fields_requiring_review"] == []
 
 
 def test_review_after_ready_evaluation_conflicts(authenticated_client, storage_root):

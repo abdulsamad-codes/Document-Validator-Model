@@ -334,12 +334,13 @@ class ConfidenceService:
                 "critical_failures": critical_failures,
             },
         )
+        overall_display = f"{overall:.3f}" if overall is not None else "None"
         logger.info(
             "Confidence evaluated for application id=%s: status=%s "
-            "overall=%.3f threshold=%.3f fields=%s flagged=%s",
+            "overall=%s threshold=%.3f fields=%s flagged=%s",
             application_id,
             status.value,
-            overall,
+            overall_display,
             threshold,
             len(entries),
             sorted(flagged_names),
