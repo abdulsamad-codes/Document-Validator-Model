@@ -51,6 +51,8 @@ describe('Phase 1 frontend routes', () => {
       </MemoryRouter>
     );
 
-    expect(await screen.findByText(/restricted to the IT role/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/no audit records match the current filters/i)
+    ).toBeInTheDocument();
   });
 });

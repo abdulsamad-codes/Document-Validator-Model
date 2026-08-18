@@ -7,7 +7,7 @@ from fastapi import Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.auth.constants import ACCESS_TOKEN_COOKIE
-from app.auth.roles import ROLES, effective_role
+from app.auth.roles import ROLE_EMPLOYEE, ROLES, effective_role
 from app.auth.services import AuthenticationService
 from app.database.connection import get_db
 from app.database.models.user import User
@@ -38,8 +38,9 @@ def require_role(*roles: str) -> Callable:
     The dependency resolves the authenticated user via :func:`get_current_user`
     (so a missing/expired session still yields 401) and then enforces the role
     against the user's effective role (:func:`app.auth.roles.effective_role`,
-    which normalizes legacy role strings). A user who holds none of the
-    requested roles receives ``403 Forbidden``.
+    which normalizes legacy role strings). The all-access Employee role
+    (:data:`app.auth.roles.ROLE_EMPLOYEE`) satisfies every guard by design. A
+    user who holds none of the requested roles receives ``403 Forbidden``.
 
     Usage::
 
@@ -59,7 +60,8 @@ def require_role(*roles: str) -> Callable:
     requested = frozenset(roles)
 
     def _require_role(current_user: User = Depends(get_current_user)) -> User:
-        if effective_role(current_user.role) not in requested:
+        effective = effective_role(current_user.role)
+        if effective != ROLE_EMPLOYEE and effective not in requested:
             raise HTTPException(
                 status_code=403,
                 detail="You do not have permission to perform this action.",

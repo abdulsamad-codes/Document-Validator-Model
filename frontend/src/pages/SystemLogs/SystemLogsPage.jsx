@@ -1,4 +1,5 @@
-import { Search, ShieldAlert, X } from 'lucide-react';
+import { useState } from 'react';
+import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Search, ShieldAlert, X } from 'lucide-react';
 
 import EmptyState from '../../components/common/EmptyState/EmptyState';
 import ErrorState from '../../components/common/ErrorState/ErrorState';
@@ -7,7 +8,7 @@ import StatusChip from '../../components/common/StatusChip/StatusChip';
 import { useAuth } from '../../hooks/useAuth';
 import { useSystemLogs } from '../../hooks/useSystemLogs';
 import { humanizeEnum, formatDateTime } from '../../utils/format';
-import { isIt } from '../../utils/roles';
+import { isEmployee, isIt } from '../../utils/roles';
 import styles from './SystemLogsPage.module.css';
 
 const SEVERITY_VARIANTS = {
@@ -26,18 +27,22 @@ const SEVERITY_VARIANTS = {
  */
 function SystemLogsPage() {
   const { user } = useAuth();
+  const [expandedId, setExpandedId] = useState(null);
   const {
     entries,
     total,
     loading,
     error,
     filters,
+    pageCount,
+    currentPage,
     onFilterChange,
     onReset,
     onSearch,
+    onGoToPage,
   } = useSystemLogs();
 
-  const allowed = isIt(user);
+  const allowed = isIt(user) || isEmployee(user);
 
   if (!allowed) {
     return (
@@ -109,6 +114,17 @@ function SystemLogsPage() {
             placeholder="Actor username"
           />
         </label>
+        <label className={styles.field} htmlFor="sl-event-type">
+          <span className={styles.fieldLabel}>Event type</span>
+          <input
+            id="sl-event-type"
+            className={styles.input}
+            type="text"
+            value={filters.eventType}
+            onChange={handleFilterChange('eventType')}
+            placeholder="e.g. human_review.submitted"
+          />
+        </label>
         <label className={styles.field} htmlFor="sl-severity">
           <span className={styles.fieldLabel}>Severity</span>
           <select
@@ -172,48 +188,158 @@ function SystemLogsPage() {
           message="No audit records match the current filters."
         />
       ) : (
-        <div className={styles.tableWrap}>
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th scope="col">When</th>
-                <th scope="col">Actor</th>
-                <th scope="col">Action</th>
-                <th scope="col">Application</th>
-                <th scope="col">Severity</th>
-                <th scope="col">Details</th>
-              </tr>
-            </thead>
-            <tbody>
-              {entries.map((entry) => {
-                const severityVariant = SEVERITY_VARIANTS[entry.severity] ?? 'neutral';
-                return (
-                  <tr key={entry.id}>
-                    <td data-label="When">{formatDateTime(entry.performed_at)}</td>
-                    <td data-label="Actor">{entry.username}</td>
-                    <td data-label="Action">{humanizeEnum(entry.action)}</td>
-                    <td data-label="Application">
-                      {entry.application_id != null ? `#${entry.application_id}` : '—'}
-                    </td>
-                    <td data-label="Severity">
-                      {entry.severity ? (
-                        <StatusChip
-                          label={humanizeEnum(entry.severity)}
-                          variant={severityVariant}
-                        />
-                      ) : (
-                        '—'
+        <>
+          <div className={styles.tableWrap}>
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th scope="col">When</th>
+                  <th scope="col">Actor</th>
+                  <th scope="col">Action</th>
+                  <th scope="col">Application</th>
+                  <th scope="col">Severity</th>
+                  <th scope="col">Status</th>
+                  <th scope="col" className={styles.detailsHeader}>
+                    Details
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {entries.map((entry) => {
+                  const severityVariant = SEVERITY_VARIANTS[entry.severity] ?? 'neutral';
+                  const expanded = expandedId === entry.id;
+                  const hasDetails =
+                    entry.details != null ||
+                    entry.previous_status != null ||
+                    entry.new_status != null;
+                  return (
+                    <>
+                      <tr key={entry.id} className={styles.entryRow}>
+                        <td data-label="When">{formatDateTime(entry.performed_at)}</td>
+                        <td data-label="Actor">{entry.username}</td>
+                        <td data-label="Action">{humanizeEnum(entry.action)}</td>
+                        <td data-label="Application">
+                          {entry.application_id != null ? `#${entry.application_id}` : '—'}
+                        </td>
+                        <td data-label="Severity">
+                          {entry.severity ? (
+                            <StatusChip
+                              label={humanizeEnum(entry.severity)}
+                              variant={severityVariant}
+                            />
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                        <td data-label="Status">
+                          {entry.previous_status || entry.new_status ? (
+                            <span className={styles.statusTransition}>
+                              <span>{entry.previous_status ? humanizeEnum(entry.previous_status) : '—'}</span>
+                              <span className={styles.statusArrow} aria-hidden="true">
+                                →
+                              </span>
+                              <span>{entry.new_status ? humanizeEnum(entry.new_status) : '—'}</span>
+                            </span>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                        <td className={styles.detailsCell} data-label="Details">
+                          {hasDetails ? (
+                            <button
+                              type="button"
+                              className={styles.expandButton}
+                              onClick={() => setExpandedId(expanded ? null : entry.id)}
+                              aria-expanded={expanded}
+                              aria-label={expanded ? 'Hide event details' : 'Show event details'}
+                            >
+                              {expanded ? (
+                                <ChevronUp aria-hidden="true" />
+                              ) : (
+                                <ChevronDown aria-hidden="true" />
+                              )}
+                              {expanded ? 'Hide' : 'View'}
+                            </button>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                      </tr>
+                      {expanded && (
+                        <tr key={`${entry.id}-details`} className={styles.expandedRow}>
+                          <td colSpan={7} className={styles.expandedCell}>
+                            <dl className={styles.detailList}>
+                              {entry.actor_role && (
+                                <div className={styles.detailItem}>
+                                  <dt>Actor role</dt>
+                                  <dd>{humanizeEnum(entry.actor_role)}</dd>
+                                </div>
+                              )}
+                              {entry.document_id != null && (
+                                <div className={styles.detailItem}>
+                                  <dt>Document</dt>
+                                  <dd>#{entry.document_id}</dd>
+                                </div>
+                              )}
+                              {entry.previous_status != null && (
+                                <div className={styles.detailItem}>
+                                  <dt>Previous status</dt>
+                                  <dd>{humanizeEnum(entry.previous_status)}</dd>
+                                </div>
+                              )}
+                              {entry.new_status != null && (
+                                <div className={styles.detailItem}>
+                                  <dt>New status</dt>
+                                  <dd>{humanizeEnum(entry.new_status)}</dd>
+                                </div>
+                              )}
+                              {entry.details != null && (
+                                <div className={styles.detailItem}>
+                                  <dt>Event details</dt>
+                                  <dd>
+                                    <pre className={styles.detailJson}>
+                                      {JSON.stringify(entry.details, null, 2)}
+                                    </pre>
+                                  </dd>
+                                </div>
+                              )}
+                            </dl>
+                          </td>
+                        </tr>
                       )}
-                    </td>
-                    <td data-label="Details">
-                      {entry.details ? JSON.stringify(entry.details) : '—'}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                    </>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {pageCount > 1 && (
+            <div className={styles.pagination}>
+              <button
+                type="button"
+                className={styles.pageButton}
+                disabled={currentPage === 0}
+                onClick={() => onGoToPage(currentPage - 1)}
+                aria-label="Previous page"
+              >
+                <ChevronLeft aria-hidden="true" />
+              </button>
+              <span className={styles.pageInfo}>
+                Page {currentPage + 1} of {pageCount} · {total} entries
+              </span>
+              <button
+                type="button"
+                className={styles.pageButton}
+                disabled={currentPage >= pageCount - 1}
+                onClick={() => onGoToPage(currentPage + 1)}
+                aria-label="Next page"
+              >
+                <ChevronRight aria-hidden="true" />
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

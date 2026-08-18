@@ -83,7 +83,7 @@ describe('ValidationPage', () => {
     renderPage();
 
     expect(screen.getByText(/TMA Khal/i)).toBeInTheDocument();
-    expect(screen.getByText(/needs attention/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/needs attention/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/1 application/i)).toBeInTheDocument();
   });
 
@@ -115,6 +115,17 @@ describe('ValidationPage', () => {
     ).toBeInTheDocument();
     expect(operatorView.getByRole('button', { name: /reject application/i })).toBeInTheDocument();
     operatorView.unmount();
+
+    useAuth.mockReturnValue({ user: { role: 'Verification Officer' } });
+    const employeeView = render(<ValidationPage />);
+    expect(employeeView.queryByText(/view-only access/i)).not.toBeInTheDocument();
+    expect(
+      employeeView.getByRole('button', { name: /request documents/i })
+    ).toBeInTheDocument();
+    expect(
+      employeeView.getByRole('button', { name: /reject application/i })
+    ).toBeInTheDocument();
+    employeeView.unmount();
 
     useAuth.mockReturnValue({ user: { role: 'REVIEWER' } });
     const reviewerView = render(<ValidationPage />);
@@ -157,5 +168,42 @@ describe('ValidationPage', () => {
       });
     });
     expect(success).toHaveBeenCalledWith(expect.stringMatching(/document request sent/i));
+  });
+
+  it('shows the summary counter cards for the queue', () => {
+    useAuth.mockReturnValue({ user: { role: 'OPERATOR' } });
+    useToast.mockReturnValue({ success: vi.fn() });
+    useValidationQueue.mockReturnValue({
+      ...baseHookValue,
+      applications: [makeApplication()],
+      total: 1,
+    });
+
+    renderPage();
+
+    expect(screen.getByLabelText('Pending')).toHaveTextContent('0');
+    expect(screen.getByLabelText('Needs attention')).toHaveTextContent('1');
+    expect(screen.getByLabelText('Missing documents')).toHaveTextContent('0');
+  });
+
+  it('shows the received checklist and a complete state when no documents are missing', () => {
+    useToast.mockReturnValue({ success: vi.fn() });
+    useValidationQueue.mockReturnValue({
+      ...baseHookValue,
+      applications: [makeApplication({ missing_documents: [], missing_document_count: 0 })],
+      total: 1,
+      selectedId: 42,
+      selectedApplication: makeApplication({
+        missing_documents: [],
+        missing_document_count: 0,
+      }),
+    });
+
+    useAuth.mockReturnValue({ user: { role: 'OPERATOR' } });
+    renderPage();
+
+    expect(screen.getByText(/all required documents received/i)).toBeInTheDocument();
+    expect(screen.getByText('Tripartite Agreement')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /request documents/i })).not.toBeInTheDocument();
   });
 });

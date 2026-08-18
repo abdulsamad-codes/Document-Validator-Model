@@ -292,3 +292,18 @@ def test_operator_actions_reject_missing_session(client):
     """Unauthenticated requests to operator actions are rejected (401)."""
     response = client.post(f"{API}{reject_url(999999)}", json={"reason": "x"})
     assert response.status_code == 401, response.text
+
+
+def test_employee_account_can_run_operator_actions(authenticated_client):
+    """The all-access Employee (Verification Officer) account may operate.
+
+    The seeded default account is the all-access Employee role, so it is
+    authorized for operator actions despite not holding the OPERATOR role.
+    """
+    application_id = create_application(authenticated_client)
+    response = authenticated_client.post(
+        f"{API}{request_documents_url(application_id)}",
+        json={"missing_document_types": [DocumentType.ONE_LINK_LETTER.value]},
+    )
+    assert response.status_code == 200, response.text
+    assert stored_status(application_id) == ApplicationStatus.NEEDS_DOCUMENTS.value

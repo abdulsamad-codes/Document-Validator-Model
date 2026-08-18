@@ -5,10 +5,11 @@ import ErrorState from '../../components/common/ErrorState/ErrorState';
 import Spinner from '../../components/common/Spinner/Spinner';
 import { useToast } from '../../components/common/Toast/ToastContext';
 import ValidationQueueDetailPanel from '../../components/validationQueue/ValidationQueueDetailPanel/ValidationQueueDetailPanel';
+import ValidationQueueSummary from '../../components/validationQueue/ValidationQueueSummary/ValidationQueueSummary';
 import ValidationQueueTable from '../../components/validationQueue/ValidationQueueTable/ValidationQueueTable';
 import { useAuth } from '../../hooks/useAuth';
 import { useValidationQueue } from '../../hooks/useValidationQueue';
-import { isOperator } from '../../utils/roles';
+import { isEmployee, isOperator } from '../../utils/roles';
 import styles from './ValidationPage.module.css';
 
 /**
@@ -44,7 +45,7 @@ function ValidationPage() {
     onRefresh,
   } = useValidationQueue();
 
-  const canOperate = isOperator(user);
+  const canOperate = isOperator(user) || isEmployee(user);
 
   const handleRequestDocuments = async (payload) => {
     const result = await onRequestDocuments(payload);
@@ -100,11 +101,14 @@ function ValidationPage() {
           message="Newly uploaded applications appear here for completeness review."
         />
       ) : (
-        <ValidationQueueTable
-          applications={applications}
-          selectedId={selectedId}
-          onSelect={onSelect}
-        />
+        <>
+          <ValidationQueueSummary applications={applications} />
+          <ValidationQueueTable
+            applications={applications}
+            selectedId={selectedId}
+            onSelect={onSelect}
+          />
+        </>
       )}
 
       {selectedApplication != null && (

@@ -7,12 +7,14 @@ of truth mapping legacy strings onto the three canonical operational roles.
 import pytest
 
 from app.auth.roles import (
+    ROLE_EMPLOYEE,
     ROLE_GROUPS,
     ROLE_IT,
     ROLES,
     ROLE_OPERATOR,
     ROLE_REVIEWER,
     effective_role,
+    is_employee,
     is_it,
     is_operator,
     is_reviewer,
@@ -26,21 +28,21 @@ class _User:
         self.role = role
 
 
-def test_canonical_roles_are_exactly_three():
-    """The three operational roles are OPERATOR, REVIEWER and IT."""
-    assert ROLES == frozenset({ROLE_OPERATOR, ROLE_REVIEWER, ROLE_IT})
+def test_canonical_roles_are_exactly_four():
+    """The canonical roles are EMPLOYEE, OPERATOR, REVIEWER and IT."""
+    assert ROLES == frozenset({ROLE_EMPLOYEE, ROLE_OPERATOR, ROLE_REVIEWER, ROLE_IT})
 
 
 def test_effective_role_passthrough_for_canonical_roles():
     """Canonical role strings map to themselves."""
-    for role in (ROLE_OPERATOR, ROLE_REVIEWER, ROLE_IT):
+    for role in (ROLE_EMPLOYEE, ROLE_OPERATOR, ROLE_REVIEWER, ROLE_IT):
         assert effective_role(role) == role
 
 
 def test_effective_role_maps_legacy_verification_officer():
-    """The legacy 'Verification Officer' role maps to REVIEWER."""
-    assert effective_role("Verification Officer") == ROLE_REVIEWER
-    assert ROLE_GROUPS["Verification Officer"] == ROLE_REVIEWER
+    """The legacy 'Verification Officer' role maps to EMPLOYEE."""
+    assert effective_role("Verification Officer") == ROLE_EMPLOYEE
+    assert ROLE_GROUPS["Verification Officer"] == ROLE_EMPLOYEE
 
 
 def test_effective_role_defaults_empty_to_operator():
@@ -56,9 +58,12 @@ def test_effective_role_unknown_role_passes_through():
 
 def test_role_membership_helpers():
     """The is_* helpers test the effective role."""
+    assert is_employee(_User("Verification Officer"))
+    assert not is_employee(_User(ROLE_OPERATOR))
     assert is_operator(_User(ROLE_OPERATOR))
     assert not is_operator(_User(ROLE_REVIEWER))
-    assert is_reviewer(_User("Verification Officer"))
+    assert not is_reviewer(_User("Verification Officer"))
+    assert is_reviewer(_User(ROLE_REVIEWER))
     assert not is_reviewer(_User(ROLE_OPERATOR))
     assert is_it(_User(ROLE_IT))
     assert not is_it(_User(ROLE_REVIEWER))
@@ -71,3 +76,18 @@ def test_require_role_rejects_unknown_roles():
 
     with pytest.raises(ValueError):
         require_role("NOT_A_ROLE")
+
+
+def test_require_role_allows_employee_for_any_guard():
+    """The all-access Employee account passes every role guard."""
+    from fastapi import HTTPException
+
+    from app.auth.dependencies import require_role
+
+    for role in (ROLE_OPERATOR, ROLE_REVIEWER, ROLE_IT):
+        dep = require_role(role)
+        assert dep(_User("Verification Officer")) is not None
+
+    with pytest.raises(HTTPException) as excinfo:
+        require_role(ROLE_IT)(_User(ROLE_REVIEWER))
+    assert excinfo.value.status_code == 403

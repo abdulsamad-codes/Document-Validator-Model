@@ -7,6 +7,11 @@ accounts keep working while new role-specific behavior is enforced.
 
 Role hierarchy for authorization:
 
+- EMPLOYEE: the seeded default account (``Verification Officer``) and, by
+  design, the all-access role: it is authorized for every operational role
+  guard (operator, reviewer and IT actions) so the full application can be
+  exercised with one account. This mirrors the product requirement that the
+  Employee account can do everything.
 - OPERATOR: first-level document/completeness checker. Requests missing
   documents, rejects incomplete applications, submits complete applications
   for processing. Never sees OCR/normalization/technical internals and cannot
@@ -24,18 +29,19 @@ Legacy role strings are normalized through :data:`ROLE_GROUPS` so
 
 from __future__ import annotations
 
+ROLE_EMPLOYEE = "EMPLOYEE"
 ROLE_OPERATOR = "OPERATOR"
 ROLE_REVIEWER = "REVIEWER"
 ROLE_IT = "IT"
 
 #: Canonical roles a user can hold.
-ROLES = frozenset({ROLE_OPERATOR, ROLE_REVIEWER, ROLE_IT})
+ROLES = frozenset({ROLE_EMPLOYEE, ROLE_OPERATOR, ROLE_REVIEWER, ROLE_IT})
 
 #: Legacy role strings mapped to the canonical role they imply. The seeded
-#: default account historically used ``Verification Officer`` and performs the
-#: human-verification (review) workflow, so it maps to REVIEWER.
+#: default account historically used ``Verification Officer`` and is the
+#: all-access Employee account, so it maps to EMPLOYEE.
 ROLE_GROUPS: dict[str, str] = {
-    "Verification Officer": ROLE_REVIEWER,
+    "Verification Officer": ROLE_EMPLOYEE,
 }
 
 
@@ -46,14 +52,19 @@ def effective_role(role: str | None) -> str:
         role: Stored ``users.role`` value, if any.
 
     Returns:
-        The canonical role: ``OPERATOR``, ``REVIEWER``, ``IT``, or the original
-        string when it is not a recognized legacy value.
+        The canonical role: ``EMPLOYEE``, ``OPERATOR``, ``REVIEWER``, ``IT``,
+        or the original string when it is not a recognized legacy value.
     """
     if not role:
         return ROLE_OPERATOR
     if role in ROLES:
         return role
     return ROLE_GROUPS.get(role, role)
+
+
+def is_employee(user) -> bool:
+    """Return whether the user holds the all-access Employee role."""
+    return effective_role(getattr(user, "role", None)) == ROLE_EMPLOYEE
 
 
 def is_operator(user) -> bool:
