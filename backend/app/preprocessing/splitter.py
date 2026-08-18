@@ -61,6 +61,13 @@ _STRONG_TITLE_PHRASES: list[tuple[DocumentType, tuple[str, ...]]] = [
             "ONE-LINK APPLICATION FORM",
             "ONE LINK APPLICATION FORM",
             "ONELINK APPLICATION FORM",
+            # The genuine Master_Rules_Combined.md Section 4 form's own real
+            # title -- it never carries a "1LINK"/"ONE-LINK" brand prefix on
+            # the page itself, so none of the phrases above ever matched it.
+            # Found 2026-08-18 on a real file (Confidential Data/); the same
+            # title was also confirmed present, previously unidentified,
+            # inside 3 other already-cached real samples from 2 other files.
+            "APPLICATION FORM (IN-DIRECT CUSTOMER)",
             "ONELINK",
             "ONE-LINK",
             "1LINK",

@@ -172,6 +172,50 @@ def test_split_master_checklist_cover_page_is_not_misclassified():
     ]
 
 
+def test_split_genuine_application_form_title_is_one_link_letter():
+    """The genuine 1-Link Application Form's own real title must start a new
+    document, not be silently absorbed as an untyped continuation.
+
+    Regression test for a real bug found 2026-08-18 on TMA Lal Dir Upper.pdf
+    (Confidential Data/): docs/Master_Rules_Combined.md Section 4's real
+    Application Form starts its own page with "Application Form (In-Direct
+    Customer)" -- it never carries a "1LINK"/"ONE-LINK"/"ONELINK" brand
+    prefix on the page itself, so none of the existing ONE_LINK_LETTER
+    phrases (all brand-prefixed) ever matched it; the page was silently
+    absorbed as a continuation of whichever unrelated document preceded it
+    instead. The same real title, previously unidentified, was also found
+    hiding in 3 other already-cached real samples from 2 other files.
+    """
+    types = _doc_types([
+        "AUTHORITY LETTER\nUnrelated preceding document body.",
+        "Application Form (In-Direct Customer)\nKnow Your Customer, Form A.",
+    ])
+    assert types == [DocumentType.AUTHORITY_LETTER, DocumentType.ONE_LINK_LETTER]
+
+
+def test_split_application_form_repeated_pages_become_separate_copies():
+    """A known, accepted side effect of the fix above: since the real
+    Application Form repeats its own title on every one of its pages (Form
+    A, the directors continuation, Form B), each page independently strong-
+    matches and starts its own document -- 3 separate ONE_LINK_LETTER copies,
+    not one merged 3-page document. Documented, not silently assumed: this
+    matches upload/constants.py::MAX_COPIES_BY_DOCUMENT_TYPE already
+    allowing up to 3 copies of this type, and mirrors the same per-page
+    strong-match behavior already covered by
+    test_split_repeated_same_type_copies for other types.
+    """
+    types = _doc_types([
+        "Application Form (In-Direct Customer)\nForm A, company details.",
+        "Application Form (In-Direct Customer)\nDirectors/partners table.",
+        "Application Form (In-Direct Customer)\nForm B, business information.",
+    ])
+    assert types == [
+        DocumentType.ONE_LINK_LETTER,
+        DocumentType.ONE_LINK_LETTER,
+        DocumentType.ONE_LINK_LETTER,
+    ]
+
+
 def test_classify_text_authority_letter():
     """The classifier should detect AUTHORITY LETTER keyword."""
     doc_type = DocumentSplitter._classify_text("AUTHORITY LETTER\nFrom the CEO")
