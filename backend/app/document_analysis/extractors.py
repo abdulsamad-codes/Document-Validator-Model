@@ -350,6 +350,43 @@ class TaxExtractor(RegexExtractor):
     }
 
 
+class FormalRequestLetterExtractor(RegexExtractor):
+    """Extracts structured fields from a Formal Request Letter."""
+
+    document_type = AnalyzedDocumentType.FORMAL_REQUEST_LETTER
+
+    _patterns = {
+        "organization_name": re.compile(
+            r"(?:OFFICE OF THE|DEPARTMENT OF|GOVERNMENT OF|TO THE|FROM[:|-]?)\s*(.+)",
+            re.IGNORECASE | re.MULTILINE,
+        ),
+        "addressee": re.compile(
+            r"To,?\s*\n?\s*(The\s+Managing\s+Director[^\n,]*|Managing\s+Director[^\n,]*|KPITB[^\n,]*|Khyber\s+Pakhtunkhwa\s+Information\s+Technology\s+Board[^\n,]*)",
+            re.IGNORECASE | re.MULTILINE,
+        ),
+        "subject": re.compile(
+            r"Subject\s*[:|-]?\s*(.+)",
+            re.IGNORECASE | re.MULTILINE,
+        ),
+        "date": re.compile(
+            r"(?:Date|Dated)\s*[:|-]?\s*([0-9]{1,2}[/\-.][0-9]{1,2}[/\-.][0-9]{2,4}|[0-9]{4}[/\-.][0-9]{1,2}[/\-.][0-9]{1,2}|\d{1,2}\s+[A-Za-z]+\s+\d{4})",
+            re.IGNORECASE | re.MULTILINE,
+        ),
+        "focal_person_name": re.compile(
+            r"(?:Focal Person Name|Focal Person|Contact Person|Authorized Representative|Submitted By|Signed By)\s*[:|-]?\s*(.+)",
+            re.IGNORECASE | re.MULTILINE,
+        ),
+        "focal_person_designation": re.compile(
+            r"(?:Designation|Title)\s*[:|-]?\s*(.+)",
+            re.IGNORECASE | re.MULTILINE,
+        ),
+    }
+
+    _post = {
+        "date": _as_iso_date,
+    }
+
+
 #: Detection keywords per analysed document type. Weights express how strongly a
 #: keyword identifies the type; scoring is order-independent and deterministic.
 _DETECTION_KEYWORDS: dict[AnalyzedDocumentType, list[tuple[str, int]]] = {
@@ -385,6 +422,15 @@ _DETECTION_KEYWORDS: dict[AnalyzedDocumentType, list[tuple[str, int]]] = {
         ("tax year", 2),
         ("income tax", 1),
     ],
+    AnalyzedDocumentType.FORMAL_REQUEST_LETTER: [
+        ("formal request letter", 4),
+        ("formal request", 3),
+        ("request letter", 3),
+        ("onboarding as a sub-biller", 3),
+        ("managing director", 2),
+        ("kpitb", 2),
+        ("sub-biller", 2),
+    ],
 }
 
 #: Extractors available for each analysed document type.
@@ -393,6 +439,7 @@ _EXTRACTORS: dict[AnalyzedDocumentType, RegexExtractor] = {
     AnalyzedDocumentType.PAYSLIP: PayslipExtractor(),
     AnalyzedDocumentType.ID_DOCUMENT: IdentityExtractor(),
     AnalyzedDocumentType.TAX_DOCUMENT: TaxExtractor(),
+    AnalyzedDocumentType.FORMAL_REQUEST_LETTER: FormalRequestLetterExtractor(),
 }
 
 

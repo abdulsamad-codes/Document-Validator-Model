@@ -21,6 +21,7 @@ class AnalyzedDocumentType(str, Enum):
     PAYSLIP = "PAYSLIP"
     ID_DOCUMENT = "ID_DOCUMENT"
     TAX_DOCUMENT = "TAX_DOCUMENT"
+    FORMAL_REQUEST_LETTER = "FORMAL_REQUEST_LETTER"
     UNKNOWN = "UNKNOWN"
 
 
@@ -98,6 +99,16 @@ EXPECTED_FIELDS: dict[AnalyzedDocumentType, frozenset[str]] = {
             "currency",
         }
     ),
+    AnalyzedDocumentType.FORMAL_REQUEST_LETTER: frozenset(
+        {
+            "organization_name",
+            "addressee",
+            "subject",
+            "date",
+            "focal_person_name",
+            "focal_person_designation",
+        }
+    ),
 }
 
 #: Fields whose absence forces the document into manual review regardless of
@@ -117,5 +128,8 @@ CRITICAL_FIELDS: dict[AnalyzedDocumentType, frozenset[str]] = {
     ),
     AnalyzedDocumentType.TAX_DOCUMENT: frozenset(
         {"taxpayer_name", "tax_reference_number", "tax_year", "gross_income"}
+    ),
+    AnalyzedDocumentType.FORMAL_REQUEST_LETTER: frozenset(
+        {"organization_name", "subject", "date"}
     ),
 }

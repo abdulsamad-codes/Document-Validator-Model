@@ -187,6 +187,9 @@ _FIELD_VALIDATORS: dict[AnalyzedDocumentType, dict[str, tuple[str, Validator]]] 
         "total_tax": ("amount", validate_amount),
         "currency": ("currency", validate_currency),
     },
+    AnalyzedDocumentType.FORMAL_REQUEST_LETTER: {
+        "date": ("date_not_future", validate_date_not_future),
+    },
 }
 
 
@@ -226,6 +229,12 @@ _FIELD_LABELS: dict[str, str] = {
     "tax_year": "Tax year",
     "gross_income": "Gross income",
     "total_tax": "Total tax",
+    "organization_name": "Organization name",
+    "addressee": "Addressee",
+    "subject": "Subject",
+    "date": "Date",
+    "focal_person_name": "Focal person name",
+    "focal_person_designation": "Focal person designation",
 }
 
 
