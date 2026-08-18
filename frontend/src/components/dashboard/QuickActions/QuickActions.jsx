@@ -1,36 +1,25 @@
-import { FolderOpen, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { getDashboardActions } from '../../../data/dashboard';
+import { useAuth } from '../../../hooks/useAuth';
 import styles from './QuickActions.module.css';
 
-const ACTIONS = [
-  {
-    id: 'new-application',
-    label: 'New Application',
-    description: 'Start a new document verification case.',
-    to: '/applications/new',
-    icon: Plus,
-  },
-  {
-    id: 'view-applications',
-    label: 'View Applications',
-    description: 'Browse and manage existing applications.',
-    to: '/applications',
-    icon: FolderOpen,
-  },
-];
-
 /**
- * Quick Actions dashboard section.
+ * Role-aware dashboard Quick Actions.
  *
- * Two shortcut cards that navigate to the application creation and list
- * routes. Icons are decorative; navigation is handled by React Router links.
+ * The shortcut cards come from `getDashboardActions(user)`, which resolves the
+ * acting user's canonical role to its action set (Employee sees everything,
+ * Operator/Reviewer/IT see their own subsets -- see src/data/dashboard.js).
+ * Navigation visibility only -- the backend 403 stays authoritative.
  */
 function QuickActions() {
+  const { user } = useAuth();
+  const actions = getDashboardActions(user);
+
   return (
     <section className={styles.section} aria-label="Quick actions">
       <h3 className={styles.title}>Quick Actions</h3>
       <div className={styles.grid}>
-        {ACTIONS.map(({ id, label, description, to, icon: Icon }) => (
+        {actions.map(({ id, label, description, to, icon: Icon }) => (
           <Link key={id} to={to} className={styles.action}>
             <div className={styles.iconWrap} aria-hidden="true">
               <Icon />

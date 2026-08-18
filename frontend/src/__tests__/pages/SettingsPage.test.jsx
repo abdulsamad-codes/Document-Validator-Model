@@ -53,7 +53,7 @@ describe('SettingsPage administration section', () => {
     expect(link).toHaveAttribute('href', '/settings/system-logs');
   });
 
-  it('hides the System Logs link for non-IT users', async () => {
+  it('shows the System Logs link for the Employee (supervisor) account', async () => {
     useAuth.mockReturnValue({
       user: baseUser,
       authenticated: true,
@@ -64,6 +64,52 @@ describe('SettingsPage administration section', () => {
 
     renderPage();
 
+    const link = await screen.findByRole('link', { name: /system logs/i });
+    expect(link).toBeInTheDocument();
+    expect(link).toHaveAttribute('href', '/settings/system-logs');
+  });
+
+  it('hides the System Logs link for an OPERATOR user', async () => {
+    useAuth.mockReturnValue({
+      user: { ...baseUser, role: 'OPERATOR' },
+      authenticated: true,
+      loading: false,
+      logout: vi.fn(),
+    });
+    useToast.mockReturnValue({ success: vi.fn(), error: vi.fn() });
+
+    renderPage();
+
     expect(screen.queryByRole('link', { name: /system logs/i })).not.toBeInTheDocument();
+  });
+
+  it('hides the System Logs link for a REVIEWER user', async () => {
+    useAuth.mockReturnValue({
+      user: { ...baseUser, role: 'REVIEWER' },
+      authenticated: true,
+      loading: false,
+      logout: vi.fn(),
+    });
+    useToast.mockReturnValue({ success: vi.fn(), error: vi.fn() });
+
+    renderPage();
+
+    expect(screen.queryByRole('link', { name: /system logs/i })).not.toBeInTheDocument();
+  });
+
+  it('hides the administration section entirely for an OPERATOR user', async () => {
+    useAuth.mockReturnValue({
+      user: { ...baseUser, role: 'OPERATOR' },
+      authenticated: true,
+      loading: false,
+      logout: vi.fn(),
+    });
+    useToast.mockReturnValue({ success: vi.fn(), error: vi.fn() });
+
+    renderPage();
+
+    expect(screen.queryByRole('heading', { name: /administration/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /feedback/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /continuous learning/i })).not.toBeInTheDocument();
   });
 });

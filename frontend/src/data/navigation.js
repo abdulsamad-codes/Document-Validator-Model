@@ -23,6 +23,12 @@ import {
  * normalisation, business rules, ...) are intentionally absent: they run
  * automatically as part of application verification and will surface later
  * inside an application's status view, not as sidebar navigation.
+ *
+ * Role visibility: an item with a `roles` array is only shown to users whose
+ * canonical role is listed (Employee always sees everything -- see
+ * `visibleNavigationFor` in utils/roles.js). Items without a `roles` array are
+ * shown to every authenticated user. This is a UI/UX gate only: routes stay
+ * registered and the backend 403 remains the security gate.
  */
 export const NAVIGATION = [
   {
@@ -44,9 +50,9 @@ export const NAVIGATION = [
     id: 'verification',
     label: 'Verification',
     items: [
-      { id: 'validation', label: 'Validation', path: '/validation', icon: ClipboardCheck },
-      { id: 'reports', label: 'Validation Report', path: '/reports', icon: FileText },
-      { id: 'human-review', label: 'Human Review', path: '/human-review', icon: UserCheck },
+      { id: 'validation', label: 'Validation', path: '/validation', icon: ClipboardCheck, roles: ['OPERATOR'] },
+      { id: 'reports', label: 'Validation Report', path: '/reports', icon: FileText, roles: ['REVIEWER'] },
+      { id: 'human-review', label: 'Human Review', path: '/human-review', icon: UserCheck, roles: ['REVIEWER'] },
     ],
   },
   {
@@ -59,9 +65,9 @@ export const NAVIGATION = [
         path: '/settings',
         icon: Settings,
         children: [
-          { id: 'feedback', label: 'Feedback', path: '/feedback', icon: MessageSquare, adminOnly: true },
-          { id: 'continuous-learning', label: 'Continuous Learning', path: '/continuous-learning', icon: RefreshCw, adminOnly: true },
-          { id: 'system-logs', label: 'System Logs', path: '/settings/system-logs', icon: ScrollText, itOnly: true },
+          { id: 'feedback', label: 'Feedback', path: '/feedback', icon: MessageSquare, adminOnly: true, roles: ['IT'] },
+          { id: 'continuous-learning', label: 'Continuous Learning', path: '/continuous-learning', icon: RefreshCw, adminOnly: true, roles: ['IT'] },
+          { id: 'system-logs', label: 'System Logs', path: '/settings/system-logs', icon: ScrollText, itOnly: true, roles: ['IT'] },
         ],
       },
     ],

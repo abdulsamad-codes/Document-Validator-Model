@@ -2,13 +2,17 @@ import { ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 
 import Logo from '../../common/Logo/Logo';
-import { findNavItem, NAVIGATION } from '../../../data/navigation';
+import { findNavItem } from '../../../data/navigation';
+import { useAuth } from '../../../hooks/useAuth';
+import { visibleNavigationFor } from '../../../utils/roles';
 import SidebarItem from './SidebarItem';
 import SidebarProfile from './SidebarProfile';
 import styles from './Sidebar.module.css';
 
 function Sidebar({ collapsed = false, drawerOpen = false, onNavigate, onToggleCollapse }) {
   const location = useLocation();
+  const { user } = useAuth();
+  const navigation = visibleNavigationFor(user);
   const activeItem = findNavItem(location.pathname);
 
   const className = [
@@ -30,7 +34,7 @@ function Sidebar({ collapsed = false, drawerOpen = false, onNavigate, onToggleCo
       </div>
 
       <nav className={styles.nav} aria-label="Primary">
-        {NAVIGATION.map((section) => (
+        {navigation.map((section) => (
           <div key={section.id} className={styles.section}>
             <p className={styles.sectionLabel}>{section.label}</p>
             <ul className={styles.navList}>

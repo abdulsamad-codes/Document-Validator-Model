@@ -3,20 +3,20 @@ import { getRuleResultStatus } from '../../../data/statuses';
 import styles from './ReportTechnicalValidation.module.css';
 
 /**
- * Technical validation results.
+ * Document-quality validation results.
  *
  * Each row reports the file-level quality outcome for a document: overall
  * status, readability, rotation state and any failed checks or warnings. File
- * contents, OCR text and extracted fields never appear here.
+ * contents and extracted fields never appear here.
  *
  * @param {object} props
- * @param {object[]} props.items The stored technical validation reports.
+ * @param {object[]} props.items The stored document-quality reports.
  */
 function ReportTechnicalValidation({ items }) {
   if (!items || items.length === 0) {
     return (
       <p className={styles.empty}>
-        No technical validation results are available for these documents.
+        No document-quality results are available for these documents.
       </p>
     );
   }

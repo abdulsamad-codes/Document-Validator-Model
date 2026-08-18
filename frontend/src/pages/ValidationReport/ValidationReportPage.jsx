@@ -1,4 +1,5 @@
-import { FileText, RefreshCw } from 'lucide-react';
+import { FileText, RefreshCw, UserCheck } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 import EmptyState from '../../components/common/EmptyState/EmptyState';
 import ErrorState from '../../components/common/ErrorState/ErrorState';
@@ -11,9 +12,11 @@ import ReportSummaryCards from '../../components/report/ReportSummaryCards/Repor
 import ReportTechnicalValidation from '../../components/report/ReportTechnicalValidation/ReportTechnicalValidation';
 import ReportVisual from '../../components/report/ReportVisual/ReportVisual';
 import { APPLICATION_STATUSES } from '../../data/statuses';
+import { useAuth } from '../../hooks/useAuth';
 import { useValidationReport } from '../../hooks/useValidationReport';
 import { getValidationReportHtmlUrl } from '../../services/reports';
 import { formatDateTime } from '../../utils/format';
+import { isOperator } from '../../utils/roles';
 import styles from './ValidationReportPage.module.css';
 
 function Section({ title, children, note }) {
@@ -53,6 +56,7 @@ function ReportSkeleton() {
  * opened from the same report data.
  */
 function ValidationReportPage() {
+  const { user } = useAuth();
   const {
     applications,
     appsLoading,
@@ -78,6 +82,7 @@ function ValidationReportPage() {
   } = useValidationReport();
 
   const printableUrl = selectedId != null ? getValidationReportHtmlUrl(selectedId) : null;
+  const canOpenHumanReview = !isOperator(user);
 
   return (
     <div className={styles.page}>
@@ -144,6 +149,16 @@ function ValidationReportPage() {
             Printable report
           </a>
         )}
+
+        {canOpenHumanReview && selectedId != null && (
+          <Link
+            to={`/human-review?application=${selectedId}`}
+            className={styles.primaryBtn}
+          >
+            <UserCheck aria-hidden="true" />
+            Open Human Review
+          </Link>
+        )}
       </div>
 
       {appsError && <ErrorState message={appsError} onRetry={onRefresh} />}
@@ -203,12 +218,12 @@ function ValidationReportPage() {
               )}
 
               {technical && (
-                <Section title="Technical Validation" note="File quality and readability checks">
+                <Section title="Document Quality" note="Readability and file-quality checks">
                   <ReportTechnicalValidation items={technical.items} />
                 </Section>
               )}
 
-              <Section title="Extracted & Normalized Fields">
+              <Section title="Fields & Standardization">
                 <ReportFields normalized={normalized} analysisItems={analysis.items} />
               </Section>
 

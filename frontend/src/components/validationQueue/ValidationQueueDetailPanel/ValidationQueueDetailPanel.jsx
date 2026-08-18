@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { FileText, History, Send, ShieldAlert } from 'lucide-react';
+import { CheckCircle2, FileText, History, Send, ShieldAlert } from 'lucide-react';
 
 import ConfirmDialog from '../../common/ConfirmDialog/ConfirmDialog';
 import StatusChip from '../../common/StatusChip/StatusChip';
@@ -23,11 +23,14 @@ const ALL_REQUIRED_DOCUMENT_TYPES = [
 /**
  * Action + history panel for a selected application in the validation queue.
  *
- * The operator can request missing documents (pre-checked from the
- * application's own missing list, editable), reject the application with a
- * mandatory reason, or submit a complete application for processing. All three
- * actions are only shown to operators; other roles see a read-only note. The
- * immutable validation history is shown below.
+ * Shows a document checklist separating received from missing documents, and
+ * whether the application is complete. The operator can request missing
+ * documents (pre-checked from the application's own missing list, editable),
+ * reject the application with a mandatory reason, or submit a complete
+ * application for processing. When every required document has been received,
+ * the request section is replaced by a "complete" state. All three actions are
+ * only shown to operators; other roles see a read-only note. The immutable
+ * validation history is shown below.
  *
  * @param {object} props
  * @param {object} props.application Selected validation queue item.
@@ -54,9 +57,13 @@ function ValidationQueueDetailPanel({
   onReject,
   onSubmit,
 }) {
-  const [selectedDocuments, setSelectedDocuments] = useState(
-    () => new Set(application.missing_documents ?? [])
+  const missingTypes = application.missing_documents ?? [];
+  const receivedTypes = ALL_REQUIRED_DOCUMENT_TYPES.filter(
+    (type) => !missingTypes.includes(type)
   );
+  const isComplete = missingTypes.length === 0;
+
+  const [selectedDocuments, setSelectedDocuments] = useState(() => new Set(missingTypes));
   const [requestReason, setRequestReason] = useState('');
   const [rejectReason, setRejectReason] = useState('');
   const [pendingReject, setPendingReject] = useState(false);
@@ -126,53 +133,85 @@ function ValidationQueueDetailPanel({
           <div className={styles.actionSection}>
             <div className={styles.sectionHeader}>
               <FileText className={styles.sectionIcon} aria-hidden="true" />
-              <span className={styles.sectionTitle}>Request missing documents</span>
+              <span className={styles.sectionTitle}>Required documents</span>
             </div>
             <p className={styles.sectionHint}>
-              Select the documents the applicant must still provide, then send the request.
+              Documents already received are listed first; select the missing documents the
+              applicant must still provide.
             </p>
-            <ul className={styles.documentList}>
-              {ALL_REQUIRED_DOCUMENT_TYPES.map((type) => {
-                const config = getDocumentTypeConfig(type);
-                const checked = selectedDocuments.has(type);
-                return (
-                  <li key={type}>
-                    <label className={styles.documentOption}>
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleDocument(type)}
-                      />
-                      <span className={styles.documentLabel}>{config.label}</span>
-                      {checked && <StatusChip label="Requested" variant="warning" />}
-                    </label>
-                  </li>
-                );
-              })}
-            </ul>
-            <label className={styles.reasonField} htmlFor="request-documents-reason">
-              <span className={styles.reasonLabel}>Note for the applicant (optional)</span>
-              <textarea
-                id="request-documents-reason"
-                className={styles.reasonInput}
-                value={requestReason}
-                onChange={(event) => setRequestReason(event.target.value)}
-                maxLength={2000}
-                rows={3}
-                placeholder="Explain which documents are still required and why."
-              />
-            </label>
-            <div className={styles.actionRow}>
-              <button
-                type="button"
-                className={styles.primaryButton}
-                disabled={actionLoading || selectedDocuments.size === 0}
-                onClick={handleRequestDocuments}
-              >
-                <Send aria-hidden="true" />
-                Request documents
-              </button>
-            </div>
+
+            {receivedTypes.length > 0 && (
+              <div className={styles.documentGroup}>
+                <p className={styles.groupLabel}>Received</p>
+                <ul className={styles.documentList}>
+                  {receivedTypes.map((type) => {
+                    const config = getDocumentTypeConfig(type);
+                    return (
+                      <li key={type}>
+                        <span className={styles.receivedOption}>
+                          <CheckCircle2 className={styles.receivedIcon} aria-hidden="true" />
+                          <span className={styles.documentLabel}>{config.label}</span>
+                          <StatusChip label="Received" variant="success" />
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+
+            {isComplete ? (
+              <div className={styles.completeState}>
+                <CheckCircle2 className={styles.completeIcon} aria-hidden="true" />
+                <p className={styles.completeText}>All required documents received.</p>
+              </div>
+            ) : (
+              <div className={styles.documentGroup}>
+                <p className={styles.groupLabel}>Missing</p>
+                <ul className={styles.documentList}>
+                  {missingTypes.map((type) => {
+                    const config = getDocumentTypeConfig(type);
+                    const checked = selectedDocuments.has(type);
+                    return (
+                      <li key={type}>
+                        <label className={styles.documentOption}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleDocument(type)}
+                          />
+                          <span className={styles.documentLabel}>{config.label}</span>
+                          {checked && <StatusChip label="Requested" variant="warning" />}
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <label className={styles.reasonField} htmlFor="request-documents-reason">
+                  <span className={styles.reasonLabel}>Note for the applicant (optional)</span>
+                  <textarea
+                    id="request-documents-reason"
+                    className={styles.reasonInput}
+                    value={requestReason}
+                    onChange={(event) => setRequestReason(event.target.value)}
+                    maxLength={2000}
+                    rows={3}
+                    placeholder="Explain which documents are still required and why."
+                  />
+                </label>
+                <div className={styles.actionRow}>
+                  <button
+                    type="button"
+                    className={styles.primaryButton}
+                    disabled={actionLoading || selectedDocuments.size === 0}
+                    onClick={handleRequestDocuments}
+                  >
+                    <Send aria-hidden="true" />
+                    Request documents
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className={styles.actionSection}>

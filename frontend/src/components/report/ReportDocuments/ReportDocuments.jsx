@@ -6,9 +6,10 @@ import styles from './ReportDocuments.module.css';
 /**
  * Per-document status table from the validation report.
  *
- * Each row shows the document type, processing outcome, OCR outcome and the
- * technical-validation and analysis results, plus OCR confidence when the
- * pipeline produced it.
+ * Each row shows the document type, processing outcome, document-quality
+ * outcome and the field-extraction result, in business-facing language. The
+ * raw OCR/technical/analysis status values are mapped to employee-friendly
+ * outcomes via the shared status catalogue.
  *
  * @param {object} props
  * @param {object[]} props.documents The report's `document_summary` rows.
@@ -26,10 +27,9 @@ function ReportDocuments({ documents }) {
         <tr>
           <th scope="col">Document</th>
           <th scope="col">Processing</th>
-          <th scope="col">OCR</th>
-          <th scope="col">Technical</th>
-          <th scope="col">Analysis</th>
-          <th scope="col">Confidence</th>
+          <th scope="col">Document quality</th>
+          <th scope="col">Field extraction</th>
+          <th scope="col">Needs attention</th>
         </tr>
       </thead>
       <tbody>
@@ -39,6 +39,10 @@ function ReportDocuments({ documents }) {
           const ocr = getRuleResultStatus(document.ocr_status);
           const technical = getRuleResultStatus(document.technical_validation_status);
           const analysis = getRuleResultStatus(document.analysis_status);
+          const needsAttention =
+            ocr.variant === 'danger' ||
+            technical.variant === 'danger' ||
+            analysis.variant === 'danger';
           return (
             <tr key={document.document_id}>
               <td data-label="Document" className={styles.typeCell}>
@@ -47,19 +51,17 @@ function ReportDocuments({ documents }) {
               <td data-label="Processing">
                 <StatusChip label={processing.label} variant={processing.variant} />
               </td>
-              <td data-label="OCR">
-                <StatusChip label={ocr.label} variant={ocr.variant} />
-              </td>
-              <td data-label="Technical">
+              <td data-label="Document quality">
                 <StatusChip label={technical.label} variant={technical.variant} />
               </td>
-              <td data-label="Analysis">
+              <td data-label="Field extraction">
                 <StatusChip label={analysis.label} variant={analysis.variant} />
               </td>
-              <td data-label="Confidence" className={styles.confidenceCell}>
-                {document.ocr_confidence != null
-                  ? `${Math.round(document.ocr_confidence * 100)}%`
-                  : '—'}
+              <td data-label="Needs attention">
+                <StatusChip
+                  label={needsAttention ? 'Yes' : 'No'}
+                  variant={needsAttention ? 'warning' : 'success'}
+                />
               </td>
             </tr>
           );

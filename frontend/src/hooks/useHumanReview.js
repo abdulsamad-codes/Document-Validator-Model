@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import { getApplication, listApplications } from '../services/applications';
 import { getReviewHistory, getReviewScreen, submitHumanReview } from '../services/humanReview';
@@ -20,8 +21,14 @@ const FINALIZED_STATUSES = ['APPROVED', 'REJECTED', 'CORRECTED'];
  * an application opens its review screen, application record and review
  * history in parallel. Submitting a decision always refetches the backend
  * state so the UI reflects the stored result, not local state.
+ *
+ * When the page is opened with an `?application=<id>` search param (e.g. from
+ * the Validation Report's "Open Human Review" link), that application is
+ * pre-selected as soon as it appears in the loaded list.
  */
 export function useHumanReview() {
+  const [searchParams] = useSearchParams();
+  const paramAppId = searchParams.get('application');
   const [applications, setApplications] = useState([]);
   const [appsLoading, setAppsLoading] = useState(true);
   const [appsError, setAppsError] = useState(null);
@@ -78,6 +85,30 @@ export function useHumanReview() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadApplications();
   }, [loadApplications]);
+
+  // Pre-select the application named by the `?application=` search param (e.g.
+  // from the Validation Report's "Open Human Review" link) once it has loaded.
+  // Only fires when the param is present and the id hasn't been chosen yet, so
+  // a manual selection afterwards is never overridden.
+  useEffect(() => {
+    if (paramAppId == null) {
+      return;
+    }
+    const requested = Number(paramAppId);
+    if (Number.isNaN(requested) || selectedId === requested) {
+      return;
+    }
+    if (appsLoading || appsError) {
+      return;
+    }
+    if (applications.some((app) => app.id === requested)) {
+      // Pre-selection only syncs state once the requested application has
+      // loaded; see the fetch-on-mount note in useSystemLogs.js for the
+      // suppression rationale.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSelectedId(requested);
+    }
+  }, [paramAppId, selectedId, applications, appsLoading, appsError]);
 
   const reload = useCallback(async () => {
     const requestId = ++reviewRequestIdRef.current;

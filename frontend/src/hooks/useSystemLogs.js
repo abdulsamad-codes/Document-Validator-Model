@@ -13,6 +13,8 @@ const DEFAULT_FILTERS = {
   query: '',
 };
 
+const PAGE_SIZE = 50;
+
 /**
  * Load and search the IT system log.
  *
@@ -28,6 +30,7 @@ export function useSystemLogs() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [offset, setOffset] = useState(0);
 
   // Guards against out-of-order responses: overlapping searches (StrictMode
   // double-effects, rapid filter changes) must not let a stale response
@@ -49,7 +52,7 @@ export function useSystemLogs() {
           dateTo: filters.dateTo || undefined,
           query: filters.query || undefined,
         },
-        { limit: 100 }
+        { offset, limit: PAGE_SIZE }
       );
       if (requestId === requestIdRef.current) {
         setEntries(data?.items ?? []);
@@ -66,7 +69,7 @@ export function useSystemLogs() {
         setLoading(false);
       }
     }
-  }, [filters]);
+  }, [filters, offset]);
 
   useEffect(() => {
     // Fetch-on-mount/filter-change via a memoized hook function -- see
@@ -82,7 +85,15 @@ export function useSystemLogs() {
 
   const handleReset = useCallback(() => {
     setFilters(DEFAULT_FILTERS);
+    setOffset(0);
   }, []);
+
+  const goToPage = useCallback((page) => {
+    setOffset(page * PAGE_SIZE);
+  }, []);
+
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const currentPage = Math.floor(offset / PAGE_SIZE);
 
   return {
     entries,
@@ -90,8 +101,11 @@ export function useSystemLogs() {
     loading,
     error,
     filters,
+    pageCount,
+    currentPage,
     onFilterChange: setFilter,
     onReset: handleReset,
     onSearch: load,
+    onGoToPage: goToPage,
   };
 }
