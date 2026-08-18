@@ -585,6 +585,178 @@ def test_extract_tripartite_agreement_compound_table_layout():
         f"account_number: expected 'PK99FAKE00012345678901'; got {fields.get('account_number')!r}"
     )
 
+#: Synthetic (fabricated, non-real) fixtures for the structural bank-account
+#: block parser, mirroring the real OCR layouts confirmed in Confidential Data/
+#: (see the extractor docstrings). Every account number / IBAN / CNIC below is
+#: invented; the "PK99FAKE..." IBAN shape keeps the values unambiguously fake.
+#: The column-table shape comes from TMA Lal Dir Upper (header block mapped
+#: positionally onto the value block, with an OCR-noise header line), the
+#: interleaved/dotted-leader/wrapped shapes from the four GDA Abbotabad AMC
+#: copies (Allied, ZTBL, NBP, BOK).
+TRIPARTITE_COLUMN_TABLE_TEXT = """TRIPARTITE AGREEMENT
+This Tripartite Agreement is made and entered into by and between:
+1-Link (Private) Limited, ... (hereinafter referred to as '1-Link')
+Bank details shall be maintained as follows:
+S#
+Bank Name
+IENT
+Account Title
+IBAN/Account No
+01
+Sample Bank Branch
+Sample Regional Development Authority
+PK99FAKE0000000000000000
+Branch (0312)
+"""
+
+DOTTED_LEADER_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+ACCOUNT NUMBER:... 00112233445566
+Title of AccOunt: SAMPLE DEVELOPMENT AUTHORITY.
+IBAN:PK99FAKE0000000000000000...
+"""
+
+COMBINED_VALUE_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+This is to certify that the following account is maintained with us:
+Title of Account
+SAMPLE AUTHORITY
+Account No/IBAN
+00112233445566/PK99FAKE0000000000000000
+Date of Account Opening
+01 JANUARY 2000
+"""
+
+WRAPPED_TITLE_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+TITLE OF ACCOUNT
+SAMPLE AUTHORITY (SAMPLE REGIONAL
+DEVELOPMENT
+FUND)
+CNIC OF AUTHORIZED SIGNATORY
+12345-1234567-1
+ACCOUNT NO
+1234567890
+ACCOUNT NO/IBAN
+PK99FAKE0000000000000000
+"""
+
+FIRST_MATCH_WINS_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+ACCOUNT NUMBER:... 00112233445566
+Title of AccOunt: FIRST PAGE AUTHORITY.
+IBAN:PK99FAKE0000000000000000...
+--- page break ---
+Account Title
+SECOND PAGE AUTHORITY
+Account NO.
+PK88FAKE0000000000000000
+"""
+
+ROW_INDEX_GUARD_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+Account Title
+Sample Authority
+Account No
+01
+Account Status
+Active
+"""
+
+PARTIAL_CERT_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+Account Title: SAMPLE AUTHORITY
+"""
+
+
+def test_extract_tripartite_column_table_positions_values_by_header():
+    # The real Tripartite layout is a stacked column table whose header block
+    # ("S# / Bank Name / IENT / Account Title / IBAN/Account No") maps
+    # positionally onto the value block. The OCR-noise "IENT" header must not
+    # shift the mapping, the row index "01" must not become the account number,
+    # and the IBAN-only value in the account slot must be promoted to
+    # account_number (Tripartite has no separate iban field).
+    fields = extract_fields(
+        TRIPARTITE_COLUMN_TABLE_TEXT,
+        AnalyzedDocumentType.TRIPARTITE_AGREEMENT,
+    )
+    assert fields["account_holder"] == "Sample Regional Development Authority"
+    assert fields["account_number"] == "PK99FAKE0000000000000000"
+    assert "iban" not in fields
+
+
+def test_extract_dotted_leader_same_line_values():
+    # ZTBL's AMC uses "Label:... value" dotted leaders; trailing separator dots
+    # on the IBAN value are OCR noise and must be stripped.
+    fields = extract_fields(
+        DOTTED_LEADER_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_holder"] == "SAMPLE DEVELOPMENT AUTHORITY"
+    assert fields["account_number"] == "00112233445566"
+    assert fields["iban"] == "PK99FAKE0000000000000000"
+
+
+def test_extract_combined_account_number_iban_value():
+    # Allied's AMC lists "Account No/IBAN" with a combined "<number>/<IBAN>"
+    # value that must be split into the two fields.
+    fields = extract_fields(
+        COMBINED_VALUE_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_holder"] == "SAMPLE AUTHORITY"
+    assert fields["account_number"] == "00112233445566"
+    assert fields["iban"] == "PK99FAKE0000000000000000"
+
+
+def test_extract_wrapped_multiline_account_title():
+    # NBP's AMC wraps the account title across three OCR lines; capture must
+    # join them and stop before the next field's label ("CNIC OF AUTHORIZED
+    # SIGNATORY"), while the later IBAN-only "ACCOUNT NO/IBAN" value must feed
+    # the iban field, not overwrite the plain account number.
+    fields = extract_fields(
+        WRAPPED_TITLE_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_holder"] == (
+        "SAMPLE AUTHORITY (SAMPLE REGIONAL DEVELOPMENT FUND)"
+    )
+    assert fields["account_number"] == "1234567890"
+    assert fields["iban"] == "PK99FAKE0000000000000000"
+
+
+def test_extract_first_page_value_wins_over_later_page():
+    # ZTBL's page 1 and NRSP's page 2 both state account details for the same
+    # document; the page-1 values must win (first match in document order), so
+    # the account number is never the page-2 IBAN-shaped value.
+    fields = extract_fields(
+        FIRST_MATCH_WINS_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_holder"] == "FIRST PAGE AUTHORITY"
+    assert fields["account_number"] == "00112233445566"
+    assert fields["iban"] == "PK99FAKE0000000000000000"
+
+
+def test_extract_row_index_never_becomes_account_number():
+    # An all-digit value of length <= 3 (a table row index / page marker) must
+    # never be captured as the account number -- the shape guard rejects it,
+    # which generalizes across row indices 01/02/03 rather than blacklisting a
+    # specific value.
+    fields = extract_fields(
+        ROW_INDEX_GUARD_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_holder"] == "Sample Authority"
+    assert "account_number" not in fields
+    assert "iban" not in fields
+
+
+def test_extract_partial_certificate_missing_fields_are_absent():
+    # A certificate that genuinely carries no account number must report the
+    # field as absent rather than fabricate one.
+    fields = extract_fields(
+        PARTIAL_CERT_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_holder"] == "SAMPLE AUTHORITY"
+    assert "account_number" not in fields
+    assert "iban" not in fields
+
 
 def test_checklist_field_labels_never_route_into_keyword_detection():
     # The Account Maintenance Certificate's own field labels ("IBAN",
