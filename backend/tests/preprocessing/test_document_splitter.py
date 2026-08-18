@@ -245,6 +245,101 @@ def test_split_application_form_ends_before_a_genuinely_different_document():
     assert types == [DocumentType.ONE_LINK_LETTER, DocumentType.AUTHORITY_LETTER]
 
 
+def _stamp_paper_boilerplate(lines: int = 30) -> str:
+    """Simulate the fixed verification/QR boilerplate block real e-stamp
+    paper pages carry before their actual title -- see
+    _FULL_PAGE_STRONG_PHRASES's docstring. 30 lines reliably pushes real
+    rendered text past a real PDF page's header-zone cutoff (confirmed
+    empirically: ~451pt vs. the ~278pt cutoff on an A4-sized page).
+    """
+    return "\n".join(f"Stamp paper boilerplate line {i}" for i in range(lines))
+
+
+def test_split_participation_memorandum_starts_own_group_past_boilerplate():
+    """A real Participation Memorandum's title sits well below the header
+    zone, after a fixed stamp-paper boilerplate block -- it must still
+    start its own new document (not be absorbed into a preceding,
+    unrelated open group) and must be typed ONE_LINK_LETTER, not
+    OTHER_SUPPORTING_DOCUMENT or misclassified via the bare "1LINK"
+    mentions in its own body text.
+
+    Regression test for a real bug found 2026-08-18 across 3 real samples
+    (GDA Abbotabad, TMA Khal Dir Lower): this title was previously invisible
+    to the splitter entirely (absent from _STRONG_TITLE_PHRASES) and, once
+    a group happened to be open, silently absorbed into whatever document
+    preceded it -- or, if no group was open, mistyped as ONE_LINK_LETTER
+    via the bare "1LINK" weak substring match rather than genuinely
+    recognized.
+    """
+    body = (
+        _stamp_paper_boilerplate()
+        + "\nPARTICIPATION MEMORANDUM FOR BILLER/SUB-BILLERS/BILL AGGREGATOR MEMBERS\n"
+        + "This Participation Memorandum is supplemental to the Agreement "
+        + "executed between 1LINK (Private) Limited and the Bill Aggregator."
+    )
+    types = _doc_types([
+        "AUTHORITY LETTER\nAn unrelated, genuinely different document first.",
+        body,
+    ])
+    assert types == [DocumentType.AUTHORITY_LETTER, DocumentType.ONE_LINK_LETTER]
+
+
+def test_split_bare_1link_mention_no_longer_weakly_misclassifies():
+    """A page that merely *mentions* "1LINK" in prose, with no strong title
+    evidence anywhere, must not be weakly typed ONE_LINK_LETTER anymore --
+    it should fall through to OTHER_SUPPORTING_DOCUMENT like any other
+    unrecognized page.
+
+    Regression test for the narrowed weak-match: real Participation
+    Memorandum documents mention "1LINK" throughout their own body (1LINK
+    is the counterparty they're addressed to, not the document's subject),
+    which previously caused _classify_text's unanchored substring check to
+    mistype unrelated pages as ONE_LINK_LETTER. See
+    _WEAK_MATCH_EXCLUDED_PHRASES.
+    """
+    types = _doc_types([
+        "This memo references 1LINK services and ONELINK settlement rules "
+        "in passing, but is not itself a 1-Link document of any kind.",
+    ])
+    assert types == [DocumentType.OTHER_SUPPORTING_DOCUMENT]
+
+
+def test_split_bare_1link_still_strong_matches_as_its_own_header():
+    """The narrowing only removes the bare brand phrases from *weak*
+    whole-page matching -- a page whose own header-zone line genuinely
+    starts with just "1LINK" (a real letterhead/logo shape) must still be
+    recognized as strong evidence, unchanged.
+    """
+    types = _doc_types([
+        "1LINK\nA genuine letterhead-only title page.",
+    ])
+    assert types == [DocumentType.ONE_LINK_LETTER]
+
+
+def test_split_absorption_disagreement_is_logged_but_does_not_split(caplog):
+    """Option B: when a weakly-classified continuation page disagrees with
+    the currently-open group's type, that must be logged for visibility --
+    but the split itself must not change as a result. Pure logging, no
+    behavior change.
+    """
+    import logging
+
+    caplog.set_level(logging.WARNING, logger="app.preprocessing.splitter")
+
+    types = _doc_types([
+        "TRIPARTITE AGREEMENT\nPage 1.",
+        "This page mentions an authority letter in passing, deep in prose, "
+        "not as its own header -- so it carries weak but not strong evidence.",
+    ])
+
+    assert types == [DocumentType.TRIPARTITE_AGREEMENT]
+    assert len(types) == 1
+    assert any(
+        "possible cross-document absorption" in record.message
+        for record in caplog.records
+    )
+
+
 def test_classify_text_authority_letter():
     """The classifier should detect AUTHORITY LETTER keyword."""
     doc_type = DocumentSplitter._classify_text("AUTHORITY LETTER\nFrom the CEO")

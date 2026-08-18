@@ -108,6 +108,49 @@ _CONTINUATION_TITLE_PHRASES: frozenset[str] = frozenset(
     {"APPLICATION FORM (IN-DIRECT CUSTOMER)"}
 )
 
+#: Strong title phrases exempted from the header-zone gate -- matched
+#: anchored at the start of any line on the page, not just the top third.
+#: Reserved for titles confirmed, across multiple real e-stamp-paper
+#: samples, to sit reliably below the header zone because a fixed
+#: verification/QR boilerplate block (STAMPING / "Verify Your Stamp
+#: Paper" / payment & vendor fields / "Write Below This Line") always
+#: precedes the real title on the same page. Confirmed 2026-08-18: this
+#: exact title sits at OCR line index ~34-42 across 3 measured
+#: occurrences from 2 independent real files (GDA Abbotabad copies 1 and
+#: 2, TMA Khal Dir Lower) -- all past the header zone's ~28-line cutoff
+#: (842pt real page height * 0.33 ratio, divided by the 10pt synthetic
+#: OCR line spacing) -- so header-zone gating would silently never match
+#: it. Reuses DocumentType.ONE_LINK_LETTER per
+#: document_analysis.extractors.OneLinkLetterExtractor's own documented
+#: finding that this slot's real occupant is usually a Participation
+#: Memorandum, not the Master_Rules_Combined.md Section 4 Application
+#: Form. Unlike _CONTINUATION_TITLE_PHRASES, this title does not repeat
+#: per-page within one real instance (confirmed on the same samples), so
+#: no continuation handling is needed here -- the existing "absorb into
+#: the just-opened group" behavior already correctly handles this
+#: document's own later pages.
+_FULL_PAGE_STRONG_PHRASES: list[tuple[DocumentType, tuple[str, ...]]] = [
+    (DocumentType.ONE_LINK_LETTER, ("PARTICIPATION MEMORANDUM",)),
+]
+
+#: Bare brand-name phrases in _STRONG_TITLE_PHRASES that are safe as
+#: *strong* evidence (anchored at the start of a header-zone line -- a
+#: real letterhead/logo shape) but too broad to trust as *weak* whole-
+#: page substring evidence. Confirmed 2026-08-18: real Participation
+#: Memorandum documents mention "1LINK" throughout their own body text
+#: (1LINK is the counterparty they're addressed to, not the document's
+#: subject), so _classify_text's unanchored substring check was mistyping
+#: them as ONE_LINK_LETTER even with no real ONE_LINK_LETTER document
+#: anywhere nearby -- confirmed on 3 occurrences within one real file
+#: (GDA Abbotabad copies 2-4, cached OCR text): copy 2 fully read and
+#: verbatim-confirmed, copies 3-4 pattern-matched at high/medium-high
+#: confidence but not independently full-text-verified. Excluded from
+#: _classify_text's weak fallback only; strong header-zone matching via
+#: _classify_page is untouched.
+_WEAK_MATCH_EXCLUDED_PHRASES: frozenset[str] = frozenset(
+    {"1LINK", "ONELINK", "ONE-LINK"}
+)
+
 #: Marks a manifest/checklist cover page -- confirmed on two independent real
 #: files in Confidential Data/: such a page lists every required document by
 #: name (e.g. "Authority Letter", "Account Maintenance Certificate"), so its
@@ -295,7 +338,22 @@ class DocumentSplitter:
                     )
                 elif current_pages:
                     # No boundary evidence: a continuation page. Body keywords
-                    # must never start a new document.
+                    # must never start a new document -- but if the weak
+                    # classifier recognizes a *different* type than the one
+                    # currently open, that disagreement is worth surfacing
+                    # for a human to check, even though the split itself
+                    # doesn't change here (visibility only, no behavior
+                    # change -- see CONTEXT.md 2026-08-18 on the confirmed
+                    # cross-document absorption this discards otherwise).
+                    if detected_type is not None and detected_type != current_type:
+                        logger.warning(
+                            "Page %s weakly matches %s but was absorbed into "
+                            "the open %s document -- possible cross-document "
+                            "absorption, review recommended",
+                            page_num,
+                            detected_type.value,
+                            current_type.value if current_type else "OTHER_SUPPORTING_DOCUMENT",
+                        )
                     current_pages.append(page_num)
                 else:
                     # First page without strong evidence: weak phrases only type
@@ -379,6 +437,15 @@ class DocumentSplitter:
                     if text.startswith(phrase):
                         return doc_type, True, phrase
 
+        # Second pass: phrases confirmed to sit reliably below the header
+        # zone on real samples (see _FULL_PAGE_STRONG_PHRASES) -- still
+        # anchored at the start of a line, just not zone-restricted.
+        for _y_position, text in lines:
+            for doc_type, phrases in _FULL_PAGE_STRONG_PHRASES:
+                for phrase in phrases:
+                    if text.startswith(phrase):
+                        return doc_type, True, phrase
+
         return cls._classify_text(full_text), False, None
 
     @staticmethod
@@ -390,6 +457,12 @@ class DocumentSplitter:
         """
         upper = text.upper()
         for doc_type, phrases in _STRONG_TITLE_PHRASES:
+            for phrase in phrases:
+                if phrase in _WEAK_MATCH_EXCLUDED_PHRASES:
+                    continue
+                if phrase in upper:
+                    return doc_type
+        for doc_type, phrases in _FULL_PAGE_STRONG_PHRASES:
             for phrase in phrases:
                 if phrase in upper:
                     return doc_type
