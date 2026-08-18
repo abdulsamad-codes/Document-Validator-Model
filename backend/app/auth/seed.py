@@ -23,7 +23,7 @@ from app.database.models.user import User
 logger = logging.getLogger(__name__)
 
 #: Password shipped as the development default.
-_DEV_DEFAULT_PASSWORD = "Welcome@123"
+_DEV_DEFAULT_PASSWORD = "12345678"
 
 
 def _load_or_create_user(db, settings: Settings) -> tuple[User, bool]:

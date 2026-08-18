@@ -121,12 +121,12 @@ class Settings(BaseSettings):
     )
     access_token_expire_minutes: int = Field(default=15, ge=1)
     refresh_token_expire_days: int = Field(default=30, ge=1)
-    default_employee_id: str = Field(default="EMP-1001")
+    default_employee_id: str = Field(default="employee")
     default_employee_email: str = Field(default="employee@fintech.local")
     default_employee_name: str = Field(default="Employee")
     default_employee_role: str = Field(default="Verification Officer")
     default_employee_password: SecretStr = Field(
-        default=SecretStr("Welcome@123"),
+        default=SecretStr("12345678"),
     )
     bulk_queue_workers: int = Field(default=2, ge=1, le=16)
     bulk_queue_max_attempts: int = Field(default=3, ge=1, le=10)
