@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from app.database.models.human_review import HumanReview
     from app.database.models.manual_checklist import ManualChecklist
     from app.database.models.queue_job import QueueJob
+    from app.database.models.validation_history import ValidationHistoryEntry
     from app.database.models.validation_log import ValidationLog
     from app.database.models.validation_result import ValidationResult
     from app.database.models.validation_run import ValidationRun
@@ -110,6 +111,11 @@ class Application(Base):
     )
     validation_logs: Mapped[list[ValidationLog]] = relationship(
         back_populates="application",
+        passive_deletes=True,
+    )
+    validation_history: Mapped[list[ValidationHistoryEntry]] = relationship(
+        back_populates="application",
+        cascade="all, delete-orphan",
         passive_deletes=True,
     )
 

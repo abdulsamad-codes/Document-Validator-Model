@@ -18,9 +18,18 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.database.models.application import Application
 from app.database.models.document import Document
-from app.database.models.enums import ApplicationStatus, DocumentProcessingStatus, DocumentType
+from app.database.models.enums import (
+    ApplicationStatus,
+    DocumentProcessingStatus,
+    DocumentType,
+    ValidationEventType,
+)
 from app.database.repositories.application_repository import ApplicationRepository
+from app.database.repositories.audit_log_repository import AuditLogRepository
 from app.database.repositories.document_repository import DocumentRepository
+from app.database.repositories.validation_history_repository import (
+    ValidationHistoryRepository,
+)
 from app.upload.constants import MAX_COPIES_BY_DOCUMENT_TYPE, READ_CHUNK_BYTES
 from app.upload.exceptions import (
     ApplicationNotFoundException,
@@ -115,6 +124,7 @@ class UploadService:
         content_type: str,
         file: BinaryIO,
         copy_number: int = 1,
+        user=None,
     ) -> Document:
         """Validate and persist a newly uploaded document.
 
@@ -126,6 +136,8 @@ class UploadService:
             file: Stream to read the file content from.
             copy_number: 1-based slot index for this copy within the type,
                 e.g. ``3`` for the third 1-Link form.
+            user: The authenticated user, recorded as the actor when the
+                upload satisfies a pending document request.
 
         Returns:
             The persisted document metadata with ``UPLOADED`` status.
@@ -169,6 +181,7 @@ class UploadService:
             self._storage.delete(stored_path)
             raise
 
+        self._record_documents_received(application, user)
         logger.info(
             "Uploaded document id=%s type=%s copy=%s for application id=%s stored=%s",
             document.id,
@@ -186,6 +199,7 @@ class UploadService:
         filename: str,
         content_type: str,
         file: BinaryIO,
+        user=None,
     ) -> list[Document]:
         """Accept a single bulk PDF, store it, and queue it for background splitting.
 
@@ -206,8 +220,10 @@ class UploadService:
         Args:
             application_id: Id of the owning application.
             filename: Raw client-supplied filename.
-            content_type: Declared media type (must be PDF).
+            content_type: Declared media type.
             file: Stream of the bulk PDF.
+            user: The authenticated user, recorded as the actor when the
+                upload satisfies a pending document request.
 
         Returns:
             A single-element list containing the persisted ``BULK_UPLOAD``
@@ -260,6 +276,10 @@ class UploadService:
             )
             if application.status is ApplicationStatus.SUBMITTED:
                 self._applications.update(application, status=ApplicationStatus.PROCESSING)
+            elif application.status is ApplicationStatus.NEEDS_DOCUMENTS:
+                self._applications.update(application, status=ApplicationStatus.PROCESSING)
+
+            self._record_documents_received(application, user)
 
         except Exception:
             self._db.rollback()
@@ -274,6 +294,50 @@ class UploadService:
             application_id,
         )
         return [document]
+
+    def _record_documents_received(self, application: Application, user) -> None:
+        """Record a DOCUMENTS_RECEIVED history event after an upload.
+
+        Only fires for an application that was awaiting documents
+        (NEEDS_DOCUMENTS) and only when a user is available to record as the
+        actor. Records both the immutable validation history entry and the
+        shared audit log so the pending-document loop (request -> upload ->
+        submit) is fully traceable. Best effort: a failure here must not
+        fail the upload itself, so errors are logged, not raised.
+        """
+        if application.status is not ApplicationStatus.NEEDS_DOCUMENTS or user is None:
+            return
+        try:
+            history = ValidationHistoryRepository(self._db)
+            audit = AuditLogRepository(self._db)
+            previous = ApplicationStatus.NEEDS_DOCUMENTS
+            entry = history.create(
+                application_id=application.id,
+                event_type=ValidationEventType.DOCUMENTS_RECEIVED,
+                actor_id=getattr(user, "id", None),
+                actor_name=getattr(user, "name", "Unknown"),
+                actor_role=getattr(user, "role", None),
+                previous_status=previous.value,
+                new_status=application.status.value,
+            )
+            audit.create(
+                application_id=application.id,
+                username=getattr(user, "name", "Unknown"),
+                action="DOCUMENTS_RECEIVED",
+                details={},
+                actor_id=getattr(user, "id", None),
+                actor_role=getattr(user, "role", None),
+                severity="INFO",
+                previous_status=previous.value,
+                new_status=application.status.value,
+            )
+            logger.info(
+                "Recorded DOCUMENTS_RECEIVED for application id=%s (history entry id=%s)",
+                application.id,
+                entry.id,
+            )
+        except Exception:  # pragma: no cover - defensive; must not break uploads
+            logger.exception("Failed to record DOCUMENTS_RECEIVED for application id=%s", application.id)
 
     def replace(
         self,

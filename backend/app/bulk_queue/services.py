@@ -46,6 +46,8 @@ class BulkQueueService:
         )
         if jobs and application.status is ApplicationStatus.SUBMITTED:
             self._applications.update(application, status=ApplicationStatus.PROCESSING)
+        elif jobs and application.status is ApplicationStatus.NEEDS_DOCUMENTS:
+            self._applications.update(application, status=ApplicationStatus.PROCESSING)
         logger.info(
             "Bulk queue enqueue application_id=%s created=%s existing=%s",
             application_id,
@@ -74,6 +76,8 @@ class BulkQueueService:
             max_attempts=self._settings.bulk_queue_max_attempts,
         )
         if jobs and application.status is ApplicationStatus.SUBMITTED:
+            self._applications.update(application, status=ApplicationStatus.PROCESSING)
+        elif jobs and application.status is ApplicationStatus.NEEDS_DOCUMENTS:
             self._applications.update(application, status=ApplicationStatus.PROCESSING)
         active = sum(
             1

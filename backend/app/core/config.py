@@ -134,6 +134,24 @@ class Settings(BaseSettings):
     default_employee_password: SecretStr = Field(
         default=SecretStr("12345678"),
     )
+    default_operator_id: str = Field(default="operator")
+    default_operator_email: str = Field(default="operator@fintech.local")
+    default_operator_name: str = Field(default="Operator")
+    default_operator_password: SecretStr = Field(
+        default=SecretStr("12345678"),
+    )
+    default_reviewer_id: str = Field(default="reviewer")
+    default_reviewer_email: str = Field(default="reviewer@fintech.local")
+    default_reviewer_name: str = Field(default="Reviewer")
+    default_reviewer_password: SecretStr = Field(
+        default=SecretStr("12345678"),
+    )
+    default_it_id: str = Field(default="it")
+    default_it_email: str = Field(default="it@fintech.local")
+    default_it_name: str = Field(default="IT")
+    default_it_password: SecretStr = Field(
+        default=SecretStr("12345678"),
+    )
     bulk_queue_workers: int = Field(default=1, ge=1, le=16)
     bulk_queue_max_attempts: int = Field(default=3, ge=1, le=10)
     bulk_queue_poll_interval: float = Field(default=1.0, ge=0.05, le=60.0)

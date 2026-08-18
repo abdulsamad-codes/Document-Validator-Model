@@ -29,8 +29,10 @@ from app.document_processing.routes import router as document_processing_router
 from app.feedback.routes import router as feedback_router
 from app.human_verification.routes import router as human_verification_router
 from app.normalization.routes import router as normalization_router
+from app.operator_workflow.routes import router as operator_workflow_router
 from app.reports.routes import router as reports_router
 from app.rule_engine.routes import router as rule_engine_router
+from app.system_logs.routes import router as system_logs_router
 from app.technical_validation.routes import router as technical_validation_router
 from app.upload.routes import router as upload_router
 from app.validation.routes import router as validation_router
@@ -61,6 +63,8 @@ protected_router.include_router(human_verification_router)
 protected_router.include_router(feedback_router)
 protected_router.include_router(continuous_learning_router)
 protected_router.include_router(validation_router)
+protected_router.include_router(operator_workflow_router)
+protected_router.include_router(system_logs_router)
 
 api_router.include_router(protected_router)
 

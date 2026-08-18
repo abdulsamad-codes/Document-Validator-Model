@@ -24,6 +24,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import require_role
+from app.auth.roles import ROLE_REVIEWER
 from app.database.connection import get_db
 from app.database.models.enums import (
     ValidationLogResult,
@@ -54,6 +56,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["validation"])
 
 _GET_DB = Annotated[Session, Depends(get_db)]
+_REVIEWER = Annotated[object, Depends(require_role(ROLE_REVIEWER))]
 
 #: Shared OpenAPI error-response documentation reused by every endpoint.
 _ERROR_RESPONSES = {
@@ -425,6 +428,7 @@ def verify_field(
     field_id: int,
     request: FieldVerifyRequest,
     db: _GET_DB,
+    _reviewer: _REVIEWER = None,
 ) -> ValidationLogRead:
     """Record a field verification event."""
     return _log_service(db).record_field_verification(
@@ -458,6 +462,7 @@ def correct_field(
     field_id: int,
     request: FieldCorrectRequest,
     db: _GET_DB,
+    _reviewer: _REVIEWER = None,
 ) -> ValidationLogRead:
     """Record a field correction event."""
     return _log_service(db).record_field_correction(
@@ -490,6 +495,7 @@ def review_evidence(
     evidence_id: int,
     request: EvidenceReviewRequest,
     db: _GET_DB,
+    _reviewer: _REVIEWER = None,
 ) -> ValidationLogRead:
     """Record a signature/stamp evidence review event."""
     return _log_service(db).record_evidence_review(

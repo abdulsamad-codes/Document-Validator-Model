@@ -17,6 +17,7 @@ from app.database.base import Base
 
 if TYPE_CHECKING:
     from app.database.models.refresh_token import RefreshToken
+    from app.database.models.validation_history import ValidationHistoryEntry
 
 
 class User(Base):
@@ -63,6 +64,10 @@ class User(Base):
     refresh_tokens: Mapped[list[RefreshToken]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    validation_history: Mapped[list[ValidationHistoryEntry]] = relationship(
+        back_populates="actor",
         passive_deletes=True,
     )
 

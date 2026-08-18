@@ -19,6 +19,7 @@ from app.database.models.ocr_result import OCRResult
 from app.database.models.queue_job import QueueJob
 from app.database.models.refresh_token import RefreshToken
 from app.database.models.user import User
+from app.database.models.validation_history import ValidationHistoryEntry
 from app.database.models.validation_log import ValidationLog
 from app.database.models.validation_result import ValidationResult
 from app.database.models.validation_run import ValidationRun
@@ -39,6 +40,7 @@ __all__ = [
     "QueueJob",
     "RefreshToken",
     "User",
+    "ValidationHistoryEntry",
     "ValidationLog",
     "ValidationResult",
     "ValidationRun",
