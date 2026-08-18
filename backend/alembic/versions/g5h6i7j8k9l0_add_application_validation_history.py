@@ -18,6 +18,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 
 # revision identifiers, used by Alembic.
@@ -44,8 +45,8 @@ def upgrade() -> None:
         sa.Column('actor_id', sa.Integer(), nullable=True),
         sa.Column('actor_name', sa.String(length=255), nullable=True),
         sa.Column('actor_role', sa.String(length=100), nullable=True),
-        sa.Column('previous_status', sa.Enum('SUBMITTED', 'PROCESSING', 'PROCESSING_FAILED', 'PENDING_REVIEW', 'NEEDS_DOCUMENTS', 'APPROVED', 'REJECTED', 'CORRECTED', name='applicationstatus'), nullable=True),
-        sa.Column('new_status', sa.Enum('SUBMITTED', 'PROCESSING', 'PROCESSING_FAILED', 'PENDING_REVIEW', 'NEEDS_DOCUMENTS', 'APPROVED', 'REJECTED', 'CORRECTED', name='applicationstatus'), nullable=True),
+        sa.Column('previous_status', postgresql.ENUM('SUBMITTED', 'PROCESSING', 'PROCESSING_FAILED', 'PENDING_REVIEW', 'NEEDS_DOCUMENTS', 'APPROVED', 'REJECTED', 'CORRECTED', name='applicationstatus', create_type=False), nullable=True),
+        sa.Column('new_status', postgresql.ENUM('SUBMITTED', 'PROCESSING', 'PROCESSING_FAILED', 'PENDING_REVIEW', 'NEEDS_DOCUMENTS', 'APPROVED', 'REJECTED', 'CORRECTED', name='applicationstatus', create_type=False), nullable=True),
         sa.Column('missing_document_types', sa.JSON(), nullable=True),
         sa.Column('document_ids', sa.JSON(), nullable=True),
         sa.Column('reason', sa.Text(), nullable=True),
