@@ -14,6 +14,7 @@ import {
   MessageSquare,
   PlayCircle,
   RefreshCw,
+  ScrollText,
   Settings2,
   ShieldCheck,
   SlidersHorizontal,
@@ -29,6 +30,7 @@ import PreferenceRow from '../../components/settings/PreferenceRow/PreferenceRow
 import { ADMIN_NAV_ITEMS } from '../../data/navigation';
 import { useAuth } from '../../hooks/useAuth';
 import { humanizeEnum } from '../../utils/format';
+import { isIt } from '../../utils/roles';
 import { getPreferences, setPreference } from '../../utils/preferences';
 import styles from './SettingsPage.module.css';
 
@@ -183,7 +185,7 @@ function SettingsPage() {
     }
   };
 
-  const administrationItems = ADMIN_NAV_ITEMS.map((item) => {
+  const administrationItems = ADMIN_NAV_ITEMS.filter((item) => !item.itOnly).map((item) => {
     const iconByType = {
       feedback: MessageSquare,
       'continuous-learning': RefreshCw,
@@ -191,6 +193,14 @@ function SettingsPage() {
     const Icon = iconByType[item.id] ?? MessageSquare;
     return { ...item, Icon };
   });
+
+  const systemLogsItem = {
+    id: 'system-logs',
+    label: 'System Logs',
+    path: '/settings/system-logs',
+    Icon: ScrollText,
+    hint: 'Search the operational audit trail.',
+  };
 
   return (
     <div className={styles.page}>
@@ -410,7 +420,7 @@ function SettingsPage() {
               <div className={styles.cardTitleWrap}>
                 <h3 className={styles.cardTitle}>Administration</h3>
                 <p className={styles.cardDescription}>
-                  Internal system and AI dataset management. Restricted to administrators.
+                  Internal system and AI dataset management. Restricted by role.
                 </p>
               </div>
               <span className={styles.restricted}>Restricted</span>
@@ -435,6 +445,20 @@ function SettingsPage() {
                   </Link>
                 </li>
               ))}
+              {isIt(user) && (
+                <li>
+                  <Link to={systemLogsItem.path} className={styles.adminLink}>
+                    <span className={styles.adminIcon} aria-hidden="true">
+                      <systemLogsItem.Icon />
+                    </span>
+                    <span className={styles.adminMeta}>
+                      <span className={styles.adminLabel}>{systemLogsItem.label}</span>
+                      <span className={styles.adminHint}>{systemLogsItem.hint}</span>
+                    </span>
+                    <ArrowRight className={styles.adminArrow} aria-hidden="true" />
+                  </Link>
+                </li>
+              )}
             </ul>
           </section>
         </>

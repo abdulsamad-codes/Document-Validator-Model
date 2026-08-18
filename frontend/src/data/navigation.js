@@ -1,11 +1,13 @@
 import {
   Activity,
+  ClipboardCheck,
   FileText,
   FolderOpen,
   LayoutDashboard,
   MessageSquare,
   RefreshCw,
   Settings,
+  ScrollText,
   UserCheck,
 } from 'lucide-react';
 
@@ -15,11 +17,12 @@ import {
  * Each section groups top-level links only. Feedback collection and Continuous
  * Learning are internal administrative functions and are deliberately not
  * sidebar entries: they hang off the Settings item as admin-only child links
- * and are surfaced on the Settings page. Internal document-processing stages
- * (technical validation, extraction, confidence, normalisation, business
- * rules, ...) are intentionally absent: they run automatically as part of
- * application verification and will surface later inside an application's
- * status view, not as sidebar navigation.
+ * and are surfaced on the Settings page. System Logs is an IT-only operational
+ * function and likewise hangs off Settings rather than the sidebar. Internal
+ * document-processing stages (technical validation, extraction, confidence,
+ * normalisation, business rules, ...) are intentionally absent: they run
+ * automatically as part of application verification and will surface later
+ * inside an application's status view, not as sidebar navigation.
  */
 export const NAVIGATION = [
   {
@@ -41,6 +44,7 @@ export const NAVIGATION = [
     id: 'verification',
     label: 'Verification',
     items: [
+      { id: 'validation', label: 'Validation', path: '/validation', icon: ClipboardCheck },
       { id: 'reports', label: 'Validation Report', path: '/reports', icon: FileText },
       { id: 'human-review', label: 'Human Review', path: '/human-review', icon: UserCheck },
     ],
@@ -57,6 +61,7 @@ export const NAVIGATION = [
         children: [
           { id: 'feedback', label: 'Feedback', path: '/feedback', icon: MessageSquare, adminOnly: true },
           { id: 'continuous-learning', label: 'Continuous Learning', path: '/continuous-learning', icon: RefreshCw, adminOnly: true },
+          { id: 'system-logs', label: 'System Logs', path: '/settings/system-logs', icon: ScrollText, itOnly: true },
         ],
       },
     ],
@@ -101,7 +106,7 @@ export function findNavItem(path) {
   const all = [...NAV_ITEMS, ...ADMIN_NAV_ITEMS];
   const exact = all.find((item) => item.path === path);
   if (exact) {
-    if (exact.adminOnly) {
+    if (exact.adminOnly || exact.itOnly) {
       return NAV_ITEMS.find((item) => item.children?.some((child) => child.id === exact.id)) ?? exact;
     }
     return exact;

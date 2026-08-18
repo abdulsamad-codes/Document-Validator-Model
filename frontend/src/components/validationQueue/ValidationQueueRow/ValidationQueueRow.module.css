@@ -1,4 +1,5 @@
 .row {
+  cursor: pointer;
   transition: background-color var(--transition);
 }
 
@@ -10,8 +11,52 @@
   background: var(--color-primary-light);
 }
 
-.idCell {
+.applicationName {
+  display: block;
   font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.applicationName + span {
+  margin-top: 4px;
+}
+
+.documentsCount {
+  display: block;
+  font-weight: 600;
+}
+
+.completion {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.missingCount {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.14);
+  color: #b45309;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.completeLabel {
+  color: var(--color-text-muted);
+}
+
+.eventLabel {
+  display: block;
+  font-weight: 600;
+}
+
+.eventTime {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  margin-top: 2px;
 }
 
 .actionsCell {
