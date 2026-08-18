@@ -21,7 +21,7 @@ class AnalyzedDocumentType(str, Enum):
     PAYSLIP = "PAYSLIP"
     ID_DOCUMENT = "ID_DOCUMENT"
     TAX_DOCUMENT = "TAX_DOCUMENT"
-#: Phase 1 of the required-document checklist (see
+    #: Phase 1 of the required-document checklist (see
     #: docs/IMPLEMENTATION_ROADMAP.md). Named identically to the storage-level
     #: DocumentType they correspond to, but distinct enums -- routed via
     #: document_analysis.services._CHECKLIST_TYPE_MAP, not via
@@ -51,6 +51,7 @@ class AnalyzedDocumentType(str, Enum):
     #: extraction has no real-sample validation and is explicitly out of
     #: scope until a sample turns up -- see CnicFrontExtractor's docstring.
     CNIC_FRONT = "CNIC_FRONT"
+    FORMAL_REQUEST_LETTER = "FORMAL_REQUEST_LETTER"
     UNKNOWN = "UNKNOWN"
 
 
@@ -131,7 +132,7 @@ EXPECTED_FIELDS: dict[AnalyzedDocumentType, frozenset[str]] = {
             "currency",
         }
     ),
-#: Field names deliberately match app.rule_engine.rules.cross_document_rules
+    #: Field names deliberately match app.rule_engine.rules.cross_document_rules
     #: (account_holder, account_number, iban): those rules are already
     #: registered and compare these exact names across BILATERAL_AGREEMENT,
     #: TRIPARTITE_AGREEMENT and ACCOUNT_MAINTENANCE_CERTIFICATE, but until now
@@ -217,6 +218,16 @@ EXPECTED_FIELDS: dict[AnalyzedDocumentType, frozenset[str]] = {
     AnalyzedDocumentType.CNIC_FRONT: frozenset(
         {"document_number", "full_name", "date_of_expiry"}
     ),
+    AnalyzedDocumentType.FORMAL_REQUEST_LETTER: frozenset(
+        {
+            "organization_name",
+            "addressee",
+            "subject",
+            "date",
+            "focal_person_name",
+            "focal_person_designation",
+        }
+    ),
 }
 
 #: Fields whose absence forces the document into manual review regardless of
@@ -237,7 +248,7 @@ CRITICAL_FIELDS: dict[AnalyzedDocumentType, frozenset[str]] = {
     AnalyzedDocumentType.TAX_DOCUMENT: frozenset(
         {"taxpayer_name", "tax_reference_number", "tax_year", "gross_income"}
     ),
-#: organization_name, account_number and transaction_charges are the
+    #: organization_name, account_number and transaction_charges are the
     #: fields docs/Master_Rules_Combined.md explicitly calls "required content"
     #: for this document (Section 7). account_number is additionally critical
     #: because the cross-document consistency rules can never pass without it.
@@ -304,4 +315,7 @@ CRITICAL_FIELDS: dict[AnalyzedDocumentType, frozenset[str]] = {
     #: 3 samples (the label/value block shape breaks on the scrambled one),
     #: an honest extraction-reliability gap, not an absence.
     AnalyzedDocumentType.CNIC_FRONT: frozenset({"document_number"}),
+    AnalyzedDocumentType.FORMAL_REQUEST_LETTER: frozenset(
+        {"organization_name", "subject", "date"}
+    ),
 }

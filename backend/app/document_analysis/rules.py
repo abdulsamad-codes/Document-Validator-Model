@@ -368,6 +368,7 @@ _TYPE_RULES: dict[AnalyzedDocumentType, list[tuple[str, str, Any]]] = {
         ("GROSS_POSITIVE", "Gross income is positive", gross_positive),
         ("TAX_NOT_EXCEEDING_GROSS", "Tax does not exceed gross income", tax_not_exceeding_gross),
     ],
+    AnalyzedDocumentType.FORMAL_REQUEST_LETTER: [],
 }
 
 

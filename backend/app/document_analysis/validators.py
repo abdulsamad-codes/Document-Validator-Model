@@ -187,7 +187,7 @@ _FIELD_VALIDATORS: dict[AnalyzedDocumentType, dict[str, tuple[str, Validator]]] 
         "total_tax": ("amount", validate_amount),
         "currency": ("currency", validate_currency),
     },
-AnalyzedDocumentType.BILATERAL_AGREEMENT: {
+    AnalyzedDocumentType.BILATERAL_AGREEMENT: {
         "account_number": ("account_number", validate_account_number),
         "iban": ("iban_checksum", validate_iban),
         "effective_date": ("date", validate_date),
@@ -203,6 +203,9 @@ AnalyzedDocumentType.BILATERAL_AGREEMENT: {
     },
     AnalyzedDocumentType.TRIPARTITE_AGREEMENT: {
         "account_number": ("account_number", validate_account_number),
+    },
+    AnalyzedDocumentType.FORMAL_REQUEST_LETTER: {
+        "date": ("date_not_future", validate_date_not_future),
     },
 }
 
@@ -256,6 +259,9 @@ _FIELD_LABELS: dict[str, str] = {
     "party_subbiller": "Sub-biller party",
     "digitization_intent_confirmed": "Digitization intent confirmation",
     "revenue_services_listed": "Revenue-generating services list",
+    "addressee": "Addressee",
+    "subject": "Subject",
+    "date": "Date",
 }
 
 

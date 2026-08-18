@@ -492,7 +492,6 @@ def test_analyze_recognized_checklist_type_stores_real_type_not_unknown(
         DocumentType.AUTHORITY_LETTER,
         DocumentType.SCHEDULE_OF_CHARGES,
         DocumentType.BUSINESS_REQUIREMENT_DOCUMENT,
-        DocumentType.FORMAL_REQUEST_LETTER,
         DocumentType.CNIC_FRONT,
         DocumentType.CNIC_BACK,
     ],
