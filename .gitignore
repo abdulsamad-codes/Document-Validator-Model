@@ -42,6 +42,13 @@ node_modules/
 # Storage (uploaded documents — never commit)
 storage/
 
+# OCR cache (extracted text from real documents — never commit)
+ocr_cache/
+.ocr_cache/
+
+# Bulk queue worker process-liveness heartbeat (runtime artifact)
+worker.heartbeat
+
 # Output files (generated, not source)
 extracted_ocr/
 extracted_ocr_pages/
