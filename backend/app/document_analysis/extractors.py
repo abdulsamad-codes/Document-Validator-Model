@@ -184,13 +184,22 @@ _ROW_INDEX_HEADER = re.compile(
     r"^(?:s\s*[/#.]?\s*no\.?|s\s*#|sr\.?\s*no\.?|s/?no\.?|#)\s*$", re.IGNORECASE
 )
 
+#: A parenthetical qualifier directly after a field label ("Account No. (T-24
+#: System)") names the bank system/application the account is maintained
+#: under -- it is not the value. Consumed into the label so the value that
+#: follows (same line after a separator, or on the next line) is captured.
+#: Only stripped when the parenthesis is the first token after the label, so a
+#: real parenthetical value ("Account No.: (PK06...)") is never eaten.
+_QUALIFIER_RE = re.compile(r"\s*\([^()]*\)")
+
 
 def _match_label(line: str) -> tuple[str, str] | None:
     """Return ``(field_key, remainder)`` when ``line`` starts with a known
     bank-account field label, else ``None``.
 
-    ``remainder`` is everything after the label, before any value extraction
-    (it may be empty for a bare label whose value is on the next line).
+    ``remainder`` is everything after the label (and any parenthetical system
+    qualifier), before any value extraction. It may be empty for a bare label
+    whose value is on the next line.
     """
     s = line.strip()
     if not s:
@@ -198,7 +207,11 @@ def _match_label(line: str) -> tuple[str, str] | None:
     for pattern, key in _BANK_LABELS:
         match = pattern.match(s)
         if match is not None:
-            return key, s[match.end():]
+            remainder = s[match.end():]
+            qualifier = _QUALIFIER_RE.match(remainder)
+            if qualifier is not None:
+                remainder = remainder[qualifier.end():]
+            return key, remainder
     return None
 
 
@@ -251,9 +264,14 @@ def _looks_like_column_header(line: str) -> bool:
 
 def _normalize_account_holder(raw: str) -> str | None:
     """Clean a captured account-holder value, or return ``None`` when it is not
-    a real account title (e.g. a captured field label or a bare number)."""
+    a real account title (e.g. a captured field label, a bare number, a
+    placeholder like "N/A", or a lone parenthetical system qualifier)."""
     value = _as_single_line(raw).strip().strip(".,:;|-").strip()
     if not value or _is_header(value) or value.isdigit():
+        return None
+    if re.fullmatch(r"\([^()]*\)", value):
+        return None
+    if value.lower() in {"n/a", "na", "nil", "none", "-", "--", "not applicable"}:
         return None
     return value
 
@@ -294,9 +312,22 @@ def _normalize_account_number(raw: str) -> tuple[str | None, str | None]:
     if (
         re.search(r"\d", value)
         and len(value) >= 4
-        and re.fullmatch(r"[A-Za-z0-9\-/ ]+", value)
+        and re.fullmatch(r"[A-Za-z0-9\-/]+", value)
     ):
         return value, iban_tail
+    # Prose-laden remainder (e.g. an OCR line "account number (1BAN) PK86...
+    # titled as Tehsil General Account" whose qualifier was stripped and whose
+    # trailing words are not part of the number): fall back to the first
+    # long alphanumeric run as a last resort, and only when it is itself a
+    # structurally valid token. Pure-text values with no such run normalize
+    # to nothing and are rejected.
+    run = re.search(r"[A-Za-z0-9]{8,}", value)
+    if run is not None:
+        token = run.group(0)
+        if _is_iban_like(token):
+            return None, token
+        if token.isdigit() and len(token) > 3:
+            return token, iban_tail
     return None, iban_tail
 
 
@@ -434,6 +465,22 @@ def _extract_column_block(
         account_norm, iban_norm = _normalize_account_number(account_value)
         if account_norm is None and iban_norm is None:
             continue
+        # Every recognized value slot must normalize to something real. A
+        # shifted mapping (e.g. a plain label/value layout whose value line
+        # happens to look like a caption header, like the parenthetical-label
+        # AMC "Account No. (T-24 System)") would otherwise land an all-digit
+        # value in the account_holder slot and be accepted -- reject it so the
+        # interleaved pass handles the layout correctly.
+        for key, value in zip(header_keys, values):
+            if key in ("_row_index", "bank_name"):
+                continue
+            if not _emit(key, value):
+                continue_block = True
+                break
+        else:
+            continue_block = False
+        if continue_block:
+            continue
         captures: list[tuple[str, str, int]] = []
         for key, value in zip(header_keys, values):
             if key in ("_row_index", "bank_name"):
@@ -453,8 +500,11 @@ def _interleaved_scan(
 
     Handles the same-line form (``Label: value`` and dotted-leader ``Label:...
     value``, e.g. the ZTBL page of GDA copy2) and the bare-label-then-value
-    form (e.g. the wrapped title in NBP copy3). First occurrence in document
-    order wins per field, so a page-1 value is never overwritten by a
+    form (e.g. the wrapped title in NBP copy3). An inline value that fails
+    normalization falls through to the bare-label path so a qualifier-only
+    remainder ("Account No. (T-24 System)") still captures the value on the
+    following line instead of being silently dropped. First occurrence in
+    document order wins per field, so a page-1 value is never overwritten by a
     page-2 one.
     """
     captures: list[tuple[str, str, int]] = []
@@ -478,12 +528,16 @@ def _interleaved_scan(
             continue
         raw = re.sub(r"^[:.\-*\s]+", "", remainder)
         if raw:
-            i += 1
-        else:
-            parts, i = _consume_value_lines(
-                lines, i + 1, cap=3 if key == "account_holder" else 1
-            )
-            raw = " ".join(parts)
+            inline = _emit(key, raw)
+            if inline:
+                for emit_key, emit_value in inline:
+                    captures.append((emit_key, emit_value, i))
+                i += 1
+                continue
+        parts, i = _consume_value_lines(
+            lines, i + 1, cap=3 if key == "account_holder" else 1
+        )
+        raw = " ".join(parts)
         if not raw:
             continue
         for emit_key, emit_value in _emit(key, raw):
@@ -501,7 +555,11 @@ def _extract_bank_account_block(text: str) -> dict[str, str]:
     normalizes to nothing is rejected rather than emitted. Account number takes
     the first plain-number capture in document order; an IBAN-only capture
     under an account-number label is promoted to account_number only when no
-    plain number exists anywhere in the document.
+    plain number exists anywhere in the document. When no labeled account
+    holder exists, a sentence-level fallback
+    (:func:`_extract_holder_from_sentence`) recovers the holder from prose
+    ("the account of ..."), which is how the real DG_Sports AMC layout states
+    it.
     """
     lines = [line.strip() for line in text.splitlines()]
     column_captures, block_start, block_end = _extract_column_block(lines)
@@ -521,11 +579,61 @@ def _extract_bank_account_block(text: str) -> dict[str, str]:
                 best = (value, index)
         if best is not None:
             per_field["account_number"] = best
+    if "account_holder" not in per_field:
+        holder = _extract_holder_from_sentence(text)
+        if holder is not None:
+            per_field["account_holder"] = (holder, -1)
     return {
         key: per_field[key][0]
         for key in ("account_holder", "account_number", "iban")
         if key in per_field
     }
+
+
+#: Sentence-level account-holder fallbacks for certificates that state the
+#: holder in prose ("the account of ...", "account titled '...'") rather than
+#: as its own labeled field -- the real DG_Sports AMC layout. Each pattern
+#: anchors the capture on an account-ownership keyword so arbitrary prose
+#: lines are never picked up. The value must start with an uppercase letter or
+#: digit and is passed through the same guards as labeled captures.
+_HOLDER_SENTENCE_PATTERNS: tuple[re.Pattern, ...] = (
+    re.compile(
+        r"account\s+titled?\s+(?:as\s+)?[\"'“]([^\"'”]{3,60})[\"'”]",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"account\s+titled?\s+(?:as\s+)?"
+        r"(?-i:([A-Z0-9][A-Z0-9 ,.&'()\-/]{3,60}))",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"(?:in\s+the\s+name\s+of|in\s+name\s+of|on\s+behalf\s+of)\s+"
+        r"(?:the\s+)?(?-i:([A-Z0-9][A-Z0-9 ,.&'()\-/]{3,60}))",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"account\s+(?:of|held\s+in\s+the\s+name\s+of|maintained\s+by|"
+        r"belonging\s+to)\s+(?:the\s+)?(?-i:([A-Z0-9][A-Z0-9 ,.&'()\-/]{3,60}))",
+        re.IGNORECASE,
+    ),
+)
+
+
+def _extract_holder_from_sentence(text: str) -> str | None:
+    """Return the account holder stated in a sentence, or ``None``.
+
+    Fallback used only when no labeled account-holder field exists in the
+    document. Runs against the text with line breaks flowed into spaces so a
+    wrapped sentence is read as one. The captured value must survive the
+    account-holder normalization guards and be at least 3 characters long.
+    """
+    flowed = re.sub(r"\s*\n\s*", " ", text)
+    for pattern in _HOLDER_SENTENCE_PATTERNS:
+        for match in pattern.finditer(flowed):
+            value = _normalize_account_holder(match.group(1))
+            if value is not None and len(value) >= 3:
+                return value
+    return None
 
 
 class RegexExtractor:

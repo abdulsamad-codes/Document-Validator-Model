@@ -662,6 +662,47 @@ PARTIAL_CERT_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
 Account Title: SAMPLE AUTHORITY
 """
 
+PARENTHETICAL_LABEL_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+Title of Account
+SAMPLE AUTHORITY
+Account No. (T-24 System)
+00112233445566
+IBAN: PK99FAKE0000000000000000
+"""
+
+PARENTHETICAL_LABEL_INLINE_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+Account Title: SAMPLE AUTHORITY
+Account No. (T-24 System): 00112233445566
+"""
+
+PAREN_IBAN_INLINE_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+Account No.: PK99FAKE0000000000000000
+"""
+
+PARALLEL_GENERATIONS_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+This is to certify that the account of SAMPLE SPORTS AUTHORITY maintained
+with this branch is in good standing.
+Account No. (T-24 System)
+00112233445566
+Account No. (CBS)
+00112233445567
+Account No. (Core Banking)
+00112233445568
+"""
+
+SENTENCE_NO_OWNERSHIP_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+This is to certify that the following account is maintained with us.
+Account No.
+00112233445566
+"""
+
+PAREN_IBAN_OCR_NOISE_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+This is to certify that the following account is maintained with us.
+account number (1BAN) PK99FAKE0000000000000000 titled as Tehsil General Account
+Account Title
+SAMPLE AUTHORITY
+"""
+
 
 def test_extract_tripartite_column_table_positions_values_by_header():
     # The real Tripartite layout is a stacked column table whose header block
@@ -756,6 +797,75 @@ def test_extract_partial_certificate_missing_fields_are_absent():
     assert fields["account_holder"] == "SAMPLE AUTHORITY"
     assert "account_number" not in fields
     assert "iban" not in fields
+
+
+def test_extract_parenthetical_label_value_on_next_line():
+    # The real DG_Sports AMC labels its account number "Account No. (T-24
+    # System)" -- a parenthetical naming the bank system. The qualifier must be
+    # consumed into the label (not mistaken for an inline value) so the number
+    # on the following line is captured.
+    fields = extract_fields(
+        PARENTHETICAL_LABEL_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_holder"] == "SAMPLE AUTHORITY"
+    assert fields["account_number"] == "00112233445566"
+    assert fields["iban"] == "PK99FAKE0000000000000000"
+
+
+def test_extract_parenthetical_label_inline_value_after_colon():
+    # The same qualifier shape with the value on the same line after a colon
+    # must also extract, and a parenthetical IBAN value must never be eaten by
+    # the qualifier-stripping rule.
+    fields = extract_fields(
+        PARENTHETICAL_LABEL_INLINE_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_holder"] == "SAMPLE AUTHORITY"
+    assert fields["account_number"] == "00112233445566"
+    fields = extract_fields(
+        PAREN_IBAN_INLINE_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["iban"] == "PK99FAKE0000000000000000"
+
+
+def test_extract_first_of_parallel_account_generations():
+    # The real DG_Sports AMC certifies the account under three parallel bank
+    # systems (T-24, CBS, Core), each its own labeled block, and states the
+    # holder only in prose -- never as its own field. The first valid account
+    # number in document order wins, and the sentence-level fallback recovers
+    # the holder.
+    fields = extract_fields(
+        PARALLEL_GENERATIONS_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_holder"] == "SAMPLE SPORTS AUTHORITY"
+    assert fields["account_number"] == "00112233445566"
+
+
+def test_extract_holder_from_sentence_only_no_false_positive():
+    # The sentence fallback must not fire on prose that merely mentions the
+    # word "account" without ownership ("account is maintained with us") and
+    # must not surface a placeholder or bank-name noise as the holder.
+    fields = extract_fields(
+        SENTENCE_NO_OWNERSHIP_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_number"] == "00112233445566"
+    assert "account_holder" not in fields
+
+
+def test_extract_account_number_from_ocr_noise_prose_tail():
+    # A qualifier-stripped OCR line whose trailing prose ("...titled as Tehsil
+    # General Account") is not part of the number must still yield the real
+    # IBAN-shaped token, never a prose-laden account_number value.
+    fields = extract_fields(
+        PAREN_IBAN_OCR_NOISE_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_number"] == "PK99FAKE0000000000000000"
+    assert fields["iban"] == "PK99FAKE0000000000000000"
 
 
 def test_checklist_field_labels_never_route_into_keyword_detection():
