@@ -174,6 +174,27 @@ class FieldAuthorityLetterFocalPersonPresenceRule(_FieldPresenceRule):
     document_label = "authority letter"
 
 
+class FieldBrdDigitizationIntentPresenceRule(_FieldPresenceRule):
+    """The business requirement document must confirm digitization intent.
+
+    `digitization_intent_confirmed` is BusinessRequirementDocumentExtractor's
+    own CRITICAL_FIELDS member and extracts a clean, consistent value on all
+    3 real cached samples, 3 independent organizations ("KPITB's FinTech
+    Unit" / "KPITB's FIN TECH UNIT") -- anchored on a specific institutional
+    name that appears near-verbatim in any real onboarding-intent statement,
+    unlike its sibling field `revenue_services_listed`, which
+    document_analysis/constants.py deliberately excludes from CRITICAL_FIELDS
+    for the opposite reason (three structurally incompatible real phrasings,
+    no safe single anchor).
+    """
+
+    id = "FLD_BRD_DIGITIZATION_INTENT_PRESENT"
+    name = "Digitization intent confirmed on business requirement document"
+    field_name = "digitization_intent_confirmed"
+    target_document_types = frozenset({DocumentType.BUSINESS_REQUIREMENT_DOCUMENT})
+    document_label = "business requirement document"
+
+
 __all__ = [
     "FieldIbanPresenceRule",
     "FieldAccountNumberPresenceRule",
@@ -183,4 +204,5 @@ __all__ = [
     "FieldFormalRequestOrganizationPresenceRule",
     "FieldAuthorityLetterOrganizationPresenceRule",
     "FieldAuthorityLetterFocalPersonPresenceRule",
+    "FieldBrdDigitizationIntentPresenceRule",
 ]

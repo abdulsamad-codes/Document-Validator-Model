@@ -88,15 +88,15 @@ def run(rule_id: str, ctx: RuleContext) -> RuleResult:
 # --- Registry contract -------------------------------------------------------
 
 
-def test_registry_has_52_rules_in_8_categories():
+def test_registry_has_53_rules_in_8_categories():
     from collections import Counter
 
     rules = REGISTRY.rules()
-    assert len(rules) == 52
+    assert len(rules) == 53
     categories = Counter(rule.category for rule in rules)
     assert categories == {
         "document_completeness": 8,
-        "field_presence": 8,
+        "field_presence": 9,
         "format": 6,
         # CrossBranchCodeRule and CrossPeriodRule are implemented but
         # deliberately not registered -- see the inline rationale in
@@ -284,6 +284,26 @@ def test_authority_letter_focal_person_fails_when_missing():
     )
     assert result.status is ValidationStatus.FAIL
     assert "authority letter" in result.message.lower()
+
+
+BRD = DocumentType.BUSINESS_REQUIREMENT_DOCUMENT.value
+
+
+def test_brd_digitization_intent_passes_with_normalized_value():
+    result = run(
+        "FLD_BRD_DIGITIZATION_INTENT_PRESENT",
+        context(fields=[field("digitization_intent_confirmed", "KPITB's FinTech Unit", doc_type=BRD)]),
+    )
+    assert result.status is ValidationStatus.PASS
+
+
+def test_brd_digitization_intent_fails_when_missing():
+    result = run(
+        "FLD_BRD_DIGITIZATION_INTENT_PRESENT",
+        context(fields=[field("revenue_services_listed", "Fee collection", doc_type=BRD)]),
+    )
+    assert result.status is ValidationStatus.FAIL
+    assert "business requirement document" in result.message.lower()
 
 
 # --- Format ------------------------------------------------------------------
