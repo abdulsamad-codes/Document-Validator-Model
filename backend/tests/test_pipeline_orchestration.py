@@ -149,7 +149,32 @@ def test_bulk_upload_marks_application_processing_immediately(authenticated_clie
     assert application_status_for(application_id) == "PROCESSING"
 
 
-def test_start_processing_marks_single_upload_application_processing(authenticated_client):
+def test_start_processing_marks_single_upload_application_processing(
+    authenticated_client, monkeypatch
+):
+    """Checks the synchronous portion of /processing/start in isolation.
+
+    Starlette's TestClient runs FastAPI BackgroundTasks synchronously before
+    the response is returned, so with background draining enabled the queue
+    always fully resolves (to FAILED or PENDING_REVIEW) inside this same
+    call, and "PROCESSING" is never observable here regardless of document
+    content. Production only gets the true non-blocking behaviour this test
+    means to check by running dedicated worker processes with
+    ``bulk_queue_background_drain=false`` (see _schedule_drain's docstring)
+    -- so disable inline draining here too, the same way production does,
+    to isolate start_processing()'s own enqueue-and-mark-PROCESSING step
+    from worker execution.
+
+    (Previously this test used the bare conftest PDF_BYTES, which has no
+    content stream and always fails technical validation; it happened to
+    still observe "PROCESSING" because the bulk queue's old SKIPPED-retry
+    timing left a failing job in RETRY_WAITING for one drain pass instead of
+    resolving it immediately. That was incidental masking, not the real
+    guarantee this test is meant to verify.)
+    """
+    from app.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "bulk_queue_background_drain", False)
     application_id = create_application(authenticated_client)
     upload_response = upload_single_document(authenticated_client, application_id)
     assert upload_response.status_code == 201, upload_response.text

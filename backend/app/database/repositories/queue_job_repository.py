@@ -212,6 +212,38 @@ class QueueJobRepository(BaseRepository[QueueJob]):
         self._db.refresh(job)
         return job
 
+    def mark_skipped_permanent(self, job: QueueJob, *, error: str) -> QueueJob:
+        """Permanently fail a job whose outcome retrying cannot change.
+
+        A ``SKIPPED`` processing outcome (e.g. "document did not pass
+        technical validation") reflects a stored verdict that a retry cannot
+        alter -- unlike a transient failure, there is no reason to wait out a
+        backoff and try again. Goes straight to the same terminal state
+        ``mark_failed_attempt`` reaches once its attempt budget is exhausted,
+        without spending any of that budget or scheduling a retry.
+
+        Args:
+            job: The claimed job being processed.
+            error: Human-readable failure detail (truncated for storage).
+
+        Returns:
+            The updated job.
+        """
+        now = datetime.now(timezone.utc)
+        job.attempts += 1
+        job.last_error = error[:2000]
+        job.worker_id = None
+        job.status = JobStatus.FAILED
+        job.completed_at = now
+        job.retry_at = None
+        job.started_at = None
+        if job.document is not None:
+            job.document.processing_status = DocumentProcessingStatus.FAILED
+        self._db.add(job)
+        self._db.commit()
+        self._db.refresh(job)
+        return job
+
     def heartbeat(
         self,
         *,

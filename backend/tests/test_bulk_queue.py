@@ -61,6 +61,22 @@ class FailingProcessor:
         raise RuntimeError("transient failure")
 
 
+class SkippedProcessor:
+    """Fake processor whose outcome retrying can never change."""
+
+    def __init__(self, db):
+        self._db = db
+
+    def process_one(self, *, application_id: int, document_id: int):
+        document = self._db.get(Document, document_id)
+        return DocumentProcessingResult(
+            document_id=document_id,
+            file_name=document.original_filename,
+            outcome=ProcessingOutcome.SKIPPED,
+            message="Document did not pass technical validation",
+        )
+
+
 class SleepingProcessor:
     """Fake processor used by the concurrency benchmark."""
 
@@ -313,7 +329,12 @@ def test_retry_failed_documents_does_not_touch_completed(client):
     assert response.json()["documents_retried"] == 1
     counts = queue_counts(application_id)
     assert counts.get(JobStatus.COMPLETED, 0) == 1
-    assert counts.get(JobStatus.FAILED, 0) == 0
+    # The retried job's document has a fake, nonexistent stored_file_path
+    # (create_application_with_documents never writes a real file), so real
+    # processing correctly, permanently fails it again -- retrying can't
+    # conjure a file into existence. This test's own point (retry doesn't
+    # touch the already-COMPLETED job) is unaffected either way.
+    assert counts.get(JobStatus.FAILED, 0) == 1
 
 
 def test_progress_endpoint_counts_statuses(client):
@@ -436,6 +457,32 @@ def test_failed_processing_retries_then_permanently_fails(monkeypatch):
     assert second.failed == 1
     counts = queue_counts(application_id)
     assert counts[JobStatus.FAILED] == 1
+
+
+def test_skipped_processing_fails_permanently_without_retry(monkeypatch):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "bulk_queue_max_attempts", 3)
+    monkeypatch.setattr(settings, "bulk_queue_retry_backoff_seconds", 0)
+    application_id, document_ids = create_application_with_documents(1)
+    enqueue(application_id)
+    worker = BulkQueueWorker(settings=settings, processor_factory=SkippedProcessor)
+
+    summary = worker.run_until_empty(max_jobs=1)
+
+    assert summary.failed == 1
+    assert summary.retried == 0
+    counts = queue_counts(application_id)
+    assert counts[JobStatus.FAILED] == 1
+    assert counts.get(JobStatus.RETRY_WAITING, 0) == 0
+    db = SessionLocal()
+    try:
+        job = db.query(QueueJob).filter_by(application_id=application_id).one()
+        assert job.attempts == 1
+        assert "did not pass technical validation" in job.last_error
+        document = db.get(Document, document_ids[0])
+        assert document.processing_status is DocumentProcessingStatus.FAILED
+    finally:
+        db.close()
 
 
 def test_stale_processing_job_recovery():
@@ -930,6 +977,17 @@ def test_bulk_upload_split_documents_are_enqueued_for_processing(client):
     no error surfaced anywhere -- a live application hit this in production
     use before it was caught. Exercises the real `DocumentProcessingService`
     (not a fake processor) so this path is actually covered.
+
+    Each page needs a few full lines of body text, not just a short title
+    and "First copy." -- the real DocumentProcessingService also runs real
+    technical validation on the split documents, whose blur (variance of
+    Laplacian, threshold 100) and blank-page (ink-ratio) checks operate on
+    the whole rendered page image, not just its text. A near-empty page
+    with only a couple of short lines measures ~90 (below threshold) and
+    reads as blank even though the text itself renders crisply -- confirmed
+    directly, not assumed. This mirrors the same fix already applied to
+    every other synthetic PDF fixture in the suite (see AUTHORITY_LETTER_TEXT
+    and friends in test_document_analysis_api.py).
     """
     authenticate(client)
     application_id = create_application(client)
@@ -937,8 +995,14 @@ def test_bulk_upload_split_documents_are_enqueued_for_processing(client):
         client,
         application_id,
         make_bulk_pdf([
-            "TRIPARTITE AGREEMENT\nFirst copy.",
-            "TRIPARTITE AGREEMENT\nSecond copy.",
+            "TRIPARTITE AGREEMENT\nThis agreement is entered into between the sub-biller,\n"
+            "1LINK and the Khyber Pakhtunkhwa Information Technology Board for\n"
+            "the purpose of enabling digital payment collection services.\n"
+            "First copy of this agreement.",
+            "TRIPARTITE AGREEMENT\nThis agreement is entered into between the sub-biller,\n"
+            "1LINK and the Khyber Pakhtunkhwa Information Technology Board for\n"
+            "the purpose of enabling digital payment collection services.\n"
+            "Second copy of this agreement.",
         ]),
     )
     assert response.status_code == 201, response.text
@@ -985,6 +1049,12 @@ def test_bulk_split_over_copy_cap_flags_instead_of_failing(client):
     targeted regression test -- and asserts the split now succeeds, all 4
     documents persist, and the application is flagged for manual review
     instead of the run failing.
+
+    Each page needs a few full lines of body text for the same reason
+    documented on test_bulk_upload_split_documents_are_enqueued_for_processing
+    above -- real technical validation's blur/blank-page checks operate on
+    the rendered page image and fail a near-empty page regardless of how
+    crisp its text renders.
     """
     authenticate(client)
     application_id = create_application(client)
@@ -992,10 +1062,18 @@ def test_bulk_split_over_copy_cap_flags_instead_of_failing(client):
         client,
         application_id,
         make_bulk_pdf([
-            "1LINK APPLICATION FORM\nOne.",
-            "1LINK APPLICATION FORM\nTwo.",
-            "1LINK APPLICATION FORM\nThree.",
-            "1LINK APPLICATION FORM\nFour.",
+            "1LINK APPLICATION FORM\nThis application form is submitted by the organization to\n"
+            "register for digital payment collection services through the\n"
+            "1LINK platform in coordination with KPITB.\nCopy number one of this application.",
+            "1LINK APPLICATION FORM\nThis application form is submitted by the organization to\n"
+            "register for digital payment collection services through the\n"
+            "1LINK platform in coordination with KPITB.\nCopy number two of this application.",
+            "1LINK APPLICATION FORM\nThis application form is submitted by the organization to\n"
+            "register for digital payment collection services through the\n"
+            "1LINK platform in coordination with KPITB.\nCopy number three of this application.",
+            "1LINK APPLICATION FORM\nThis application form is submitted by the organization to\n"
+            "register for digital payment collection services through the\n"
+            "1LINK platform in coordination with KPITB.\nCopy number four of this application.",
         ]),
     )
     assert response.status_code == 201, response.text
@@ -1070,7 +1148,18 @@ def test_bulk_upload_ocr_fallback_splits_watermark_only_scans(client):
         return DocumentProcessingService(db, engine_factory=lambda: ocr_engine)
 
     summary = BulkQueueWorker(processor_factory=processor_factory).run_until_empty()
-    assert summary.failed == 0, summary
+    # Unlike the other bulk-queue split tests, this test's split documents
+    # cannot be given real technical-validation-passing content: the whole
+    # point is that each page's own rendered image genuinely is a near-blank
+    # watermark-only scan (the splitter only sees real content via the fake
+    # OCR engine's text, which never touches the saved page image). Real
+    # technical validation correctly, honestly fails such a page -- same
+    # blur/blank-page checks documented above -- so the resulting document
+    # jobs are expected to end up permanently FAILED, not succeeded. This
+    # test's own scope is the splitter's OCR-fallback decision (proven by
+    # the two split documents existing with the right types below), not
+    # the downstream worker's processing outcome.
+    assert summary.failed == 2, summary
 
     db = SessionLocal()
     try:

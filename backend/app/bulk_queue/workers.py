@@ -65,6 +65,15 @@ class WorkerRunSummary:
     retried: int = 0
 
 
+class _DocumentSkipped(RuntimeError):
+    """Raised for a SKIPPED processing outcome.
+
+    A distinct type from a plain processing failure so ``_process_claimed_job``
+    can route it to ``mark_skipped_permanent`` instead of the generic retry
+    path -- retrying can't change a stored technical-validation verdict.
+    """
+
+
 class BulkQueueWorker:
     """Claims and processes jobs one at a time.
 
@@ -240,7 +249,7 @@ class BulkQueueWorker:
                     if result.outcome is ProcessingOutcome.FAILED:
                         raise RuntimeError(result.message or "Document processing failed")
                     if result.outcome is ProcessingOutcome.SKIPPED:
-                        raise RuntimeError(result.message or "Document skipped")
+                        raise _DocumentSkipped(result.message or "Document skipped")
                 jobs.mark_completed(job)
                 summary.succeeded += 1
                 logger.info(
@@ -250,6 +259,17 @@ class BulkQueueWorker:
                     job.document_id,
                     self.worker_id,
                 )
+            except _DocumentSkipped as exc:
+                logger.warning(
+                    "Bulk queue job skipped job_id=%s job_type=%s document_id=%s worker_id=%s: %s",
+                    job.id,
+                    job.job_type.value,
+                    job.document_id,
+                    self.worker_id,
+                    exc,
+                )
+                jobs.mark_skipped_permanent(job, error=str(exc) or exc.__class__.__name__)
+                summary.failed += 1
             except Exception as exc:
                 logger.exception(
                     "Bulk queue job failed job_id=%s job_type=%s document_id=%s worker_id=%s",
