@@ -326,6 +326,7 @@ __all__ = [
     "DateDobSanityRule",
     "DateIssuePresenceRule",
     "DateExpiryPresenceRule",
+    "DateCnicNotExpiredRule",
 ]
 
 
@@ -349,3 +350,48 @@ class DateExpiryPresenceRule(_DateRule):
 
     def evaluate(self, context: RuleContext) -> RuleResult:
         return self._evaluate_presence(context, "Expiry dates are present")
+
+
+class DateCnicNotExpiredRule(_DateRule):
+    """A CNIC's expiry date must not be in the past.
+
+    Uses ``date_of_expiry`` -- CnicFrontExtractor's own field name, distinct
+    from the generic ``expiry_date`` the other date rules share -- so this
+    rule only ever evaluates a real CNIC's expiry, never an unrelated
+    document's expiry field by coincidence.
+    """
+
+    id = "DATE_CNIC_NOT_EXPIRED"
+    name = "CNIC is not expired"
+    field_name = "date_of_expiry"
+
+    def evaluate(self, context: RuleContext) -> RuleResult:
+        values = normalized_values(context, self.field_name)
+        if not values:
+            return self._nothing_to_validate()
+        related_documents = [
+            value.document_id for value in context.values(self.field_name)
+        ]
+        today = _today()
+        for value in values:
+            expiry = _parse_iso(value)
+            if expiry is None:
+                return self.result(
+                    ValidationStatus.WARNING,
+                    f"Date of expiry {value!r} could not be parsed",
+                    related_document_ids=sorted(related_documents),
+                    related_field_names=[self.field_name],
+                )
+            if expiry < today:
+                return self.result(
+                    ValidationStatus.FAIL,
+                    f"CNIC expired on {expiry.isoformat()}",
+                    related_document_ids=sorted(related_documents),
+                    related_field_names=[self.field_name],
+                )
+        return self.result(
+            ValidationStatus.PASS,
+            "CNIC is not expired",
+            related_document_ids=sorted(related_documents),
+            related_field_names=[self.field_name],
+        )

@@ -16,6 +16,7 @@ from app.rule_engine.rules.cross_document_rules import (
     CrossPeriodRule,
 )
 from app.rule_engine.rules.date_rules import (
+    DateCnicNotExpiredRule,
     DateDobSanityRule,
     DateExpiryPresenceRule,
     DateIssuePrecedesExpiryRule,
@@ -139,7 +140,7 @@ class RuleRegistry:
                 CrossAccountNumberRule(),
                 CrossIbanRule(),
 
-                # Date and period (7).
+                # Date and period (8).
                 DatePeriodSequenceRule(),
                 DatePeriodRangeRule(),
                 DateIssuePrecedesExpiryRule(),
@@ -147,6 +148,7 @@ class RuleRegistry:
                 DateDobSanityRule(),
                 DateIssuePresenceRule(),
                 DateExpiryPresenceRule(),
+                DateCnicNotExpiredRule(),
                 # Visual verification (11).
                 VisualSignatureTripartiteRule(),
                 VisualSignatureAmcRule(),

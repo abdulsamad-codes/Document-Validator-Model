@@ -87,11 +87,11 @@ def run(rule_id: str, ctx: RuleContext) -> RuleResult:
 # --- Registry contract -------------------------------------------------------
 
 
-def test_registry_has_47_rules_in_8_categories():
+def test_registry_has_48_rules_in_8_categories():
     from collections import Counter
 
     rules = REGISTRY.rules()
-    assert len(rules) == 47
+    assert len(rules) == 48
     categories = Counter(rule.category for rule in rules)
     assert categories == {
         "document_completeness": 8,
@@ -102,7 +102,7 @@ def test_registry_has_47_rules_in_8_categories():
         # rule_engine/rules/__init__.py. FieldStatementPeriodPresenceRule and
         # FieldBalancesPresenceRule were removed outright -- see the same file.
         "cross_document": 3,
-        "date": 7,
+        "date": 8,
         "visual": 11,
         "policy": 4,
         "quality": 4,
@@ -394,6 +394,37 @@ def test_dob_sanity_fails_on_implausible_year():
         context(fields=[field("date_of_birth", "1850-01-01")]),
     )
     assert result.status is ValidationStatus.FAIL
+
+
+def test_cnic_not_expired_fails_on_past_date():
+    past = (date.today() - timedelta(days=5)).isoformat()
+    result = run(
+        "DATE_CNIC_NOT_EXPIRED",
+        context(fields=[field("date_of_expiry", past, doc_type=DocumentType.CNIC_FRONT.value)]),
+    )
+    assert result.status is ValidationStatus.FAIL
+
+
+def test_cnic_not_expired_passes_on_future_date():
+    future = (date.today() + timedelta(days=365)).isoformat()
+    result = run(
+        "DATE_CNIC_NOT_EXPIRED",
+        context(fields=[field("date_of_expiry", future, doc_type=DocumentType.CNIC_FRONT.value)]),
+    )
+    assert result.status is ValidationStatus.PASS
+
+
+def test_cnic_not_expired_warns_when_missing():
+    result = run("DATE_CNIC_NOT_EXPIRED", context())
+    assert result.status is ValidationStatus.WARNING
+
+
+def test_cnic_not_expired_warns_on_unparseable_value():
+    result = run(
+        "DATE_CNIC_NOT_EXPIRED",
+        context(fields=[field("date_of_expiry", "not-a-date", doc_type=DocumentType.CNIC_FRONT.value)]),
+    )
+    assert result.status is ValidationStatus.WARNING
 
 
 # --- Visual verification -----------------------------------------------------
