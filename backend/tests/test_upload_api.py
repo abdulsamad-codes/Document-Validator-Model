@@ -187,7 +187,7 @@ def test_upload_multiple_copies_success(authenticated_client):
     assert copies == {1, 2, 3}
 
 
-def test_upload_exceeds_copy_cap_rejected(authenticated_client):
+def test_upload_exceeds_copy_cap_flagged_not_rejected(authenticated_client):
     application_id = create_application(authenticated_client)
     for copy_number in (1, 2, 3):
         assert (
@@ -206,8 +206,12 @@ def test_upload_exceeds_copy_cap_rejected(authenticated_client):
         copy_number=4,
     )
 
-    assert response.status_code == 409, response.text
-    assert "Cannot upload more than 3 copies" in response.json()["detail"]
+    assert response.status_code == 201, response.text
+    assert response.json()["document"]["copy_number"] == 4
+
+    detail = authenticated_client.get(f"{API}/applications/{application_id}").json()["application"]
+    assert "TRIPARTITE_AGREEMENT" in detail["notes"]
+    assert "exceeding the configured threshold of 3" in detail["notes"]
 
 
 def test_upload_copy_slot_already_occupied(authenticated_client):
@@ -219,7 +223,7 @@ def test_upload_copy_slot_already_occupied(authenticated_client):
     assert "Copy 2 of TRIPARTITE_AGREEMENT already exists" in response.json()["detail"]
 
 
-def test_upload_single_copy_type_limit(authenticated_client):
+def test_upload_single_copy_type_limit_flagged_not_rejected(authenticated_client):
     application_id = create_application(authenticated_client)
     assert (
         upload(
@@ -237,8 +241,12 @@ def test_upload_single_copy_type_limit(authenticated_client):
         copy_number=2,
     )
 
-    assert response.status_code == 409, response.text
-    assert "Cannot upload more than 1 copy" in response.json()["detail"]
+    assert response.status_code == 201, response.text
+    assert response.json()["document"]["copy_number"] == 2
+
+    detail = authenticated_client.get(f"{API}/applications/{application_id}").json()["application"]
+    assert "AUTHORITY_LETTER" in detail["notes"]
+    assert "exceeding the configured threshold of 1" in detail["notes"]
 
 
 def test_upload_missing_application(authenticated_client):

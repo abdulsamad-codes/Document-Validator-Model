@@ -132,9 +132,11 @@ class UploadService:
 
         Raises:
             ApplicationNotFoundException: When the application does not exist.
-            DuplicateDocumentException: When the application already holds the
-                maximum number of documents of this type, or when the requested
-                copy slot is already occupied.
+            DuplicateDocumentException: When ``copy_number`` is not a positive
+                slot, or the requested copy slot is already occupied. Exceeding
+                ``MAX_COPIES_BY_DOCUMENT_TYPE`` no longer raises -- the
+                document is accepted and the application is flagged for
+                manual review instead (see ``_ensure_slot_available``).
             MissingFileException / InvalidFileTypeException /
                 FileTooLargeException: When the file fails validation.
         """
@@ -479,19 +481,40 @@ class UploadService:
         document_type: DocumentType,
         copy_number: int,
     ) -> None:
-        """Raise ``DuplicateDocumentException`` when the copy slot is unavailable.
+        """Raise ``DuplicateDocumentException`` only when the slot itself is unusable.
 
-        A type is limited to ``MAX_COPIES_BY_DOCUMENT_TYPE`` copies per
-        application; types outside the map accept a single copy. Within the
-        limit, each 1-based copy number is a distinct, stable slot so a copy
-        can never silently overwrite a sibling of the same type.
+        ``copy_number`` must still be a positive, not-already-occupied slot --
+        those are structural invariants, not a policy choice. Exceeding
+        ``MAX_COPIES_BY_DOCUMENT_TYPE`` is no longer a hard rejection (see
+        the department decision recorded in CONTEXT.md, 2026-08-19): a real
+        bulk file can legitimately produce more copies of a type than the
+        configured threshold when the splitter mis-slices unrelated content
+        into that type's boundary (see the GDA Abbotabad findings in
+        CONTEXT.md) -- rejecting the whole upload over a count doesn't fix
+        that document-boundary problem, it just blocks the operator from
+        ever seeing the file. Over-threshold uploads are now accepted and
+        flagged for manual review instead.
         """
-        max_copies = MAX_COPIES_BY_DOCUMENT_TYPE.get(document_type, 1)
-        if copy_number < 1 or copy_number > max_copies:
-            noun = "copy" if max_copies == 1 else "copies"
+        if copy_number < 1:
             raise DuplicateDocumentException(
-                f"Cannot upload more than {max_copies} {noun} of "
-                f"{document_type.value} per application"
+                f"Invalid copy number {copy_number} for {document_type.value}"
+            )
+
+        max_copies = MAX_COPIES_BY_DOCUMENT_TYPE.get(document_type, 1)
+        if copy_number > max_copies:
+            logger.warning(
+                "Application id=%s: copy %s of %s exceeds the configured "
+                "threshold of %s -- accepting and flagging for manual review "
+                "instead of rejecting.",
+                application_id,
+                copy_number,
+                document_type.value,
+                max_copies,
+            )
+            self._flag_for_manual_review(
+                application_id,
+                f"{document_type.value} has {copy_number} copies, exceeding the "
+                f"configured threshold of {max_copies}. Flagged for manual review.",
             )
 
         statement = select(Document).where(
@@ -503,6 +526,23 @@ class UploadService:
             raise DuplicateDocumentException(
                 f"Copy {copy_number} of {document_type.value} already exists for this application"
             )
+
+    def _flag_for_manual_review(self, application_id: int, message: str) -> None:
+        """Best-effort, additive note that an application needs manual review.
+
+        No dedicated review-flag column/status exists on ``main`` yet, so
+        this appends an operator-visible note rather than introducing a new
+        migration -- keeps this change narrow, per the department decision's
+        own scope (stop the hard rejection; the splitter's document-boundary
+        bug behind the over-threshold count is separate, larger work).
+        """
+        application = self._applications.get_by_id(application_id)
+        if application is None:
+            return
+        stamped = f"[SYSTEM] {message}"
+        application.notes = (
+            f"{application.notes}\n{stamped}" if application.notes else stamped
+        )
 
     def _read_with_limit(self, file: BinaryIO) -> bytes:
         """Stream the file, enforcing the configured maximum size.

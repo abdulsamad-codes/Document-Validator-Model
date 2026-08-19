@@ -972,6 +972,62 @@ def test_bulk_upload_split_documents_are_enqueued_for_processing(client):
         db.close()
 
 
+def test_bulk_split_over_copy_cap_flags_instead_of_failing(client):
+    """Regression test grounded in the real GDA Abbotabad finding (CONTEXT.md,
+    2026-08-19): a real bulk file split into 4 real `ONE_LINK_LETTER` copies
+    against `MAX_COPIES_BY_DOCUMENT_TYPE`'s cap of 3. Before the department's
+    flexible-copy-limit decision, `_process_bulk_upload` hard-raised
+    `DocumentProcessingError` on the 4th copy, failing the whole bulk split
+    (and, with it, every other document type in the same file) rather than
+    persisting what it found. This reproduces the same shape (4 independently
+    strong-title-matched copies of a type capped at 3) via digital-text pages
+    -- not the real scanned file, to avoid its ~2-hour real OCR cost for a
+    targeted regression test -- and asserts the split now succeeds, all 4
+    documents persist, and the application is flagged for manual review
+    instead of the run failing.
+    """
+    authenticate(client)
+    application_id = create_application(client)
+    response = upload_bulk(
+        client,
+        application_id,
+        make_bulk_pdf([
+            "1LINK APPLICATION FORM\nOne.",
+            "1LINK APPLICATION FORM\nTwo.",
+            "1LINK APPLICATION FORM\nThree.",
+            "1LINK APPLICATION FORM\nFour.",
+        ]),
+    )
+    assert response.status_code == 201, response.text
+
+    def processor_factory(db):
+        return DocumentProcessingService(db, engine_factory=lambda: None)
+
+    summary = BulkQueueWorker(processor_factory=processor_factory).run_until_empty()
+    assert summary.failed == 0, summary
+
+    db = SessionLocal()
+    try:
+        documents = (
+            db.query(Document)
+            .filter(
+                Document.application_id == application_id,
+                Document.document_type == DocumentType.ONE_LINK_LETTER,
+            )
+            .all()
+        )
+        assert len(documents) == 4
+        assert {d.copy_number for d in documents} == {1, 2, 3, 4}
+
+        application = ApplicationRepository(db).get_by_id(application_id)
+        assert application is not None
+        assert application.notes is not None
+        assert "ONE_LINK_LETTER" in application.notes
+        assert "exceeding the configured threshold of 3" in application.notes
+    finally:
+        db.close()
+
+
 def test_bulk_upload_ocr_fallback_splits_watermark_only_scans(client):
     """Regression test for the real-data bug found 2026-08-15: a page whose
     only *native* text is a short scanner-app watermark (e.g. CamScanner,

@@ -231,8 +231,16 @@ def test_bulk_upload_file_round_trip(authenticated_client):
 # --- Capacity & slot enforcement --------------------------------------------
 
 
-def test_bulk_upload_capacity_overflow_rejected(authenticated_client, storage_root: Path):
-    """More copies than MAX_COPIES_BY_DOCUMENT_TYPE must abort with 409 upfront."""
+def test_bulk_upload_capacity_overflow_accepted_for_processing(authenticated_client, storage_root: Path):
+    """The initial bulk-upload endpoint always accepts and queues for background
+    splitting -- it never inspects page content synchronously, so a file that
+    will eventually split into more copies of a type than
+    MAX_COPIES_BY_DOCUMENT_TYPE allows is still accepted here with 201. What
+    happens to that copy once the background split actually runs (flagged for
+    manual review, not rejected, since the department decision recorded in
+    CONTEXT.md 2026-08-19) is covered by
+    test_bulk_queue.py::test_bulk_split_over_copy_cap_flags_instead_of_failing.
+    """
     application_id = create_application(authenticated_client)
     response = upload_bulk(
         authenticated_client,

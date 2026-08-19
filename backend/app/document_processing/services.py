@@ -226,6 +226,21 @@ class DocumentProcessingService:
             raise ApplicationNotFound()
         return application
 
+    def _flag_for_manual_review(self, application_id: int, message: str) -> None:
+        """Best-effort, additive note that an application needs manual review.
+
+        No dedicated review-flag column/status exists on ``main`` yet, so
+        this appends an operator-visible note rather than introducing a new
+        migration -- mirrors ``UploadService._flag_for_manual_review``.
+        """
+        application = self._applications.get_by_id(application_id)
+        if application is None:
+            return
+        stamped = f"[SYSTEM] {message}"
+        application.notes = (
+            f"{application.notes}\n{stamped}" if application.notes else stamped
+        )
+
     def _process_bulk_upload(self, application_id: int, document: Document) -> DocumentProcessingResult:
         from app.upload.constants import MAX_COPIES_BY_DOCUMENT_TYPE
         from app.database.repositories.queue_job_repository import QueueJobRepository
@@ -261,9 +276,32 @@ class DocumentProcessingService:
 
             for doc_type, count in batch_counts.items():
                 max_copies = MAX_COPIES_BY_DOCUMENT_TYPE.get(doc_type, 1)
-                if existing_max.get(doc_type, 0) + count > max_copies:
-                    raise DocumentProcessingError(
-                        f"Cannot upload more than {max_copies} copies of {doc_type.value}"
+                total = existing_max.get(doc_type, 0) + count
+                if total > max_copies:
+                    # No longer a hard rejection (department decision,
+                    # 2026-08-19, see CONTEXT.md): a real bulk file can
+                    # legitimately split into more copies of a type than the
+                    # configured threshold when the splitter mis-slices
+                    # unrelated content into that type's boundary (see the
+                    # GDA Abbotabad findings) -- rejecting the whole upload
+                    # over a count doesn't fix that document-boundary
+                    # problem, it just blocks the operator from ever seeing
+                    # the file. Accept it and flag for manual review instead.
+                    logger.warning(
+                        "Application id=%s: bulk split produced %s copies of "
+                        "%s, exceeding the configured threshold of %s -- "
+                        "accepting and flagging for manual review instead of "
+                        "rejecting.",
+                        application_id,
+                        total,
+                        doc_type.value,
+                        max_copies,
+                    )
+                    self._flag_for_manual_review(
+                        application_id,
+                        f"{doc_type.value} split into {total} copies, exceeding "
+                        f"the configured threshold of {max_copies}. Flagged for "
+                        f"manual review.",
                     )
 
             next_copy = {doc_type: existing_max.get(doc_type, 0) + 1 for doc_type in batch_counts}
