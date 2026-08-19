@@ -561,52 +561,34 @@ class OneLinkLetterExtractor(RegexExtractor):
     """Extracts fields from whatever real-world document lands in the 1-Link
     Letter checklist slot.
 
-    IMPORTANT MISMATCH, not a footnote: docs/Master_Rules_Combined.md Section 4
-    ("1-Link Application Form (In-Direct Customer)") describes a KYC-style fill-in
-    form -- Organization Name, NTN, Country of incorporation, Proprietor/Directors/
-    Partners with CNICs, Nature-of-Business classification, license details, an
-    Account Match check against the AMC. All 4 real samples reviewed
-    (Confidential Data/.ocr_cache/, 2 independent organizations) are instead a
-    signed "PARTICIPATION MEMORANDUM FOR BILLER/SUB-BILLERS/BILL AGGREGATOR
-    MEMBERS" -- clause-numbered (i)-(xii), matching Section 8's "Participation
-    Memorandum & SLA" content plus Section 6 Tripartite Agreement's three-party/
-    witness shape, not Section 4's form. The genuine Application Form has never
-    turned up in any real file processed this session. Root cause (found, not
-    fixed): app.preprocessing.splitter's ONE_LINK_LETTER title-match list
-    includes bare fallback keywords ("1LINK", "ONE-LINK", "ONELINK") that also
-    appear throughout Participation Memorandum boilerplate, plausibly routing it
-    into this slot instead of the strong "1LINK APPLICATION FORM" phrase. See
-    CONTEXT.md for the full note. This extractor is grounded in the real,
-    evidenced content -- the Participation Memorandum -- not the unvalidated spec.
+    Real content doesn't match docs/Master_Rules_Combined.md Section 4's
+    KYC-style form spec -- see CONTEXT.md for the full mismatch and the
+    splitter root cause. This extractor is grounded in what's actually
+    there (a signed "PARTICIPATION MEMORANDUM..."), not the unvalidated
+    spec, and deliberately stays narrow: department decision, 2026-08-19
+    (see CONTEXT.md) -- extract only what's clearly critical and reliably
+    present, not every rulebook-vs-real-world variant of this document.
 
-    organization_name is anchored on "<ORG NAME> hereby authorizes 1LINK to take
-    actions" (clause x), confirmed present in all 4 real samples -- the only
-    boilerplate sentence that survived in every sample, including the one
-    (TMA) whose cached text starts mid-document and never reaches the earlier
-    preamble sentences the other 3 samples also carry. Deliberately case-sensitive
-    (no IGNORECASE) and restricted to A-Z/comma/period/whitespace: the org name is
-    consistently written in ALL CAPS in this operative sentence across both real
-    organizations, and a case-insensitive match would instead capture back into
-    the preceding lower-case sentence fragment (confirmed while developing this
-    pattern -- an early case-insensitive version pulled in unrelated prose ending
-    in "...at their side." ahead of the real name). The cost of this choice is
-    real: OCR noise that breaks the all-caps run early (e.g. TMA's "TEHsIL" with a
-    stray lowercase letter, or GDA copy2's line-break splitting the org name's
-    first word away from the rest) truncates the captured value to a partial but
-    still-identifiable name rather than the full one. Accepted deliberately --
-    a partial name is honest degradation; a case-insensitive match risks silently
-    wrong data, the same failure shape as AMC's "/IBAN" garbage capture.
+    organization_name is anchored on "<ORG NAME> hereby authorizes 1LINK to
+    take actions" (clause x), confirmed present in all 4 real samples so
+    far. Deliberately case-sensitive: the org name is consistently ALL CAPS
+    in this sentence, and a case-insensitive match pulls in unrelated
+    lower-case prose ahead of it instead (confirmed while developing this
+    pattern).
 
-    branch_code (see constants.CRITICAL_FIELDS for why it's non-critical) is
-    anchored on "branch (<name> (<code>))" -- the only real shape (TMA) where a
-    single account is stated in one sentence with an unambiguous branch code.
-    The other real shape (GDA, 3 of 4 samples) lists a reference table of 5
-    different banks with no textual indication of which is operative; this
-    pattern deliberately does not match that table at all rather than guess a
-    row, so it correctly reports branch_code as missing for that shape instead
-    of extracting a wrong value. The trailing paren count is intentionally
-    tolerant (`\\)+`, not a fixed `\\)\\)`): the one real single-account sample
-    has OCR-dropped one of its two closing parens.
+    No IBAN/account field, despite that being the department's stated
+    focus: tested directly against real cached text before deciding.
+    TMA_Lal_Dir_Upper's real sample has exactly one unambiguous IBAN;
+    GDA_Abbotabad's real sample lists a 5-bank reference table with no
+    textual indication of which one is operative -- the same ambiguity
+    that already keeps branch_code (removed here) out of the critical set.
+    RegexExtractor.extract() takes the first regex match unconditionally;
+    it has no way to detect "more than one candidate exists" and fall back
+    to honestly missing, so a plain IBAN pattern would silently return the
+    wrong one of five real banks on that shape. Building the disambiguation
+    needed to do this safely is exactly the kind of variant-by-variant
+    validation this decision says to stop doing -- left out rather than
+    added half-working.
     """
 
     document_type = AnalyzedDocumentType.ONE_LINK_LETTER
@@ -614,10 +596,6 @@ class OneLinkLetterExtractor(RegexExtractor):
     _patterns = {
         "organization_name": re.compile(
             r"([A-Z][A-Z,.\s]{3,60}?)\s+hereby authorizes [1I]\s*LINK to take actions"
-        ),
-        "branch_code": re.compile(
-            r"branch\s*\([^()]*\((\d{3,6})\)+",
-            re.IGNORECASE,
         ),
     }
 

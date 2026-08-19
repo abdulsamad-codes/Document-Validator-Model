@@ -747,7 +747,7 @@ def test_analyze_one_link_letter_runs_real_extraction(authenticated_client, stor
     assert item["document_type"] == "ONE_LINK_LETTER"
     fields = item["extracted_fields"]
     assert fields["organization_name"] == "SAMPLE TEHSIL MUNICIPAL ADMINISTRATION"
-    assert fields["branch_code"] == "0099"
+    assert "branch_code" not in fields
     assert item["confidence_score"] == 1.0
     assert item["verification_status"] == "VERIFIED"
     assert item.get("message") is None

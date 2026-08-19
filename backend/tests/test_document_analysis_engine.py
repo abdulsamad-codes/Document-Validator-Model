@@ -643,24 +643,25 @@ def test_brd_validators_and_scoring():
 
 
 def test_extract_onelink_letter_fields_single_account_form():
+    # branch_code and iban were both deliberately dropped from this
+    # extractor 2026-08-19 (department decision, see CONTEXT.md) -- kept as
+    # a real, distinct fixture only to confirm organization_name still
+    # extracts cleanly from this shape and nothing else is invented.
     fields = extract_fields(
         ONE_LINK_LETTER_TEXT_SINGLE_ACCOUNT, AnalyzedDocumentType.ONE_LINK_LETTER
     )
     assert fields["organization_name"] == "SAMPLE TEHSIL MUNICIPAL ADMINISTRATION"
-    assert fields["branch_code"] == "0099"
+    assert "branch_code" not in fields
 
 
 def test_extract_onelink_letter_fields_multi_bank_table_form():
     document_type = AnalyzedDocumentType.ONE_LINK_LETTER
     fields = extract_fields(ONE_LINK_LETTER_TEXT_MULTI_BANK_TABLE, document_type)
     assert fields["organization_name"] == "SAMPLE DEVELOPMENT AUTHORITY"
-    # The reference table has no single operative row -- branch_code must be
-    # honestly missing, not a guessed value from an arbitrary row.
     assert "branch_code" not in fields
 
     validations = ValidatorEngine().run(document_type, fields)
     by_field = {result["field"]: result["status"] for result in validations}
-    assert by_field["branch_code"] == "missing"
     assert by_field["organization_name"] == "valid"
 
     *_components_rest, score, status = scoring_components(
@@ -669,7 +670,6 @@ def test_extract_onelink_letter_fields_multi_bank_table_form():
         validation_results=validations,
         consistency_results=RulesEngine().run(document_type, fields),
     )
-    # branch_code is non-critical, so this alone must not force NEEDS_REVIEW.
     assert status is not VerificationStatus.NEEDS_REVIEW
 
 
@@ -698,10 +698,9 @@ def test_onelink_letter_validators_and_scoring():
     validations = ValidatorEngine().run(document_type, fields)
     by_field = {result["field"]: result["status"] for result in validations}
     assert by_field["organization_name"] == "valid"
-    assert by_field["branch_code"] == "valid"
 
     consistency = RulesEngine().run(document_type, fields)
-    assert consistency == []  # CrossBranchCodeRule is not registered yet
+    assert consistency == []  # no cross-document rule watches this type's fields
 
     *_components_rest, score, status = scoring_components(
         document_type,

@@ -200,13 +200,12 @@ EXPECTED_FIELDS: dict[AnalyzedDocumentType, frozenset[str]] = {
     AnalyzedDocumentType.BUSINESS_REQUIREMENT_DOCUMENT: frozenset(
         {"digitization_intent_confirmed", "revenue_services_listed"}
     ),
-    #: branch_code deliberately named to match
-    #: app.rule_engine.rules.cross_document_rules.CrossBranchCodeRule, which
-    #: already lists ONE_LINK_LETTER as a participant. See OneLinkLetterExtractor's
-    #: docstring for why branch_code is extracted from only one of the two real
-    #: clause-(v) shapes found (single-account sentence, not the multi-bank table).
+    #: branch_code removed 2026-08-19 (department decision, see CONTEXT.md):
+    #: it only ever extracted from one of two real shapes, and
+    #: CrossBranchCodeRule (the rule it was named to match) is deliberately
+    #: unregistered anyway -- see OneLinkLetterExtractor's docstring.
     AnalyzedDocumentType.ONE_LINK_LETTER: frozenset(
-        {"organization_name", "branch_code"}
+        {"organization_name"}
     ),
     #: document_number deliberately reuses the same field name IdentityExtractor
     #: (ID_DOCUMENT) already produces, so app.rule_engine.rules.format_rules.

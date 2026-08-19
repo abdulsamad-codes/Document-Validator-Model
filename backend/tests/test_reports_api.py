@@ -205,7 +205,11 @@ def test_report_approved_application(authenticated_client, storage_root):
     # through to BANK_STATEMENT_TEXT -- fully covered on its own 2-field
     # template (organization_name + branch_code, 0 missing), same shift
     # pattern as BUSINESS_REQUIREMENT_DOCUMENT above.
-    assert extraction["overall_confidence"] == 0.9814
+    # Recalibrated again 2026-08-19 (department decision, see CONTEXT.md):
+    # branch_code dropped from OneLinkLetterExtractor's field list, so its
+    # template is now organization_name alone (still 0 missing, still fully
+    # covered) -- verified via the actual test run, not derived by hand.
+    assert extraction["overall_confidence"] == 0.981
 
     assert [item["code"] for item in report["recommendations"]] == [
         "NO_ACTION_REQUIRED"
@@ -290,7 +294,7 @@ def test_report_summary_condensed(authenticated_client, storage_root):
     assert summary["rule_pending_review"] == 0
     assert summary["field_count"] > 0
     # See test_report_approved_application's overall_confidence comment.
-    assert summary["overall_confidence"] == 0.9814
+    assert summary["overall_confidence"] == 0.981
     assert summary["recommendation_count"] == 1
 
 
