@@ -65,6 +65,12 @@ class Settings(BaseSettings):
         default_employee_role: Role seeded by the seed script.
         default_employee_password: Password for the seeded default account.
         bulk_queue_workers: Number of controlled queue workers to run.
+            Defaults to 1: PaddleOCREngine is a singleton shared across worker
+            threads with no locking around `.predict()`, so concurrent workers
+            can crash the process (SIGSEGV, PaddlePaddle/PaddleOCR#17787) --
+            confirmed for real on 2026-08-19, not just a theoretical risk. Raise
+            this only after adding a lock around the OCR call, or after moving
+            OCR into a dedicated subprocess.
         bulk_queue_max_attempts: Default retry budget for one queue job.
         bulk_queue_poll_interval: Seconds workers wait between empty polls.
         bulk_queue_retry_backoff_seconds: Base seconds for exponential retry
@@ -128,7 +134,7 @@ class Settings(BaseSettings):
     default_employee_password: SecretStr = Field(
         default=SecretStr("12345678"),
     )
-    bulk_queue_workers: int = Field(default=2, ge=1, le=16)
+    bulk_queue_workers: int = Field(default=1, ge=1, le=16)
     bulk_queue_max_attempts: int = Field(default=3, ge=1, le=10)
     bulk_queue_poll_interval: float = Field(default=1.0, ge=0.05, le=60.0)
     bulk_queue_retry_backoff_seconds: int = Field(default=30, ge=0)
