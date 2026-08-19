@@ -627,8 +627,8 @@ _HOLDER_SENTENCE_PATTERNS: tuple[re.Pattern, ...] = (
         re.IGNORECASE,
     ),
     re.compile(
-        r"(?:certif\w*\s+that\s+|^|[.!?]\s+|:\s+)"
-        r"(?-i:([A-Z0-9][A-Z0-9 ,.&'()\-/]{3,60}))\s+"
+        r"certif\w*\s+that\s+"
+        r"(?-i:([A-Z0-9][A-Za-z0-9 ,.&'()\-/]{3,60}?))\s+"
         r"(?:is\s+)?maintaining\s+(?:a|an|the)?\s*[^.!?\n]{0,40}\baccount\b",
         re.IGNORECASE,
     ),

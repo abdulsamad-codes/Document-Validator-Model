@@ -717,6 +717,13 @@ ACCOUNT NO
 00112233445566
 """
 
+SUBJECT_VERB_TITLE_CASE_SENTENCE_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+This is to certify that Sample Sports Complex is maintaining a current account
+at The Bank of Khyber since 01-01-2000. Following are the account details:
+ACCOUNT NO
+00112233445566
+"""
+
 WE_ARE_MAINTAINING_SENTENCE_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
 We are maintaining the above mentioned account in our branch.
 ACCOUNT NO
@@ -920,6 +927,18 @@ def test_extract_holder_from_is_maintaining_sentence():
         AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
     )
     assert fields["account_holder"] == "SAMPLE SPORTS AUTHORITY"
+    assert fields["account_number"] == "00112233445566"
+
+
+def test_extract_holder_from_title_case_subject_verb_sentence():
+    # The real DG_Sports AMC states the holder in Title Case ("certify that
+    # Sample Sports Complex is maintaining ...") with no labeled holder field;
+    # the sentence capture must accept mixed-case names, not just ALL-CAPS.
+    fields = extract_fields(
+        SUBJECT_VERB_TITLE_CASE_SENTENCE_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_holder"] == "Sample Sports Complex"
     assert fields["account_number"] == "00112233445566"
 
 
