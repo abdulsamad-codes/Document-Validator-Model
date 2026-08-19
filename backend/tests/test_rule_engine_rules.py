@@ -20,6 +20,7 @@ AMC = DocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE.value
 TRIPARTITE = DocumentType.TRIPARTITE_AGREEMENT.value
 BILATERAL = DocumentType.BILATERAL_AGREEMENT.value
 ONE_LINK = DocumentType.ONE_LINK_LETTER.value
+FORMAL_REQUEST = DocumentType.FORMAL_REQUEST_LETTER.value
 
 STATEMENT_FIELDS = [
     ("iban", "DE89370400440532013000"),
@@ -87,15 +88,15 @@ def run(rule_id: str, ctx: RuleContext) -> RuleResult:
 # --- Registry contract -------------------------------------------------------
 
 
-def test_registry_has_48_rules_in_8_categories():
+def test_registry_has_49_rules_in_8_categories():
     from collections import Counter
 
     rules = REGISTRY.rules()
-    assert len(rules) == 48
+    assert len(rules) == 49
     categories = Counter(rule.category for rule in rules)
     assert categories == {
         "document_completeness": 8,
-        "field_presence": 4,
+        "field_presence": 5,
         "format": 6,
         # CrossBranchCodeRule and CrossPeriodRule are implemented but
         # deliberately not registered -- see the inline rationale in
@@ -180,6 +181,43 @@ def test_field_presence_ignores_other_document_types():
         context(
             docs={ONE_LINK: [1], AMC: [2]},
             fields=[field("iban", "DE89370400440532013000", doc_id=1, doc_type=ONE_LINK)],
+        ),
+    )
+    assert result.status is ValidationStatus.FAIL
+
+
+def test_formal_request_subject_passes_with_normalized_value():
+    result = run(
+        "FLD_FORMAL_REQUEST_SUBJECT_PRESENT",
+        context(
+            fields=[
+                field(
+                    "subject",
+                    "REQUEST FOR DIGITAL ACCOUNT AND FOR ONLINE PAYMENTS.",
+                    doc_id=1,
+                    doc_type=FORMAL_REQUEST,
+                )
+            ]
+        ),
+    )
+    assert result.status is ValidationStatus.PASS
+
+
+def test_formal_request_subject_fails_when_missing():
+    result = run(
+        "FLD_FORMAL_REQUEST_SUBJECT_PRESENT",
+        context(fields=[field("organization_name", "TMA LAL DIR UPPER", doc_type=FORMAL_REQUEST)]),
+    )
+    assert result.status is ValidationStatus.FAIL
+    assert "formal request letter" in result.message.lower()
+
+
+def test_formal_request_subject_ignores_other_document_types():
+    result = run(
+        "FLD_FORMAL_REQUEST_SUBJECT_PRESENT",
+        context(
+            docs={AMC: [1], FORMAL_REQUEST: [2]},
+            fields=[field("subject", "SOME SUBJECT", doc_id=1, doc_type=AMC)],
         ),
     )
     assert result.status is ValidationStatus.FAIL

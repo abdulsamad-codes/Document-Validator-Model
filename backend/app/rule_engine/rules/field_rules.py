@@ -1,9 +1,13 @@
 """Required field presence rules.
 
-One rule per critical field expected on the account maintenance certificate,
-checking that the field carries a normalized value. A field that is entirely
-absent fails the rule; a field present but not yet normalized warns, because
-the pipeline state rather than the document itself is the blocker.
+One rule per critical field expected on a specific document type, checking
+that the field carries a normalized value. A field that is entirely absent
+fails the rule; a field present but not yet normalized warns, because the
+pipeline state rather than the document itself is the blocker. Most existing
+rules target the account maintenance certificate's account-level identity
+fields; `target_document_types`/`document_label` are overridable per rule so
+the same base also covers other single-document fields (e.g. the formal
+request letter's subject line) without duplicating this logic.
 """
 
 from app.database.models.enums import DocumentType, ValidationStatus
@@ -18,13 +22,19 @@ TARGET_DOCUMENT_TYPES = frozenset({DocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE}
 
 
 class _FieldPresenceRule(BaseRule):
-    """Base rule asserting a field has a normalized value on the AMC.
+    """Base rule asserting a field has a normalized value on one document type.
 
     Attributes:
         field_name: Field the rule enforces.
+        target_document_types: Document types the rule applies to. Defaults
+            to the account maintenance certificate for backward compatibility
+            with the original AMC-only rules below.
+        document_label: Human-readable document name used in messages.
     """
 
     field_name: str
+    target_document_types: frozenset[DocumentType] = TARGET_DOCUMENT_TYPES
+    document_label: str = "account maintenance certificate"
 
     category = CATEGORY
 
@@ -32,7 +42,7 @@ class _FieldPresenceRule(BaseRule):
         values = [
             value
             for value in context.values(self.field_name)
-            if value.document_type in {item.value for item in TARGET_DOCUMENT_TYPES}
+            if value.document_type in {item.value for item in self.target_document_types}
         ]
         related_documents = sorted({value.document_id for value in values})
         related_fields = [self.field_name]
@@ -40,8 +50,8 @@ class _FieldPresenceRule(BaseRule):
         if not values:
             return self.result(
                 ValidationStatus.FAIL,
-                f"Required field {self.field_name} is missing from the account "
-                "maintenance certificate",
+                f"Required field {self.field_name} is missing from the "
+                f"{self.document_label}",
                 related_document_ids=related_documents,
                 related_field_names=related_fields,
             )
@@ -92,9 +102,27 @@ class FieldBankNamePresenceRule(_FieldPresenceRule):
     field_name = "bank_name"
 
 
+class FieldFormalRequestSubjectPresenceRule(_FieldPresenceRule):
+    """The formal request letter must state its subject/purpose.
+
+    Real subject lines vary in exact wording across organizations (confirmed
+    against 3 real samples so far -- see CONTEXT.md's Formal Request Letter
+    entries), so this checks presence only, never content, the same way the
+    CrossPeriodRule/CrossBranchCodeRule incidents taught not to assert an
+    exact-match shape real data won't reliably satisfy.
+    """
+
+    id = "FLD_FORMAL_REQUEST_SUBJECT_PRESENT"
+    name = "Subject present on formal request letter"
+    field_name = "subject"
+    target_document_types = frozenset({DocumentType.FORMAL_REQUEST_LETTER})
+    document_label = "formal request letter"
+
+
 __all__ = [
     "FieldIbanPresenceRule",
     "FieldAccountNumberPresenceRule",
     "FieldAccountHolderPresenceRule",
     "FieldBankNamePresenceRule",
+    "FieldFormalRequestSubjectPresenceRule",
 ]

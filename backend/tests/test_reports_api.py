@@ -20,6 +20,7 @@ from tests.test_document_analysis_api import (
     analyze_documents,
     run_processing,
 )
+from tests.test_formal_request_letter_extractor import SYNTHETIC_FORMAL_REQUEST_LETTER
 from tests.test_normalization_api import normalize
 from tests.test_rule_engine_api import (
     ACCOUNT_MAINTENANCE_CERTIFICATE_CROSS_DOC_TEXT,
@@ -53,12 +54,12 @@ prescribed fees collected at each facility office.
 This office intends to go towards Digital Payments via KPITB's FinTech Unit.
 """
 
-#: Per-group rule totals expected from the 48-rule ruleset (50 implemented,
+#: Per-group rule totals expected from the 49-rule ruleset (51 implemented,
 #: CrossPeriodRule and CrossBranchCodeRule unregistered -- see
 #: rule_engine/rules/__init__.py -- plus FieldStatementPeriodPresenceRule and
 #: FieldBalancesPresenceRule removed outright, same file).
 EXPECTED_GROUP_TOTALS = {
-    "Document Validation": 12,
+    "Document Validation": 13,
     "Format Validation": 6,
     # CrossPeriodRule is unregistered (see rule_engine/rules/__init__.py) --
     # 3 of the 4 implemented cross-document rules are active.
@@ -75,9 +76,14 @@ def build_full_application(client, storage_root, *, with_detections: bool) -> in
     """Build an application carrying all eight required documents, analysed.
 
     BILATERAL_AGREEMENT, AUTHORITY_LETTER, ACCOUNT_MAINTENANCE_CERTIFICATE,
-    TRIPARTITE_AGREEMENT, BUSINESS_REQUIREMENT_DOCUMENT and ONE_LINK_LETTER
-    each get their own real-shaped text, since all six now have real
-    extractors (Phase 1 + Track B). The AMC, Bilateral and Tripartite texts
+    TRIPARTITE_AGREEMENT, BUSINESS_REQUIREMENT_DOCUMENT, ONE_LINK_LETTER and
+    FORMAL_REQUEST_LETTER each get their own real-shaped text, since all
+    seven now have real extractors (Phase 1 + Track B). FORMAL_REQUEST_LETTER
+    reuses the synthetic fixture from test_formal_request_letter_extractor.py
+    rather than duplicating it -- it carries a real Subject: line, so
+    FLD_FORMAL_REQUEST_SUBJECT_PRESENT passes here instead of failing on the
+    generic bank-statement fallback that has none. The AMC, Bilateral and
+    Tripartite texts
     carry the same account_holder/account_number values, so the
     cross-document consistency rules still agree. AUTHORITY_LETTER's
     CRITICAL_FIELDS are all non-bank fields (focal_person_name/designation/
@@ -100,6 +106,8 @@ def build_full_application(client, storage_root, *, with_detections: bool) -> in
             text = BUSINESS_REQUIREMENT_DOCUMENT_TEXT
         elif document_type is DocumentType.ONE_LINK_LETTER:
             text = ONE_LINK_LETTER_TEXT
+        elif document_type is DocumentType.FORMAL_REQUEST_LETTER:
+            text = SYNTHETIC_FORMAL_REQUEST_LETTER
         else:
             text = BANK_STATEMENT_TEXT
         add_digital_pdf(
@@ -167,10 +175,10 @@ def test_report_approved_application(authenticated_client, storage_root):
     assert len(report["document_summary"]) == 8
 
     summary = report["rule_summary"]
-    assert summary["total"] == 48
+    assert summary["total"] == 49
     assert summary["failed"] == 0
     assert summary["pending_manual_review"] == 0
-    assert summary["passed"] + summary["warnings"] == 48
+    assert summary["passed"] + summary["warnings"] == 49
 
     assert [
         group["category"] for group in summary["by_category"]
@@ -209,7 +217,13 @@ def test_report_approved_application(authenticated_client, storage_root):
     # branch_code dropped from OneLinkLetterExtractor's field list, so its
     # template is now organization_name alone (still 0 missing, still fully
     # covered) -- verified via the actual test run, not derived by hand.
-    assert extraction["overall_confidence"] == 0.981
+    # Recalibrated again 2026-08-19: FORMAL_REQUEST_LETTER now has its own
+    # real-shaped text (SYNTHETIC_FORMAL_REQUEST_LETTER) instead of falling
+    # through to BANK_STATEMENT_TEXT, so it now contributes its own real
+    # extracted-field confidence scores to the fleet-wide mean instead of a
+    # fully-covered 9-field bank statement's -- same shift pattern as the
+    # entries above, verified via the actual test run.
+    assert extraction["overall_confidence"] == 0.9787
 
     assert [item["code"] for item in report["recommendations"]] == [
         "NO_ACTION_REQUIRED"
@@ -223,7 +237,7 @@ def test_report_failed_application(authenticated_client, storage_root):
 
     assert report["overall_status"] == "FAILED"
     summary = report["rule_summary"]
-    assert summary["total"] == 48
+    assert summary["total"] == 49
     assert summary["failed"] > 0
     # Only the present AMC document's visual rules await detection; the rest
     # fail because their documents are missing.
@@ -288,13 +302,13 @@ def test_report_summary_condensed(authenticated_client, storage_root):
     assert summary["overall_status"] == "APPROVED"
     assert summary["application_status"] == "SUBMITTED"
     assert summary["document_count"] == 8
-    assert summary["rule_total"] == 48
-    assert summary["rule_passed"] + summary["rule_warnings"] == 48
+    assert summary["rule_total"] == 49
+    assert summary["rule_passed"] + summary["rule_warnings"] == 49
     assert summary["rule_failed"] == 0
     assert summary["rule_pending_review"] == 0
     assert summary["field_count"] > 0
     # See test_report_approved_application's overall_confidence comment.
-    assert summary["overall_confidence"] == 0.981
+    assert summary["overall_confidence"] == 0.9787
     assert summary["recommendation_count"] == 1
 
 
