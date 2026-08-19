@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.database.repositories.application_repository import ApplicationRepository
 from app.database.repositories.audit_log_repository import AuditLogRepository
+from app.database.repositories.document_analysis_repository import DocumentAnalysisRepository
 from app.database.repositories.document_repository import DocumentRepository
 from app.database.repositories.extracted_field_repository import ExtractedFieldRepository
 from app.database.repositories.ocr_repository import OCRRepository
@@ -51,6 +52,7 @@ class NormalizationService:
         self._documents = DocumentRepository(db)
         self._ocr_results = OCRRepository(db)
         self._fields = ExtractedFieldRepository(db)
+        self._analysis_results = DocumentAnalysisRepository(db)
         self._audit = AuditLogRepository(db)
         self._registry = NormalizerRegistry()
 
@@ -75,12 +77,19 @@ class NormalizationService:
 
         Raises:
             ApplicationNotFound: When the application does not exist.
-            NoExtractedFields: When the application has no extracted fields.
+            NoExtractedFields: When document analysis has not run yet.
         """
         self._get_application(application_id)
-        fields = list(self._fields.get_by_application(application_id))
-        if not fields:
+        if not list(self._analysis_results.get_by_application(application_id)):
             raise NoExtractedFields()
+        # Analysis has run at this point, so an empty field list here means it
+        # genuinely extracted nothing (e.g. every document's OCR text missed
+        # every pattern) rather than never having run at all. That is a real,
+        # reportable outcome -- normalizing zero fields and letting the
+        # pipeline continue to rule_validation lets the report honestly show
+        # the missing-field failures, instead of the whole application
+        # getting stuck retrying a stage that can never succeed on its own.
+        fields = list(self._fields.get_by_application(application_id))
         context = self._build_context(application_id)
 
         items: list[NormalizedFieldItem] = []
