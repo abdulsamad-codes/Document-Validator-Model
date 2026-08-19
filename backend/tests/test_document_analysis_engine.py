@@ -703,6 +703,37 @@ Account Title
 SAMPLE AUTHORITY
 """
 
+SUBJECT_VERB_SENTENCE_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+It is certified that SAMPLE SPORTS AUTHORITY maintaining account with SAMPLE
+BANK Mandian Branch (1234) as per below mentioned details.
+ACCOUNT NO
+00112233445566
+"""
+
+SUBJECT_VERB_IS_SENTENCE_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+This is to certify that SAMPLE SPORTS AUTHORITY is maintaining a current
+account with our bank.
+ACCOUNT NO
+00112233445566
+"""
+
+WE_ARE_MAINTAINING_SENTENCE_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+We are maintaining the above mentioned account in our branch.
+ACCOUNT NO
+00112233445566
+"""
+
+BALANCED_PAREN_TITLE_STOP_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+TITLE OF ACCOUNT
+SAMPLE SPORTS (SAMPLE DEVELOPMENT
+AUTHORITY)
+SAMPLE FUND
+CNIC OF AUTHORIZED SIGNATORY
+12345-1234567-1
+ACCOUNT NO
+1234567890
+"""
+
 
 def test_extract_tripartite_column_table_positions_values_by_header():
     # The real Tripartite layout is a stacked column table whose header block
@@ -866,6 +897,56 @@ def test_extract_account_number_from_ocr_noise_prose_tail():
     )
     assert fields["account_number"] == "PK99FAKE0000000000000000"
     assert fields["iban"] == "PK99FAKE0000000000000000"
+
+
+def test_extract_holder_from_subject_verb_sentence():
+    # The real DG_Sports/GDA AMC certifying sentence states the holder as the
+    # subject ("It is certified that [ORG] maintaining account with ..."),
+    # opposite word order from the "account of X" patterns. The subject-verb
+    # pattern must recover it when no labeled holder exists.
+    fields = extract_fields(
+        SUBJECT_VERB_SENTENCE_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_holder"] == "SAMPLE SPORTS AUTHORITY"
+    assert fields["account_number"] == "00112233445566"
+
+
+def test_extract_holder_from_is_maintaining_sentence():
+    # The same subject-verb shape with an explicit "is" ("... is maintaining a
+    # ... Account") must also match.
+    fields = extract_fields(
+        SUBJECT_VERB_IS_SENTENCE_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_holder"] == "SAMPLE SPORTS AUTHORITY"
+    assert fields["account_number"] == "00112233445566"
+
+
+def test_extract_holder_sentence_rejects_bank_as_subject():
+    # "We are maintaining the above mentioned account in our branch" names no
+    # holder; the subject is the bank/branch itself, which the sentence path
+    # must not surface as an account holder (labeled titles are unaffected).
+    fields = extract_fields(
+        WE_ARE_MAINTAINING_SENTENCE_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_number"] == "00112233445566"
+    assert "account_holder" not in fields
+
+
+def test_extract_wrapped_parenthetical_title_stops_at_balance():
+    # A wrapped parenthetical title is complete once its closing paren is
+    # consumed; a trailing unrelated all-caps line must not be absorbed.
+    # (GDA copy3's "DG GDA (GALIYAT DEVELOPMENT AUTHORITY)" followed by
+    # "DEVELOPMENT FUND".)
+    fields = extract_fields(
+        BALANCED_PAREN_TITLE_STOP_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_holder"] == "SAMPLE SPORTS (SAMPLE DEVELOPMENT AUTHORITY)"
+    assert "SAMPLE FUND" not in fields["account_holder"]
+    assert fields["account_number"] == "1234567890"
 
 
 def test_checklist_field_labels_never_route_into_keyword_detection():

@@ -381,11 +381,17 @@ def _consume_value_lines(
     ``lines[start]`` is the first line after the label. Stops at the next
     recognized label, and -- after the first line -- before a line that itself
     looks like a field value (the wrapped-title continuation must not absorb
-    the next field's label). Returns ``(parts, next_index)``.
+    the next field's label). For multi-line values (``cap > 1``, i.e. account
+    titles) it also stops when the accumulated text's parentheses balance out:
+    a wrapped parenthetical title ("DG GDA (GALIYAT DEVELOPMENT" / "AUTHORITY)")
+    is complete once its closing paren is consumed, so a trailing unrelated
+    all-caps line ("DEVELOPMENT FUND") is not absorbed. Returns
+    ``(parts, next_index)``.
     """
     parts: list[str] = []
     n = len(lines)
     j = start
+    balance = 0
     while j < n and len(parts) < cap:
         line = lines[j].strip()
         if not line:
@@ -396,8 +402,12 @@ def _consume_value_lines(
         nxt = lines[j + 1].strip() if j + 1 < n else ""
         if len(parts) >= 1 and (_is_value_like_line(line) or _is_value_like_line(nxt)):
             break
+        prev_balance = balance
+        balance += line.count("(") - line.count(")")
         parts.append(line)
         j += 1
+        if cap > 1 and prev_balance > 0 and balance == 0:
+            break
     return parts, j
 
 
@@ -616,6 +626,12 @@ _HOLDER_SENTENCE_PATTERNS: tuple[re.Pattern, ...] = (
         r"belonging\s+to)\s+(?:the\s+)?(?-i:([A-Z0-9][A-Z0-9 ,.&'()\-/]{3,60}))",
         re.IGNORECASE,
     ),
+    re.compile(
+        r"(?:certif\w*\s+that\s+|^|[.!?]\s+|:\s+)"
+        r"(?-i:([A-Z0-9][A-Z0-9 ,.&'()\-/]{3,60}))\s+"
+        r"(?:is\s+)?maintaining\s+(?:a|an|the)?\s*[^.!?\n]{0,40}\baccount\b",
+        re.IGNORECASE,
+    ),
 )
 
 
@@ -626,13 +642,19 @@ def _extract_holder_from_sentence(text: str) -> str | None:
     document. Runs against the text with line breaks flowed into spaces so a
     wrapped sentence is read as one. The captured value must survive the
     account-holder normalization guards and be at least 3 characters long.
+    Captures naming a bank/branch (the subject of "maintaining an account" is
+    the holder, never the bank) are rejected here -- this guard is restricted
+    to the sentence-derived path so labeled account titles are unaffected.
     """
     flowed = re.sub(r"\s*\n\s*", " ", text)
     for pattern in _HOLDER_SENTENCE_PATTERNS:
         for match in pattern.finditer(flowed):
             value = _normalize_account_holder(match.group(1))
-            if value is not None and len(value) >= 3:
-                return value
+            if value is None or len(value) < 3:
+                continue
+            if re.search(r"\b(?:bank|branch)\b", value, re.IGNORECASE):
+                continue
+            return value
     return None
 
 
