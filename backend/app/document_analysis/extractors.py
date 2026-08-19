@@ -450,30 +450,52 @@ class AuthorityLetterExtractor(RegexExtractor):
     """Extracts structured fields from an Authority Letter.
 
     Real Authority Letters follow a standard prose template -- confirmed
-    against two independent real departments in Confidential Data/, almost
-    word-for-word identical: "It is hereby authorized that Mr. <name>,
-    <designation> is authorized to deal with and conduct correspondence and
-    matter(s) related to 1-Link and the Khyber Pakhtunkhwa Information
-    Technology Board (KPITB) on (the) behalf of <organization>." Only this
-    prose-embedded variant is validated. docs/IMPLEMENTATION_ROADMAP.md also
-    describes a labeled-block variant ("Name:"/"Designation:" fields) that
-    has not yet turned up in a real sample -- not built blind (see the
-    roadmap's Phase 1 "why this can't be done blind" note); a document using
-    that form will simply extract nothing here rather than guess.
+    against three independent real departments in Confidential Data/:
+    "It is hereby authorized that Mr. <name>, <designation> is authorized to
+    deal with and conduct correspondence and matter(s) related to 1-Link and
+    the Khyber Pakhtunkhwa Information Technology Board (KPITB) on (the)
+    behalf of <organization>." Only this prose-embedded variant is
+    validated. docs/IMPLEMENTATION_ROADMAP.md also describes a labeled-block
+    variant ("Name:"/"Designation:" fields) that has not yet turned up in a
+    real sample -- not built blind (see the roadmap's Phase 1 "why this
+    can't be done blind" note); a document using that form will simply
+    extract nothing here rather than guess.
+
+    focal_person_name's stopping point is deliberately not limited to a
+    comma or paren: a third real department (confirmed 2026-08-18, TMA Lal
+    Dir Upper) phrases the sentence as "It is here by submitted that Mr.
+    <name> CNIC# <number>... is authorized..." -- no designation clause at
+    all, so neither delimiter ever appears. The pattern now also stops at a
+    following "CNIC" or "is authorized", whichever comes first, without
+    changing what it captures on the original two departments (both still
+    hit their own comma/paren first). focal_person_designation is
+    deliberately NOT loosened to match -- that department's real letter
+    genuinely never states a designation, so it correctly keeps missing
+    that field rather than guessing one from nearby text.
+
+    Known separate gap, not fixed here: GDA Abbotabad's real letter uses
+    "Dr." instead of "Mr." ("It is hereby authorized that Dr. Samar Hayat
+    Khan..."), which this pattern's literal "Mr" prefix doesn't match at
+    all -- confirmed 2026-08-18, out of scope for this pass.
 
     Unlike docs/Master_Rules_Combined.md Section 2 ("account maintenance
-    details must appear at the top"), neither real sample reviewed so far
-    carries any bank account information at all -- account_holder/
-    account_number/iban are extracted opportunistically (reusing the same
-    patterns as BilateralAgreementExtractor) but are not critical fields,
-    see constants.CRITICAL_FIELDS.
+    details must appear at the top"), none of the three real samples
+    reviewed carries any bank account information on the Authority Letter's
+    own page -- account_holder/account_number/iban are extracted
+    opportunistically (reusing the same patterns as
+    BilateralAgreementExtractor) but are not critical fields, see
+    constants.CRITICAL_FIELDS. Two of the three samples do incidentally
+    populate account_number from an absorbed, structurally separate
+    Account-Maintenance-Certificate-looking page that lands in the same
+    document group (a known, unfixed splitter absorption gap) -- opportunistic
+    by design, so this doesn't threaten the critical fields' validated status.
     """
 
     document_type = AnalyzedDocumentType.AUTHORITY_LETTER
 
     _patterns = {
         "focal_person_name": re.compile(
-            r"Mr\.?\s+([A-Za-z][A-Za-z.'\- ]*?)\s*[,(]",
+            r"Mr\.?\s+([A-Za-z][A-Za-z.'\- ]*?)(?=\s*[,(]|\s+CNIC|\s+is\s+authorized)",
         ),
         "focal_person_designation": re.compile(
             r"Mr\.?\s+[A-Za-z][A-Za-z.'\- ]*?[,(]\s*([^,()]+?)(?=[,()]|\s+is\s+authorized)",
@@ -681,14 +703,50 @@ class CnicFrontExtractor(RegexExtractor):
 
 
 class FormalRequestLetterExtractor(RegexExtractor):
-    """Extracts structured fields from a Formal Request Letter."""
+    """Extracts structured fields from a Formal Request Letter.
+
+    Built against the one real sample on file (confirmed 2026-08-18, TMA Lal
+    Dir Upper) -- previously absorbed silently into the ONE_LINK_LETTER
+    group by the splitter (see splitter._STRONG_TITLE_PHRASES) since its
+    real subject line ("REQUEST FOR DIGITAL ACCOUNT AND FOR ONLINE
+    PAYMENTS") never matched the spec-guessed "FORMAL REQUEST LETTER"/
+    "FORMAL REQUEST" phrases.
+
+    organization_name originally captured only the office-holder title on
+    the anchor's own line ("OFFICE OF THE <title>") instead of the real
+    organization name one line below it; the pattern now explicitly
+    discards the anchor's own line and captures the next one, which is
+    where the one real sample states it. Not validated against any other
+    anchor variant (DEPARTMENT OF/GOVERNMENT OF/TO THE/FROM) -- none has a
+    real sample yet, so this shape is assumed to generalize, not confirmed.
+
+    focal_person_designation previously bled across a line boundary: the
+    bare word "Title" inside the real sample's "Account Title" table header
+    (no colon) satisfied the old permissive `\\s*[:|-]?\\s*` gap, which
+    happily crossed the newline into the next line's unrelated table
+    content ("IBAN/Account No") and returned it as a designation. The
+    pattern now requires an explicit `:`/`|`/`-` delimiter and keeps the
+    surrounding whitespace on the same line, so a bare label-shaped
+    substring with nothing after it can no longer match at all. This
+    correctly leaves the field missing on the one real sample -- it never
+    states a designation for its focal person -- an honest gap, not
+    something this pattern should paper over.
+
+    date is a known, still-open honest miss on the one real sample: the
+    real text reads "Dated Dir(U) 13/07/2026" (unrelated words between the
+    label and the date) and, separately, "Dated: 14-04-2026" referring to a
+    third-party letter being cited, not this letter's own date -- neither
+    fits this pattern's strict label-then-date shape, and matching the
+    second would be actively wrong (the wrong letter's date). Not touched
+    this pass.
+    """
 
     document_type = AnalyzedDocumentType.FORMAL_REQUEST_LETTER
 
     _patterns = {
         "organization_name": re.compile(
-            r"(?:OFFICE OF THE|DEPARTMENT OF|GOVERNMENT OF|TO THE|FROM[:|-]?)\s*(.+)",
-            re.IGNORECASE | re.MULTILINE,
+            r"(?:OFFICE OF THE|DEPARTMENT OF|GOVERNMENT OF|TO THE|FROM[:|-]?)[^\n]*\n\s*(.+)",
+            re.IGNORECASE,
         ),
         "addressee": re.compile(
             r"To,?\s*\n?\s*(The\s+Managing\s+Director[^\n,]*|Managing\s+Director[^\n,]*|KPITB[^\n,]*|Khyber\s+Pakhtunkhwa\s+Information\s+Technology\s+Board[^\n,]*)",
@@ -707,7 +765,7 @@ class FormalRequestLetterExtractor(RegexExtractor):
             re.IGNORECASE | re.MULTILINE,
         ),
         "focal_person_designation": re.compile(
-            r"(?:Designation|Title)\s*[:|-]?\s*(.+)",
+            r"(?:Designation|Title)[ \t]*[:|-][ \t]*(.+)",
             re.IGNORECASE | re.MULTILINE,
         ),
     }

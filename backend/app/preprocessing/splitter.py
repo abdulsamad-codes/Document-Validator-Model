@@ -87,7 +87,26 @@ _STRONG_TITLE_PHRASES: list[tuple[DocumentType, tuple[str, ...]]] = [
         DocumentType.BUSINESS_REQUIREMENT_DOCUMENT,
         ("BUSINESS REQUIREMENT DOCUMENT", "BUSINESS REQUIREMENT"),
     ),
-    (DocumentType.FORMAL_REQUEST_LETTER, ("FORMAL REQUEST LETTER", "FORMAL REQUEST")),
+    (
+        DocumentType.FORMAL_REQUEST_LETTER,
+        (
+            "FORMAL REQUEST LETTER",
+            "FORMAL REQUEST",
+            # The one real sample on file (confirmed 2026-08-18, TMA Lal Dir
+            # Upper) never carries either spec-guessed phrase above -- its
+            # own subject line is the only reliable anchor found so far.
+            # Sits at OCR line index ~11 within its page (well inside the
+            # header zone), so no _FULL_PAGE_STRONG_PHRASES exemption is
+            # needed here, unlike the Participation Memorandum case.
+            # Without this, the page carried no strong-evidence title match
+            # of any kind and was silently absorbed into whatever document
+            # preceded it (here, a 1-Link Application Form) with no Option B
+            # warning either, since the weak _classify_text fallback also
+            # checks this same phrase table and found nothing to disagree
+            # with.
+            "SUBJECT: REQUEST FOR DIGITAL ACCOUNT",
+        ),
+    ),
 ]
 
 #: Strong-title phrases that mark a *continuation* of the same logical
