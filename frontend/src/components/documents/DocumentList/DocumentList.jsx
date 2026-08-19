@@ -89,27 +89,28 @@ function DocumentList({
                     pending[`upload-${slotKey}`] ?? (document ? pending[`replace-${document.id}`] : null);
                   const isDeleting = document ? Boolean(pending[`delete-${document.id}`]) : false;
                   return (
-                    <li key={slotKey}>
-                      <DocumentRow
-                        entry={{ ...entry, label: slotLabel }}
-                        document={document}
-                        pending={slotPending}
-                        isDeleting={isDeleting}
-                        onUpload={() => triggerPicker(slotType, copyNumber)}
-                        onReplace={() => triggerPicker(slotType, copyNumber)}
-                        onDelete={() => document && onDelete(document)}
-                      />
-                      <input
-                        ref={(node) => {
-                          fileInputs.current[slotKey] = node;
-                        }}
-                        type="file"
-                        accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.tif,.tiff"
-                        hidden
-                        tabIndex={-1}
-                        onChange={(event) => handleFile(slotType, copyNumber, event)}
-                      />
-                    </li>
+                    <DocumentRow
+                      key={slotKey}
+                      entry={{ ...entry, label: slotLabel }}
+                      document={document}
+                      pending={slotPending}
+                      isDeleting={isDeleting}
+                      onUpload={() => triggerPicker(slotType, copyNumber)}
+                      onReplace={() => triggerPicker(slotType, copyNumber)}
+                      onDelete={() => document && onDelete(document)}
+                      hiddenInput={
+                        <input
+                          ref={(node) => {
+                            fileInputs.current[slotKey] = node;
+                          }}
+                          type="file"
+                          accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.tif,.tiff"
+                          hidden
+                          tabIndex={-1}
+                          onChange={(event) => handleFile(slotType, copyNumber, event)}
+                        />
+                      }
+                    />
                   );
                 })}
               </ul>

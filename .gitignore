@@ -55,6 +55,9 @@ temp_uploads/
 logs/
 *.log
 
+# Queue worker runtime state (backend/worker.heartbeat)
+worker.heartbeat
+
 # Database
 *.db
 *.sqlite3

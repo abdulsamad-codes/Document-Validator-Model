@@ -317,12 +317,27 @@ environment variables / `.env` (see `backend/.env.example`):
 
 ## Running the application
 
-**Backend (API + OpenAPI docs):**
+Local development requires **two backend processes**, not one. `uvicorn`
+alone accepts uploads and serves the API, but it does not process bulk PDF
+uploads on its own — without the dedicated queue worker, a bulk upload is
+accepted (HTTP 201) and then sits at `processing_status: "UPLOADED"`
+indefinitely, with no error surfaced anywhere in the UI. See
+`backend/docs/phase15e-reliability.md` for the full worker execution model
+(in-process background draining vs. dedicated worker processes).
+
+**Backend API (API + OpenAPI docs):**
 
 ```bash
 cd backend
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 # Swagger UI: http://localhost:8000/docs
+```
+
+**Backend queue worker (required — processes bulk PDF uploads):**
+
+```bash
+cd backend
+python -m app.bulk_queue
 ```
 
 **Frontend (dev server):**
@@ -448,6 +463,7 @@ Per-module design docs live in `backend/docs/`:
 | `human_verification.md`   | Phase 12 — human verification                 |
 | `feedback.md`             | Phase 13 — feedback dataset                   |
 | `continuous_learning.md`  | Phase 14 — curated ML dataset                 |
+| `phase15e-reliability.md` | Phase 15E — bulk queue worker execution model |
 
 ---
 

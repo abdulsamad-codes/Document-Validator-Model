@@ -26,6 +26,9 @@ import styles from './DocumentRow.module.css';
  * @param {Function} props.onUpload Triggered to upload a missing document.
  * @param {Function} props.onReplace Triggered to replace an existing document.
  * @param {Function} props.onDelete Triggered to delete an existing document.
+ * @param {import('react').ReactNode} [props.hiddenInput] Slot's hidden file
+ *   input, rendered inside this row's own `<li>` so the list stays a flat
+ *   `<ul><li>` structure instead of nesting one `<li>` inside another.
  */
 function DocumentRow({
   entry,
@@ -35,6 +38,7 @@ function DocumentRow({
   onUpload,
   onReplace,
   onDelete,
+  hiddenInput,
 }) {
   const statusConfig = getDocumentStatus(pending ? 'UPLOADING' : document?.processing_status ?? 'MISSING');
   const hasDocument = Boolean(document);
@@ -110,6 +114,7 @@ function DocumentRow({
           )}
         </div>
       )}
+      {hiddenInput}
     </li>
   );
 }
