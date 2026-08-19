@@ -97,6 +97,7 @@ _CHECKLIST_TYPE_MAP: dict[DocumentType, AnalyzedDocumentType] = {
     #: Front only -- DocumentType.CNIC_BACK deliberately excluded, see
     #: AnalyzedDocumentType.CNIC_FRONT's comment in constants.py.
     DocumentType.CNIC_FRONT: AnalyzedDocumentType.CNIC_FRONT,
+    DocumentType.FORMAL_REQUEST_LETTER: AnalyzedDocumentType.FORMAL_REQUEST_LETTER,
 }
 
 
