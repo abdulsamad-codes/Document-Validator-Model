@@ -88,15 +88,15 @@ def run(rule_id: str, ctx: RuleContext) -> RuleResult:
 # --- Registry contract -------------------------------------------------------
 
 
-def test_registry_has_49_rules_in_8_categories():
+def test_registry_has_50_rules_in_8_categories():
     from collections import Counter
 
     rules = REGISTRY.rules()
-    assert len(rules) == 49
+    assert len(rules) == 50
     categories = Counter(rule.category for rule in rules)
     assert categories == {
         "document_completeness": 8,
-        "field_presence": 5,
+        "field_presence": 6,
         "format": 6,
         # CrossBranchCodeRule and CrossPeriodRule are implemented but
         # deliberately not registered -- see the inline rationale in
@@ -221,6 +221,32 @@ def test_formal_request_subject_ignores_other_document_types():
         ),
     )
     assert result.status is ValidationStatus.FAIL
+
+
+def test_formal_request_organization_passes_with_normalized_value():
+    result = run(
+        "FLD_FORMAL_REQUEST_ORGANIZATION_PRESENT",
+        context(
+            fields=[
+                field(
+                    "organization_name",
+                    "TEHSIL MUNICIPAL ADMINISTRATION LAL DIR UPPER",
+                    doc_id=1,
+                    doc_type=FORMAL_REQUEST,
+                )
+            ]
+        ),
+    )
+    assert result.status is ValidationStatus.PASS
+
+
+def test_formal_request_organization_fails_when_missing():
+    result = run(
+        "FLD_FORMAL_REQUEST_ORGANIZATION_PRESENT",
+        context(fields=[field("subject", "SOME SUBJECT", doc_type=FORMAL_REQUEST)]),
+    )
+    assert result.status is ValidationStatus.FAIL
+    assert "formal request letter" in result.message.lower()
 
 
 # --- Format ------------------------------------------------------------------

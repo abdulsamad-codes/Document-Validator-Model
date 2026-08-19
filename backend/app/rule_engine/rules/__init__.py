@@ -39,6 +39,7 @@ from app.rule_engine.rules.field_rules import (
     FieldAccountHolderPresenceRule,
     FieldAccountNumberPresenceRule,
     FieldBankNamePresenceRule,
+    FieldFormalRequestOrganizationPresenceRule,
     FieldFormalRequestSubjectPresenceRule,
     FieldIbanPresenceRule,
 )
@@ -92,7 +93,7 @@ class RuleRegistry:
                 DocumentScheduleRule(),
                 DocumentBrdRule(),
                 DocumentFormalRequestRule(),
-                # Required field presence (5).
+                # Required field presence (6).
                 # FieldStatementPeriodPresenceRule and FieldBalancesPresenceRule
                 # were removed: real Account Maintenance Certificates never
                 # carry statement_period/balances (see Master Rules section 3),
@@ -103,6 +104,7 @@ class RuleRegistry:
                 FieldAccountHolderPresenceRule(),
                 FieldBankNamePresenceRule(),
                 FieldFormalRequestSubjectPresenceRule(),
+                FieldFormalRequestOrganizationPresenceRule(),
 
 
                 # Format (6).

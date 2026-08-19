@@ -119,10 +119,30 @@ class FieldFormalRequestSubjectPresenceRule(_FieldPresenceRule):
     document_label = "formal request letter"
 
 
+class FieldFormalRequestOrganizationPresenceRule(_FieldPresenceRule):
+    """The formal request letter must name the requesting organization.
+
+    `organization_name` is one of FormalRequestLetterExtractor's own
+    CRITICAL_FIELDS (document_analysis/constants.py) and, unlike that same
+    extractor's `date` field, extracts correctly on the one real sample on
+    file -- `date` is deliberately not given a presence rule here since its
+    own docstring documents it as an honest, still-open extraction miss on
+    that same real sample; asserting its presence would repeat the
+    CrossPeriodRule mistake of a rule real data can't pass.
+    """
+
+    id = "FLD_FORMAL_REQUEST_ORGANIZATION_PRESENT"
+    name = "Organization name present on formal request letter"
+    field_name = "organization_name"
+    target_document_types = frozenset({DocumentType.FORMAL_REQUEST_LETTER})
+    document_label = "formal request letter"
+
+
 __all__ = [
     "FieldIbanPresenceRule",
     "FieldAccountNumberPresenceRule",
     "FieldAccountHolderPresenceRule",
     "FieldBankNamePresenceRule",
     "FieldFormalRequestSubjectPresenceRule",
+    "FieldFormalRequestOrganizationPresenceRule",
 ]
