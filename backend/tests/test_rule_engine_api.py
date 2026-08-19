@@ -205,7 +205,7 @@ def test_validate_digital_statement_full_chain(authenticated_client, storage_roo
 
     assert result["application_id"] == application_id
     assert result["rule_engine_version"] == RULE_ENGINE_VERSION
-    assert result["summary"]["total"] == 50
+    assert result["summary"]["total"] == 52
     assert len(result["category_summary"]) == 8
 
     by_rule = {item["rule_id"]: item for item in result["results"]}
@@ -242,7 +242,7 @@ def test_validate_persists_rule_results(authenticated_client, storage_root):
     stored = get_validation_results(authenticated_client, application_id)
 
     assert stored["application_id"] == application_id
-    assert stored["total"] == 50
+    assert stored["total"] == 52
     by_rule = {item["rule_id"]: item for item in stored["results"]}
     assert by_rule["FMT_IBAN"]["status"] == "PASS"
     assert by_rule["FMT_IBAN"]["severity"] == "INFO"
@@ -265,7 +265,7 @@ def test_validate_is_idempotent_in_storage(authenticated_client, storage_root):
     validate(authenticated_client, application_id)
     second = get_validation_results(authenticated_client, application_id)
 
-    assert first["total"] == second["total"] == 50
+    assert first["total"] == second["total"] == 52
     assert [item["rule_id"] for item in first["results"]] == [
         item["rule_id"] for item in second["results"]
     ]
@@ -292,7 +292,7 @@ def test_get_validation_results_excludes_technical_rows(authenticated_client, st
     validate(authenticated_client, application_id)
 
     stored = get_validation_results(authenticated_client, application_id)
-    assert stored["total"] == 50
+    assert stored["total"] == 52
     assert all(
         item["rule_category"] != "technical_validation" for item in stored["results"]
     )
@@ -432,7 +432,7 @@ def test_validate_runs_without_extracted_fields(authenticated_client, storage_ro
 
     result = validate(authenticated_client, application_id)
 
-    assert result["summary"]["total"] == 50
+    assert result["summary"]["total"] == 52
     assert result["validation_status"] == "FAIL"
     by_rule = {item["rule_id"]: item for item in result["results"]}
     assert by_rule["DOC_AMC_PRESENT"]["status"] == "FAIL"

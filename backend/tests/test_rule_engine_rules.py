@@ -88,15 +88,15 @@ def run(rule_id: str, ctx: RuleContext) -> RuleResult:
 # --- Registry contract -------------------------------------------------------
 
 
-def test_registry_has_50_rules_in_8_categories():
+def test_registry_has_52_rules_in_8_categories():
     from collections import Counter
 
     rules = REGISTRY.rules()
-    assert len(rules) == 50
+    assert len(rules) == 52
     categories = Counter(rule.category for rule in rules)
     assert categories == {
         "document_completeness": 8,
-        "field_presence": 6,
+        "field_presence": 8,
         "format": 6,
         # CrossBranchCodeRule and CrossPeriodRule are implemented but
         # deliberately not registered -- see the inline rationale in
@@ -247,6 +247,43 @@ def test_formal_request_organization_fails_when_missing():
     )
     assert result.status is ValidationStatus.FAIL
     assert "formal request letter" in result.message.lower()
+
+
+AUTHORITY = DocumentType.AUTHORITY_LETTER.value
+
+
+def test_authority_letter_organization_passes_with_normalized_value():
+    result = run(
+        "FLD_AUTHORITY_LETTER_ORGANIZATION_PRESENT",
+        context(fields=[field("organization_name", "Directorate", doc_type=AUTHORITY)]),
+    )
+    assert result.status is ValidationStatus.PASS
+
+
+def test_authority_letter_organization_fails_when_missing():
+    result = run(
+        "FLD_AUTHORITY_LETTER_ORGANIZATION_PRESENT",
+        context(fields=[field("focal_person_name", "Naveed Khan", doc_type=AUTHORITY)]),
+    )
+    assert result.status is ValidationStatus.FAIL
+    assert "authority letter" in result.message.lower()
+
+
+def test_authority_letter_focal_person_passes_with_normalized_value():
+    result = run(
+        "FLD_AUTHORITY_LETTER_FOCAL_PERSON_PRESENT",
+        context(fields=[field("focal_person_name", "Naveed Khan", doc_type=AUTHORITY)]),
+    )
+    assert result.status is ValidationStatus.PASS
+
+
+def test_authority_letter_focal_person_fails_when_missing():
+    result = run(
+        "FLD_AUTHORITY_LETTER_FOCAL_PERSON_PRESENT",
+        context(fields=[field("organization_name", "Directorate", doc_type=AUTHORITY)]),
+    )
+    assert result.status is ValidationStatus.FAIL
+    assert "authority letter" in result.message.lower()
 
 
 # --- Format ------------------------------------------------------------------

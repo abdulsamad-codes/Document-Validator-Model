@@ -138,6 +138,42 @@ class FieldFormalRequestOrganizationPresenceRule(_FieldPresenceRule):
     document_label = "formal request letter"
 
 
+class FieldAuthorityLetterOrganizationPresenceRule(_FieldPresenceRule):
+    """The authority letter must name the authorizing organization.
+
+    `organization_name` is one of AuthorityLetterExtractor's own
+    CRITICAL_FIELDS and extracts non-empty on all 4 real cached samples
+    (DG_Sports, GDA_Abbotabad, TMA_Khal_Dir_Lower, TMA_Lal_Dir_Upper, 4
+    independent organizations) -- confirmed directly, not assumed.
+    """
+
+    id = "FLD_AUTHORITY_LETTER_ORGANIZATION_PRESENT"
+    name = "Organization name present on authority letter"
+    field_name = "organization_name"
+    target_document_types = frozenset({DocumentType.AUTHORITY_LETTER})
+    document_label = "authority letter"
+
+
+class FieldAuthorityLetterFocalPersonPresenceRule(_FieldPresenceRule):
+    """The authority letter must name a focal person.
+
+    `focal_person_name` is one of AuthorityLetterExtractor's own
+    CRITICAL_FIELDS and extracts non-empty on all 4 real cached samples,
+    same evidence base as organization_name above. Its sibling field
+    `focal_person_designation` is deliberately not given a presence rule --
+    confirmed missing (None) on the TMA_Lal_Dir_Upper real sample, an honest
+    extraction gap, not an absence this rule should assert against; adding
+    one would repeat the CrossPeriodRule mistake of a rule real data can't
+    reliably pass.
+    """
+
+    id = "FLD_AUTHORITY_LETTER_FOCAL_PERSON_PRESENT"
+    name = "Focal person name present on authority letter"
+    field_name = "focal_person_name"
+    target_document_types = frozenset({DocumentType.AUTHORITY_LETTER})
+    document_label = "authority letter"
+
+
 __all__ = [
     "FieldIbanPresenceRule",
     "FieldAccountNumberPresenceRule",
@@ -145,4 +181,6 @@ __all__ = [
     "FieldBankNamePresenceRule",
     "FieldFormalRequestSubjectPresenceRule",
     "FieldFormalRequestOrganizationPresenceRule",
+    "FieldAuthorityLetterOrganizationPresenceRule",
+    "FieldAuthorityLetterFocalPersonPresenceRule",
 ]
