@@ -473,32 +473,76 @@ class AuthorityLetterExtractor(RegexExtractor):
     genuinely never states a designation, so it correctly keeps missing
     that field rather than guessing one from nearby text.
 
-    Known separate gap, not fixed here: GDA Abbotabad's real letter uses
-    "Dr." instead of "Mr." ("It is hereby authorized that Dr. Samar Hayat
-    Khan..."), which this pattern's literal "Mr" prefix doesn't match at
-    all -- confirmed 2026-08-18, out of scope for this pass.
+    Two bugs fixed 2026-08-19 (department decision, see CONTEXT.md), both
+    tested directly against GDA Abbotabad's real cached text:
+
+    focal_person_name/focal_person_designation previously matched only the
+    literal "Mr" prefix; GDA Abbotabad's real letter uses "Dr." ("It is
+    hereby authorized that Dr. Samar Hayat Khan..."), which never matched
+    at all. Generalized to a small, evidence-grounded honorific set --
+    Mr/Mrs/Ms/Dr, the only two actually seen across 4 real samples -- not
+    an attempt to anticipate every possible honorific. Separately, GDA's
+    designation ("Taxation Officer-I") sits on the line *after* the name,
+    unlike the other 3 samples' same-line "Mr. <name>, <designation>"
+    shape; both patterns' stopping lookahead now tolerates crossing exactly
+    one newline before finding the comma, tested against all 4 real
+    samples to confirm this doesn't change what the other 3 already
+    correctly capture.
+
+    organization_name previously captured "this" from GDA's real sentence
+    ("...on behalf of this\nAuthority.") -- a genuine garbage capture, not
+    an honest miss, since "this" doesn't identify the organization at all.
+    The letter refers back to itself by pronoun instead of naming the org
+    in this clause, unlike the other 3 real samples. Fixed via extract()
+    below: when the primary pattern's capture is a generic backward
+    reference ("this"/"the said"/"said", optionally followed by "authority"
+    /"board"/"office"/"department"), fall back to the letterhead -- the
+    first substantive line before the "AUTHORITY LETTER" title, skipping
+    contact-info lines -- which correctly names the organization in all 4
+    real samples. Scoped narrowly to the exact backward-reference shape
+    confirmed real, not a general letterhead parser: the other 3 samples'
+    letterheads vary too much in format to parse generically, and their
+    primary "on behalf of X" capture already works, so they never reach
+    this fallback at all.
 
     Unlike docs/Master_Rules_Combined.md Section 2 ("account maintenance
-    details must appear at the top"), none of the three real samples
+    details must appear at the top"), none of the four real samples
     reviewed carries any bank account information on the Authority Letter's
     own page -- account_holder/account_number/iban are extracted
     opportunistically (reusing the same patterns as
     BilateralAgreementExtractor) but are not critical fields, see
-    constants.CRITICAL_FIELDS. Two of the three samples do incidentally
-    populate account_number from an absorbed, structurally separate
-    Account-Maintenance-Certificate-looking page that lands in the same
-    document group (a known, unfixed splitter absorption gap) -- opportunistic
-    by design, so this doesn't threaten the critical fields' validated status.
+    constants.CRITICAL_FIELDS. Some samples do incidentally populate
+    account_number from an absorbed, structurally separate Account-
+    Maintenance-Certificate-looking page that lands in the same document
+    group (a known, unfixed splitter absorption gap) -- opportunistic by
+    design, so this doesn't threaten the critical fields' validated status.
     """
 
     document_type = AnalyzedDocumentType.AUTHORITY_LETTER
 
+    #: Backward-reference phrases the "on behalf of X" sentence sometimes
+    #: uses instead of literally naming the organization (confirmed real,
+    #: GDA Abbotabad: "...on behalf of this\nAuthority." captures just
+    #: "this"). Triggers the letterhead fallback in extract() below.
+    _GENERIC_ORG_REFERENCE = re.compile(
+        r"^(?:this|the said|said)(?:\s+(?:authority|board|office|department))?$",
+        re.IGNORECASE,
+    )
+    #: Letterhead lines to skip when falling back -- contact details, not
+    #: the organization's own name.
+    _LETTERHEAD_SKIP = re.compile(
+        r"^(?:Ph|Phone|Fax|Email|Govt\.?|Government)\b",
+        re.IGNORECASE,
+    )
+
     _patterns = {
         "focal_person_name": re.compile(
-            r"Mr\.?\s+([A-Za-z][A-Za-z.'\- ]*?)(?=\s*[,(]|\s+CNIC|\s+is\s+authorized)",
+            r"(?:Mr|Mrs|Ms|Dr)\.?\s+([A-Za-z][A-Za-z.'\- ]*?)"
+            r"(?=\s*[,(]|\n[^\n,()]{0,80}[,(]|\s+CNIC|\s+is\s+authorized)",
         ),
         "focal_person_designation": re.compile(
-            r"Mr\.?\s+[A-Za-z][A-Za-z.'\- ]*?[,(]\s*([^,()]+?)(?=[,()]|\s+is\s+authorized)",
+            r"(?:Mr|Mrs|Ms|Dr)\.?\s+[A-Za-z][A-Za-z.'\- ]*?"
+            r"(?:[,(]|\n(?=[^\n,()]{0,80}[,(]))\n?\s*([^,()]+?)(?=[,()]|\s+is\s+authorized)",
             re.IGNORECASE,
         ),
         "organization_name": re.compile(
@@ -518,6 +562,35 @@ class AuthorityLetterExtractor(RegexExtractor):
             re.IGNORECASE,
         ),
     }
+
+    def extract(self, text: str) -> dict[str, Any]:
+        fields = super().extract(text)
+        org = fields.get("organization_name")
+        if org and self._GENERIC_ORG_REFERENCE.match(org):
+            fallback = self._letterhead_organization_name(text)
+            if fallback:
+                fields["organization_name"] = fallback
+            else:
+                del fields["organization_name"]
+        return fields
+
+    @classmethod
+    def _letterhead_organization_name(cls, text: str) -> str | None:
+        """Return the first substantive letterhead line, or ``None``.
+
+        Scans the text before the "AUTHORITY LETTER" title for the first
+        line that isn't blank, isn't contact info, and is long enough to
+        plausibly be an organization name rather than an OCR artifact
+        (confirmed real: GDA Abbotabad's letterhead has a stray one-
+        character line above the org name).
+        """
+        header = text.split("AUTHORITY LETTER", 1)[0]
+        for line in header.splitlines():
+            candidate = line.strip()
+            if len(candidate) < 8 or cls._LETTERHEAD_SKIP.match(candidate) or "@" in candidate:
+                continue
+            return candidate
+        return None
 
 
 class BusinessRequirementDocumentExtractor(RegexExtractor):
