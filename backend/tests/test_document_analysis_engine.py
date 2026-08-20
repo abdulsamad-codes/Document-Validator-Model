@@ -741,6 +741,34 @@ ACCOUNT NO
 1234567890
 """
 
+PREFIXED_GENERATIONS_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+This is to certify that SAMPLE SPORTS COMPLEX is maintaining a BOK Saving Account at The Bank of
+Khyber, Main Corporate Branch Peshawar. Following are the account details:
+Old Account No (U-Bank Plus)
+00112233445560
+Old IBAN No. (U-Bank Plus)
+PK99FAKE0100010200000001
+Account No. (T-24 System)
+00112233445561
+IBAN No. (T-24 System)
+PK99FAKE0200010000000001
+New Account No. (T-24 Islamic)
+00112233445562
+New IBAN No. (T-24 Islamic)
+PK99FAKE0300010000000001
+"""
+
+OLD_PREFIX_BEFORE_ANCHORED_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+This is to certify that SAMPLE SPORTS COMPLEX is maintaining a BOK Saving Account at The Bank of
+Khyber, Main Corporate Branch Peshawar. Following are the account details:
+Old Account No (U-Bank Plus)
+00112233445560
+Account No. (T-24 System)
+00112233445561
+IBAN No. (T-24 System)
+PK99FAKE0200010000000001
+"""
+
 
 def test_extract_tripartite_column_table_positions_values_by_header():
     # The real Tripartite layout is a stacked column table whose header block
@@ -880,6 +908,39 @@ def test_extract_first_of_parallel_account_generations():
     )
     assert fields["account_holder"] == "SAMPLE SPORTS AUTHORITY"
     assert fields["account_number"] == "00112233445566"
+
+
+def test_extract_skips_old_and_new_prefixed_generation_labels():
+    # The real DG_Sports AMC's first and third generation labels are prefixed
+    # with "Old"/"New" ("Old Account No (U-Bank Plus)", "New Account No.
+    # (T-24 Islamic)") -- they must NOT be read as the anchored account-number
+    # label (the anchor pattern matches from the start of the line, so "Old
+    # Account No" and "New Account No" do not match it), and their values must
+    # not be captured. The first genuinely anchored "Account No. (T-24
+    # System)" block wins, and its IBAN must come from that same generation
+    # (not an older/newer one).
+    fields = extract_fields(
+        PREFIXED_GENERATIONS_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_holder"] == "SAMPLE SPORTS COMPLEX"
+    assert fields["account_number"] == "00112233445561"
+    assert fields["iban"] == "PK99FAKE0200010000000001"
+
+
+def test_extract_old_prefixed_block_before_anchored_block_does_not_win():
+    # Even when an "Old Account No (U-Bank Plus)" block appears BEFORE the
+    # genuinely anchored "Account No." block in document order, the prefixed
+    # label is not an account-number anchor, so the anchored block still wins.
+    # This pins the real DG_Sports shape: the old-generation value must never
+    # leak in as the account number.
+    fields = extract_fields(
+        OLD_PREFIX_BEFORE_ANCHORED_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_holder"] == "SAMPLE SPORTS COMPLEX"
+    assert fields["account_number"] == "00112233445561"
+    assert fields["iban"] == "PK99FAKE0200010000000001"
 
 
 def test_extract_holder_from_sentence_only_no_false_positive():
