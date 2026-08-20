@@ -1,13 +1,42 @@
 """Shared fixtures for the upload test suite.
 
-Uploads are exercised through the real FastAPI application and the real
-``finance_verification`` database, while the storage backend is redirected to a
-per-test temporary directory so the repository's ``storage/`` tree is never
-touched. The database is wiped before and after every test via the cascade on
-``applications`` (which removes documents, OCR data, validations and reviews).
+Uploads are exercised through the real FastAPI application and a genuinely
+isolated database (see the ``DATABASE_URL`` override directly below -- always
+the configured dev/CI database's name with ``_test`` appended, never the real
+one), while the storage backend is redirected to a per-test temporary
+directory so the repository's ``storage/`` tree is never touched. The test
+database is wiped before and after every test via the cascade on
+``applications`` (which removes documents, OCR data, validations and
+reviews); ``_wipe_database`` additionally refuses to run at all against a
+database whose name doesn't contain "test", as a second, independent guard.
 """
 
+import os
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
+
+from dotenv import dotenv_values
+
+#: Point every test at an isolated ``..._test`` database, derived from
+#: whatever DATABASE_URL is already configured (dev locally, CI elsewhere) --
+#: never hardcoded, never the real database. Must run before
+#: ``app.database.connection`` (or anything importing it) is first imported
+#: anywhere in the test session: its ``engine``/``SessionLocal`` are created
+#: once at module-import time from the settings available *then*, so
+#: overriding the setting after that point would have no effect.
+#:
+#: DATABASE_URL is read via ``dotenv_values`` rather than ``os.environ``
+#: because it normally lives only in ``.env`` (loaded internally by
+#: ``pydantic-settings`` when ``Settings()`` is constructed) -- it is not
+#: exported as a real process environment variable, so ``os.environ`` alone
+#: would silently miss it and this override would do nothing.
+_dev_database_url = os.environ.get("DATABASE_URL") or dotenv_values(".env").get(
+    "DATABASE_URL", ""
+)
+if _dev_database_url:
+    _parts = urlsplit(_dev_database_url)
+    _test_db_name = (_parts.path.lstrip("/") or "finance_verification") + "_test"
+    os.environ["DATABASE_URL"] = urlunsplit(_parts._replace(path=f"/{_test_db_name}"))
 
 import pytest
 from fastapi.testclient import TestClient
@@ -48,6 +77,16 @@ def _wipe_database() -> None:
     """Delete every application and user; dependent tables cascade."""
     db = SessionLocal()
     try:
+        db_name = (db.get_bind().url.database or "").lower()
+        if "test" not in db_name:
+            raise RuntimeError(
+                f"Refusing to wipe database {db_name!r} -- it does not look like "
+                "a test database (name must contain 'test'). There is currently "
+                "no isolated test database wired in; tests run directly against "
+                "DATABASE_URL, which normally points at the real development "
+                "database. See the 2026-08-13/2026-08-20 incidents in memory/"
+                "CONTEXT.md this guard exists to prevent."
+            )
         db.execute(text("DELETE FROM refresh_tokens"))
         db.execute(text("DELETE FROM users"))
         db.execute(text("DELETE FROM applications"))
