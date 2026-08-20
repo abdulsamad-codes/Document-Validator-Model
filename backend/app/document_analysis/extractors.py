@@ -505,6 +505,25 @@ class AuthorityLetterExtractor(RegexExtractor):
     primary "on behalf of X" capture already works, so they never reach
     this fallback at all.
 
+    Two more real samples (confirmed 2026-08-20: TMA Lal Qilla Dir Lower,
+    TMA Samarbagh Dir Lower) phrase the same backward reference as "on
+    behalf of the\nAuthority." -- bare "the", not "this"/"the said", and
+    wrapped onto a second line. The capture group previously stopped at
+    the line break (matching only "the"), which isn't in
+    _GENERIC_ORG_REFERENCE's alternation, so it fell through as a literal
+    "the" garbage value instead of ever reaching the fallback. Fixed by
+    (a) letting the capture cross exactly one more newline, the same
+    one-newline tolerance focal_person_name/designation already use, and
+    (b) adding bare "the" to _GENERIC_ORG_REFERENCE's alternation --
+    anchored on both ends, so it only matches when the entire normalized
+    capture is "the" plus, optionally, one of the four backward-reference
+    nouns, never a real org name that merely starts with "the". Confirmed
+    against all 8 real samples this doesn't change the 6 that already
+    extracted correctly (GDA Abbotabad's "this\nAuthority" now crosses the
+    same extra newline too, but "this Authority" still matches the
+    backward-reference check exactly as bare "this" did, so it still
+    resolves through the same fallback to the same letterhead value).
+
     Unlike docs/Master_Rules_Combined.md Section 2 ("account maintenance
     details must appear at the top"), none of the four real samples
     reviewed carries any bank account information on the Authority Letter's
@@ -525,7 +544,7 @@ class AuthorityLetterExtractor(RegexExtractor):
     #: GDA Abbotabad: "...on behalf of this\nAuthority." captures just
     #: "this"). Triggers the letterhead fallback in extract() below.
     _GENERIC_ORG_REFERENCE = re.compile(
-        r"^(?:this|the said|said)(?:\s+(?:authority|board|office|department))?$",
+        r"^(?:this|the(?:\s+said)?|said)(?:\s+(?:authority|board|office|department))?$",
         re.IGNORECASE,
     )
     #: Letterhead lines to skip when falling back -- contact details, not
@@ -546,7 +565,7 @@ class AuthorityLetterExtractor(RegexExtractor):
             re.IGNORECASE,
         ),
         "organization_name": re.compile(
-            r"on\s+(?:the\s+)?behalf\s+of\s+([^.\n]+)",
+            r"on\s+(?:the\s+)?behalf\s+of\s+([^.\n]+(?:\n[^.\n]+)?)",
             re.IGNORECASE,
         ),
         "account_holder": re.compile(
@@ -566,12 +585,16 @@ class AuthorityLetterExtractor(RegexExtractor):
     def extract(self, text: str) -> dict[str, Any]:
         fields = super().extract(text)
         org = fields.get("organization_name")
-        if org and self._GENERIC_ORG_REFERENCE.match(org):
-            fallback = self._letterhead_organization_name(text)
-            if fallback:
-                fields["organization_name"] = fallback
+        if org:
+            org = re.sub(r"\s+", " ", org).strip()
+            if self._GENERIC_ORG_REFERENCE.match(org):
+                fallback = self._letterhead_organization_name(text)
+                if fallback:
+                    fields["organization_name"] = fallback
+                else:
+                    del fields["organization_name"]
             else:
-                del fields["organization_name"]
+                fields["organization_name"] = org
         return fields
 
     @classmethod
