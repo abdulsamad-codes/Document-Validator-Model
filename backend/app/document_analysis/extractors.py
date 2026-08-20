@@ -1477,19 +1477,21 @@ class TripartiteAgreementExtractor(RegexExtractor):
     }
 
     def extract(self, text: str) -> dict[str, Any]:
-        # Structural parser takes precedence (it correctly handles the stacked
-        # column-table and interleaved label/value layouts seen in real cached
-        # samples); the label-anchored patterns remain as a fallback for
-        # layouts the structural parser does not recognize (e.g. pipe-separated
-        # table rows). Structural results are never overwritten by a regex
-        # match, so the pattern-based captures cannot re-introduce the garbage
-        # values (headers, row indexes) the structural parser was written to
-        # fix.
-        fields = dict(_extract_bank_account_block(text))
-        regex_fields = super().extract(text)
+        # Structural parser takes precedence for account_holder/account_number
+        # (it correctly handles the stacked column-table and interleaved
+        # label/value layouts seen in real cached samples): its results
+        # overwrite the label-anchored regex captures, which are garbage on
+        # those layouts (headers, row indexes). The regex patterns remain for
+        # every other field (party_*, branch_code) and as the only source for
+        # account fields on layouts the structural parser does not recognize
+        # (e.g. pipe-separated table rows). Only the two account keys are
+        # merged from the block so structural-only extras (iban) never leak
+        # into Tripartite's field set.
+        fields = super().extract(text)
+        block = _extract_bank_account_block(text)
         for key in ("account_holder", "account_number"):
-            if key not in fields and key in regex_fields:
-                fields[key] = regex_fields[key]
+            if key in block:
+                fields[key] = block[key]
         return fields
 
 
