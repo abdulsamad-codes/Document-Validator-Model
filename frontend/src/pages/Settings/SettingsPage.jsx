@@ -14,7 +14,6 @@ import {
   MessageSquare,
   PlayCircle,
   RefreshCw,
-  ScrollText,
   Settings2,
   ShieldCheck,
   SlidersHorizontal,
@@ -195,14 +194,6 @@ function SettingsPage() {
     const Icon = iconByType[item.id] ?? MessageSquare;
     return { ...item, Icon };
   });
-
-  const systemLogsItem = {
-    id: 'system-logs',
-    label: 'System Logs',
-    path: '/settings/system-logs',
-    Icon: ScrollText,
-    hint: 'Search the operational audit trail.',
-  };
 
   return (
     <div className={styles.page}>
@@ -448,18 +439,6 @@ function SettingsPage() {
                     </Link>
                   </li>
                 ))}
-                <li>
-                  <Link to={systemLogsItem.path} className={styles.adminLink}>
-                    <span className={styles.adminIcon} aria-hidden="true">
-                      <systemLogsItem.Icon />
-                    </span>
-                    <span className={styles.adminMeta}>
-                      <span className={styles.adminLabel}>{systemLogsItem.label}</span>
-                      <span className={styles.adminHint}>{systemLogsItem.hint}</span>
-                    </span>
-                    <ArrowRight className={styles.adminArrow} aria-hidden="true" />
-                  </Link>
-                </li>
               </ul>
             </section>
           )}

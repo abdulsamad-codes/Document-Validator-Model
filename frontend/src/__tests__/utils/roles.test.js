@@ -16,6 +16,8 @@ const ALL_NAV_IDS = [
   'validation',
   'reports',
   'human-review',
+  'application-history',
+  'performance',
   'settings',
 ];
 
@@ -67,9 +69,9 @@ describe('role predicates', () => {
 });
 
 describe('visibleNavigationFor', () => {
-  it('shows every navigation item to the all-access Employee account', () => {
+  it('hides strict IT reporting pages from the all-access Employee account', () => {
     expect(visibleIds({ role: 'Verification Officer' }).sort()).toEqual(
-      [...ALL_NAV_IDS].sort()
+      ALL_NAV_IDS.filter((id) => !['application-history', 'performance'].includes(id)).sort()
     );
   });
 
@@ -91,13 +93,13 @@ describe('visibleNavigationFor', () => {
     );
   });
 
-  it('restricts IT to applications, processing and settings', () => {
+  it('restricts IT to applications, processing, history and performance', () => {
     expect(visibleIds({ role: 'IT' }).sort()).toEqual(
-      ['dashboard', 'applications', 'processing', 'settings'].sort()
+      ['dashboard', 'applications', 'processing', 'application-history', 'performance', 'settings'].sort()
     );
   });
 
-  it('drops child admin links (system logs) for a REVIEWER', () => {
+  it('drops child admin links (feedback, continuous learning) for a REVIEWER', () => {
     const sections = visibleNavigationFor({ role: 'REVIEWER' });
     const settingsChildren = sections
       .flatMap((section) => section.items)

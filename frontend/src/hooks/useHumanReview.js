@@ -103,8 +103,8 @@ export function useHumanReview() {
     }
     if (applications.some((app) => app.id === requested)) {
       // Pre-selection only syncs state once the requested application has
-      // loaded; see the fetch-on-mount note in useSystemLogs.js for the
-      // suppression rationale.
+      // loaded; see the fetch-on-mount note in useProcessingOverview.js for
+      // the suppression rationale.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedId(requested);
     }

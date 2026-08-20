@@ -76,10 +76,10 @@ export function isEmployee(user) {
 /**
  * Filter the sidebar navigation for the current user's role.
  *
- * The Employee (all-access) account sees every item so the complete application
- * can be exercised. All other roles only see items whose `roles` list (if any)
- * contains their canonical role. Items without a `roles` array are visible to
- * everyone.
+ * The Employee account sees every normal role-gated item, except entries with
+ * `strictRoles`, which require an exact canonical role. All other roles only
+ * see items whose `roles`/`strictRoles` list contains their canonical role.
+ * Items without either list are visible to everyone.
  *
  * @param {object|null|undefined} user The current user, if any.
  * @returns {Array} A deep copy of NAVIGATION with hidden items removed.
@@ -100,6 +100,9 @@ export function visibleNavigationFor(user) {
 }
 
 function visible(item, effective, user) {
+  if (item.strictRoles?.length) {
+    return item.strictRoles.includes(effective);
+  }
   if (isEmployee(user)) {
     return true;
   }

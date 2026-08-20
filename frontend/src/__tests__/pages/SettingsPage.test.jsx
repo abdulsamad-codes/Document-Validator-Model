@@ -37,7 +37,7 @@ describe('SettingsPage administration section', () => {
     vi.clearAllMocks();
   });
 
-  it('shows the System Logs link for an IT user', async () => {
+  it('shows the Feedback and Continuous Learning links for an IT user', async () => {
     useAuth.mockReturnValue({
       user: { ...baseUser, role: 'IT' },
       authenticated: true,
@@ -48,12 +48,14 @@ describe('SettingsPage administration section', () => {
 
     renderPage();
 
-    const link = await screen.findByRole('link', { name: /system logs/i });
-    expect(link).toBeInTheDocument();
-    expect(link).toHaveAttribute('href', '/settings/system-logs');
+    const feedback = await screen.findByRole('link', { name: /feedback/i });
+    expect(feedback).toBeInTheDocument();
+    expect(feedback).toHaveAttribute('href', '/feedback');
+    const learning = screen.getByRole('link', { name: /continuous learning/i });
+    expect(learning).toHaveAttribute('href', '/continuous-learning');
   });
 
-  it('shows the System Logs link for the Employee (supervisor) account', async () => {
+  it('shows the Feedback and Continuous Learning links for the Employee (supervisor) account', async () => {
     useAuth.mockReturnValue({
       user: baseUser,
       authenticated: true,
@@ -64,12 +66,14 @@ describe('SettingsPage administration section', () => {
 
     renderPage();
 
-    const link = await screen.findByRole('link', { name: /system logs/i });
-    expect(link).toBeInTheDocument();
-    expect(link).toHaveAttribute('href', '/settings/system-logs');
+    const feedback = await screen.findByRole('link', { name: /feedback/i });
+    expect(feedback).toBeInTheDocument();
+    expect(feedback).toHaveAttribute('href', '/feedback');
+    const learning = screen.getByRole('link', { name: /continuous learning/i });
+    expect(learning).toHaveAttribute('href', '/continuous-learning');
   });
 
-  it('hides the System Logs link for an OPERATOR user', async () => {
+  it('hides the Feedback and Continuous Learning links for an OPERATOR user', async () => {
     useAuth.mockReturnValue({
       user: { ...baseUser, role: 'OPERATOR' },
       authenticated: true,
@@ -80,10 +84,11 @@ describe('SettingsPage administration section', () => {
 
     renderPage();
 
-    expect(screen.queryByRole('link', { name: /system logs/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /feedback/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /continuous learning/i })).not.toBeInTheDocument();
   });
 
-  it('hides the System Logs link for a REVIEWER user', async () => {
+  it('hides the Feedback and Continuous Learning links for a REVIEWER user', async () => {
     useAuth.mockReturnValue({
       user: { ...baseUser, role: 'REVIEWER' },
       authenticated: true,
@@ -94,7 +99,8 @@ describe('SettingsPage administration section', () => {
 
     renderPage();
 
-    expect(screen.queryByRole('link', { name: /system logs/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /feedback/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /continuous learning/i })).not.toBeInTheDocument();
   });
 
   it('hides the administration section entirely for an OPERATOR user', async () => {
