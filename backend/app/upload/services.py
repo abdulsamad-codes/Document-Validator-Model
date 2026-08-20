@@ -269,6 +269,13 @@ class UploadService:
                 processing_status=DocumentProcessingStatus.UPLOADED,
             )
 
+            # Record DOCUMENTS_RECEIVED *before* the status update below:
+            # ApplicationRepository.update() mutates the application object
+            # in-place, so after the status changes to PROCESSING the guard
+            # inside _record_documents_received() would see PROCESSING instead
+            # of NEEDS_DOCUMENTS and skip recording the receipt.
+            self._record_documents_received(application, user)
+
             from app.database.repositories.queue_job_repository import QueueJobRepository
             QueueJobRepository(self._db).enqueue_uploaded_documents(
                 application_id=application.id,
@@ -278,8 +285,6 @@ class UploadService:
                 self._applications.update(application, status=ApplicationStatus.PROCESSING)
             elif application.status is ApplicationStatus.NEEDS_DOCUMENTS:
                 self._applications.update(application, status=ApplicationStatus.PROCESSING)
-
-            self._record_documents_received(application, user)
 
         except Exception:
             self._db.rollback()
