@@ -217,6 +217,12 @@ def it_client(client: TestClient) -> TestClient:
     return _login_as_role(client, "IT", "TEST-IT")
 
 
+@pytest.fixture()
+def employee_client(client: TestClient) -> TestClient:
+    """A ``client`` logged in as the Employee all-access account."""
+    return _login_as_role(client, "EMPLOYEE", "TEST-EMPLOYEE")
+
+
 def _login_as_role(client: TestClient, role: str, employee_id: str) -> TestClient:
     """Create a user with a specific stored role and log it in."""
     return _login_as(

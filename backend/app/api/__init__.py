@@ -18,6 +18,7 @@ per module.
 from fastapi import APIRouter, Depends
 
 from app.api.health import router as health_router
+from app.application_history.routes import router as application_history_router
 from app.auth.dependencies import get_current_user
 from app.auth.routes import router as auth_router
 from app.bulk_queue.routes import router as bulk_queue_router
@@ -30,6 +31,7 @@ from app.feedback.routes import router as feedback_router
 from app.human_verification.routes import router as human_verification_router
 from app.normalization.routes import router as normalization_router
 from app.operator_workflow.routes import router as operator_workflow_router
+from app.performance.routes import router as performance_router
 from app.reports.routes import router as reports_router
 from app.rule_engine.routes import router as rule_engine_router
 from app.system_logs.routes import router as system_logs_router
@@ -49,6 +51,9 @@ api_router.include_router(auth_router)
 
 # Everything else requires a valid session.
 protected_router = APIRouter(dependencies=[Depends(get_current_user)])
+# Application History first: its literal /applications/history route must be
+# matched before upload_router's dynamic /applications/{application_id}.
+protected_router.include_router(application_history_router)
 protected_router.include_router(bulk_queue_router)
 protected_router.include_router(upload_router)
 protected_router.include_router(completeness_router)
@@ -65,6 +70,7 @@ protected_router.include_router(continuous_learning_router)
 protected_router.include_router(validation_router)
 protected_router.include_router(operator_workflow_router)
 protected_router.include_router(system_logs_router)
+protected_router.include_router(performance_router)
 
 api_router.include_router(protected_router)
 

@@ -361,6 +361,27 @@ class QueueJobRepository(BaseRepository[QueueJob]):
             .order_by(QueueJob.id)
         ).all()
 
+    def list_all_by_application(self, application_id: int) -> Sequence[QueueJob]:
+        """Return every queue job for an application, including pipeline jobs.
+
+        Unlike :meth:`list_by_application`, this deliberately includes
+        ``APPLICATION_PIPELINE`` jobs: the IT performance view needs the whole
+        processing history (per-document OCR jobs and the application-level
+        pipeline run that produces PENDING_REVIEW), not just the document
+        subset an operator's progress bar shows.
+
+        Args:
+            application_id: Application whose jobs to list.
+
+        Returns:
+            All jobs for the application ordered by id.
+        """
+        return self._db.scalars(
+            select(QueueJob)
+            .where(QueueJob.application_id == application_id)
+            .order_by(QueueJob.id)
+        ).all()
+
     def all_document_jobs_terminal(self, application_id: int) -> bool:
         """True once every ``DOCUMENT_OCR`` job of an application is COMPLETED or FAILED.
 

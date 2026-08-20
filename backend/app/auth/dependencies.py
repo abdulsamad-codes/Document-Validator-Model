@@ -69,3 +69,26 @@ def require_role(*roles: str) -> Callable:
         return current_user
 
     return _require_role
+
+
+def require_exact_role(*roles: str) -> Callable:
+    """Build a dependency requiring one of the listed roles exactly.
+
+    Unlike :func:`require_role`, this guard does not let the all-access
+    Employee role satisfy every request. Use it for features that are explicitly
+    scoped to one operational role, such as IT-only reporting.
+    """
+    for role in roles:
+        if role not in ROLES:
+            raise ValueError(f"Unknown role requested: {role!r}")
+    requested = frozenset(roles)
+
+    def _require_exact_role(current_user: User = Depends(get_current_user)) -> User:
+        if effective_role(current_user.role) not in requested:
+            raise HTTPException(
+                status_code=403,
+                detail="You do not have permission to perform this action.",
+            )
+        return current_user
+
+    return _require_exact_role
