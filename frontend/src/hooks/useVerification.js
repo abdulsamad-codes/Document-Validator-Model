@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 
 import { listDocuments } from '../services/documents';
 import { getCompleteness, getValidationResults } from '../services/verification';
@@ -86,22 +86,35 @@ export function useVerification(applicationId) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 
+  const activeAppId = useRef(applicationId);
+
+  useEffect(() => {
+    activeAppId.current = applicationId;
+  }, [applicationId]);
+
   const reload = useCallback(async () => {
+    const fetchAppId = applicationId;
     setLoading(true);
     setError(null);
     try {
       const [results, report, documentList] = await Promise.all([
-        getValidationResults(applicationId),
-        getCompleteness(applicationId),
-        listDocuments(applicationId),
+        getValidationResults(fetchAppId),
+        getCompleteness(fetchAppId),
+        listDocuments(fetchAppId),
       ]);
+      
+      if (activeAppId.current !== fetchAppId) return;
+      
       setValidationResults(results.results ?? []);
       setCompleteness(report);
       setDocuments(documentList.items ?? []);
     } catch (err) {
+      if (activeAppId.current !== fetchAppId) return;
       setError(getApiErrorMessage(err));
     } finally {
-      setLoading(false);
+      if (activeAppId.current === fetchAppId) {
+        setLoading(false);
+      }
     }
   }, [applicationId]);
 
