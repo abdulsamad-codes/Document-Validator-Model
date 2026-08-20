@@ -933,11 +933,11 @@ class TripartiteAgreementExtractor(RegexExtractor):
     #: "(hereinafter referred to as ...)" clause. Tune against real samples.
     _patterns = {
         "party_1link": re.compile(
-            r"((?:1LINK|1-LINK|ONE[-\s]?LINK|ONELINK)[^,\n]*?)(?=\s*\(hereinafter|\s*,|\s*\n|$)",
+            r"((?:1\s*LINK|1-LINK|ONE[-\s]?LINK|ONELINK)[^,\n]*?)(?=\s*\(hereinafter|\s*,|\s*\n|$)",
             re.IGNORECASE,
         ),
         "party_kpitb": re.compile(
-            r"((?:KHYBER PAKHTUNKHWA INFORMATION TECHNOLOGY BOARD|KPITB))(?=[\s,])",
+            r"((?:KHYBER PAKHTUNKHWA INFORMATION(?:\s*(?:&|AND))?\s*TECHNOLOGY BOARD|KPITB))(?=[\s,])",
             re.IGNORECASE,
         ),
         "party_subbiller": re.compile(
@@ -949,7 +949,7 @@ class TripartiteAgreementExtractor(RegexExtractor):
             re.IGNORECASE | re.MULTILINE,
         ),
         "account_number": re.compile(
-            r"(?:Account Number|A/?C No\.?|Account No\.?)\s*[:|-]?\s*([A-Za-z0-9\-/ ]+)",
+            r"(?:Account Number|A/?C No\.?|Account No\.?)(?:\s*\(IBAN\))?\s*[:|-]?\s*(?:(?:[^A-Z0-9\n]*\n[^A-Z0-9\n]*.*?(?:\|[ \t]*)?)?([A-Z0-9]{10,30}))",
             re.IGNORECASE | re.MULTILINE,
         ),
         "branch_code": re.compile(

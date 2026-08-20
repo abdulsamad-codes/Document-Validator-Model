@@ -536,6 +536,56 @@ def test_extract_tripartite_agreement_fields():
     assert fields["branch_code"] == "Main Branch, Peshawar"
 
 
+#: Synthetic fixture mirroring the compound-document table layout found in
+#: TMA Thall Agreement.docx (2026-08-20): the Tripartite section appears as a
+#: signature table (parties listed in columns) followed by an account/fee table,
+#: with no labeled "Account Number: <value>" block -- the account number sits in
+#: the last column of a "Sr No | Bank Name | Account No" table row instead.
+#: Fabricated data (PK99FAKE IBAN) -- never real extracted values.
+TRIPARTITE_AGREEMENT_COMPOUND_TABLE_TEXT = """\
+1. | For & Behalf of | 2 | For & Behalf of | 3 | For & Behalf of
+1 LINK (Pvt) Limited | Fake Municipal Administration | Khyber Pakhtunkhwa Information & Technology Board (KP-ITB)
+Name:
+Designation:
+CNIC: | Name:
+Designation:
+CNIC: | Name:
+Designation:
+
+Amount in PKR (Transaction Range) | Transaction Charges (Including 1-LINK)
+PKR 1-10,000 | PKR 25.00 per transaction
+
+Sr No | Bank Name | Account No
+01 | Bank of Fake Branch | PK99FAKE00012345678901
+"""
+
+
+def test_extract_tripartite_agreement_compound_table_layout():
+    """account_number must be extracted from a pipe-separated table row (not a
+    labeled-block). Validated on n=1 real sample (TMA Thall Agreement.docx,
+    2026-08-20) -- an unusually messy compound doc, not a clean split page.
+    The party_1link fix (spaced '1 LINK') and party_kpitb fix (optional '&')
+    are also exercised here.
+    """
+    fields = extract_fields(
+        TRIPARTITE_AGREEMENT_COMPOUND_TABLE_TEXT,
+        AnalyzedDocumentType.TRIPARTITE_AGREEMENT,
+    )
+    # 1 LINK (with space) must now be recognised
+    assert "1 LINK" in fields.get("party_1link", ""), (
+        f"party_1link should contain '1 LINK'; got {fields.get('party_1link')!r}"
+    )
+    # KPITB with & variant must now be recognised
+    assert (
+        "Khyber Pakhtunkhwa Information" in fields.get("party_kpitb", "")
+        or fields.get("party_kpitb") == "KP-ITB"
+    ), f"party_kpitb not extracted; got {fields.get('party_kpitb')!r}"
+    # Table-row account number (PK99FAKE...) must be extracted
+    assert fields.get("account_number") == "PK99FAKE00012345678901", (
+        f"account_number: expected 'PK99FAKE00012345678901'; got {fields.get('account_number')!r}"
+    )
+
+
 def test_checklist_field_labels_never_route_into_keyword_detection():
     # The Account Maintenance Certificate's own field labels ("IBAN",
     # "Account Number") are close enough to the bank-statement keyword table
