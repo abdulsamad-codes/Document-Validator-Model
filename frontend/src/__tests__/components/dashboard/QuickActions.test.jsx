@@ -16,7 +16,8 @@ const VALIDATION = /^Open Validation(?! Report)/i;
 const VALIDATION_REPORT = /^Open Validation Report/i;
 const HUMAN_REVIEW = /^Open Human Review/i;
 const PROCESSING = /^Processing/i;
-const SYSTEM_LOGS = /^System Logs/i;
+const APPLICATION_HISTORY = /^Application History/i;
+const PERFORMANCE = /^Performance/i;
 
 function renderActions(role) {
   useAuth.mockReturnValue({ user: { role } });
@@ -40,14 +41,15 @@ describe('QuickActions', () => {
     vi.clearAllMocks();
   });
 
-  it('shows every shortcut for the Employee (testing/supervisor) account', () => {
+  it('hides strict IT shortcuts from the Employee account', () => {
     renderActions('Verification Officer');
     expectLink(NEW_APPLICATION, '/applications/new');
     expectLink(VIEW_APPLICATIONS, '/applications');
     expectLink(VALIDATION, '/validation');
     expectLink(VALIDATION_REPORT, '/reports');
     expectLink(HUMAN_REVIEW, '/human-review');
-    expectLink(SYSTEM_LOGS, '/settings/system-logs');
+    expectNoLink(APPLICATION_HISTORY);
+    expectNoLink(PERFORMANCE);
   });
 
   it('shows intake, validation and processing shortcuts for an OPERATOR', () => {
@@ -58,7 +60,8 @@ describe('QuickActions', () => {
     expectLink(PROCESSING, '/processing');
     expectNoLink(VALIDATION_REPORT);
     expectNoLink(HUMAN_REVIEW);
-    expectNoLink(SYSTEM_LOGS);
+    expectNoLink(APPLICATION_HISTORY);
+    expectNoLink(PERFORMANCE);
   });
 
   it('shows review and report shortcuts but no create action for a REVIEWER', () => {
@@ -69,14 +72,16 @@ describe('QuickActions', () => {
     expectLink(PROCESSING, '/processing');
     expectNoLink(NEW_APPLICATION);
     expectNoLink(VALIDATION);
-    expectNoLink(SYSTEM_LOGS);
+    expectNoLink(APPLICATION_HISTORY);
+    expectNoLink(PERFORMANCE);
   });
 
-  it('shows monitoring and system-log shortcuts for an IT user', () => {
+  it('shows monitoring, history and performance shortcuts for an IT user', () => {
     renderActions('IT');
     expectLink(VIEW_APPLICATIONS, '/applications');
     expectLink(PROCESSING, '/processing');
-    expectLink(SYSTEM_LOGS, '/settings/system-logs');
+    expectLink(APPLICATION_HISTORY, '/application-history');
+    expectLink(PERFORMANCE, '/performance');
     expectNoLink(NEW_APPLICATION);
     expectNoLink(VALIDATION);
     expectNoLink(VALIDATION_REPORT);
@@ -93,6 +98,7 @@ describe('QuickActions', () => {
     expectLink(NEW_APPLICATION, '/applications/new');
     expectLink(VALIDATION, '/validation');
     expectNoLink(VALIDATION_REPORT);
-    expectNoLink(SYSTEM_LOGS);
+    expectNoLink(APPLICATION_HISTORY);
+    expectNoLink(PERFORMANCE);
   });
 });

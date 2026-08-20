@@ -1,10 +1,11 @@
 import {
   Activity,
+  BarChart3,
   ClipboardCheck,
   FileText,
   FolderOpen,
+  History,
   Plus,
-  ScrollText,
   UserCheck,
 } from 'lucide-react';
 import { isEmployee, isIt, isOperator, isReviewer } from '../utils/roles';
@@ -65,11 +66,17 @@ const ACTION_DEFS = {
     to: '/processing',
     icon: Activity,
   },
-  'system-logs': {
-    id: 'system-logs',
-    label: 'System Logs',
-    to: '/settings/system-logs',
-    icon: ScrollText,
+  'application-history': {
+    id: 'application-history',
+    label: 'Application History',
+    to: '/application-history',
+    icon: History,
+  },
+  performance: {
+    id: 'performance',
+    label: 'Performance',
+    to: '/performance',
+    icon: BarChart3,
   },
 };
 
@@ -77,10 +84,11 @@ const ACTION_DEFS = {
  * Dashboard Quick Actions per canonical role.
  *
  * Navigation visibility only -- the backend 403 stays authoritative. The
- * Employee (testing/supervisor) account sees every shortcut; Operator handles
+ * Employee (testing/supervisor) account sees business-workflow shortcuts; the
+ * strict IT-only history/performance shortcuts are reserved for IT. Operator handles
  * intake + validation + processing; Reviewer reviews validated applications;
- * IT monitors processing and system activity. Roles that cannot create an
- * application do not get a "New Application" shortcut at all.
+ * IT monitors processing, application history and performance. Roles that
+ * cannot create an application do not get a "New Application" shortcut at all.
  */
 export const DASHBOARD_ACTIONS = {
   EMPLOYEE: [
@@ -89,7 +97,6 @@ export const DASHBOARD_ACTIONS = {
     { ...ACTION_DEFS.validation, description: 'Check document completeness and handle missing documents.' },
     { ...ACTION_DEFS['validation-report'], description: 'Inspect validation results and document issues.' },
     { ...ACTION_DEFS['human-review'], description: 'Make the final decision on an application.' },
-    { ...ACTION_DEFS['system-logs'], description: 'View system activity and audit logs.' },
   ],
   OPERATOR: [
     { ...ACTION_DEFS['new-application'], description: 'Start a new document verification case.' },
@@ -106,7 +113,8 @@ export const DASHBOARD_ACTIONS = {
   IT: [
     { ...ACTION_DEFS['view-applications'], description: 'Monitor application records and current status.' },
     { ...ACTION_DEFS.processing, description: 'Monitor document processing activity.' },
-    { ...ACTION_DEFS['system-logs'], description: 'Inspect system activity and audit logs.' },
+    { ...ACTION_DEFS['application-history'], description: 'Review the full lifecycle of every application.' },
+    { ...ACTION_DEFS.performance, description: 'Inspect turnaround, processing and waiting times.' },
   ],
 };
 

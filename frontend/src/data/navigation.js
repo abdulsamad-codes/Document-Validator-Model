@@ -1,13 +1,14 @@
 import {
   Activity,
+  BarChart3,
   ClipboardCheck,
   FileText,
   FolderOpen,
+  History,
   LayoutDashboard,
   MessageSquare,
   RefreshCw,
   Settings,
-  ScrollText,
   UserCheck,
 } from 'lucide-react';
 
@@ -17,18 +18,19 @@ import {
  * Each section groups top-level links only. Feedback collection and Continuous
  * Learning are internal administrative functions and are deliberately not
  * sidebar entries: they hang off the Settings item as admin-only child links
- * and are surfaced on the Settings page. System Logs is an IT-only operational
- * function and likewise hangs off Settings rather than the sidebar. Internal
- * document-processing stages (technical validation, extraction, confidence,
- * normalisation, business rules, ...) are intentionally absent: they run
- * automatically as part of application verification and will surface later
- * inside an application's status view, not as sidebar navigation.
+ * and are surfaced on the Settings page. Application History and Performance
+ * are IT-only operational views and are top-level System entries restricted
+ * to the IT role. Internal document-processing stages (technical validation,
+ * extraction, confidence, normalisation, business rules, ...) are
+ * intentionally absent: they run automatically as part of application
+ * verification and will surface later inside an application's status view,
+ * not as sidebar navigation.
  *
- * Role visibility: an item with a `roles` array is only shown to users whose
- * canonical role is listed (Employee always sees everything -- see
- * `visibleNavigationFor` in utils/roles.js). Items without a `roles` array are
- * shown to every authenticated user. This is a UI/UX gate only: routes stay
- * registered and the backend 403 remains the security gate.
+ * Role visibility: an item with a `roles` array is shown to users whose
+ * canonical role is listed, with Employee allowed through normal role gates.
+ * An item with `strictRoles` requires an exact canonical role. Items without
+ * either list are shown to every authenticated user. This is a UI/UX gate only:
+ * routes stay registered and the backend 403 remains the security gate.
  */
 export const NAVIGATION = [
   {
@@ -60,6 +62,20 @@ export const NAVIGATION = [
     label: 'System',
     items: [
       {
+        id: 'application-history',
+        label: 'Application History',
+        path: '/application-history',
+        icon: History,
+        strictRoles: ['IT'],
+      },
+      {
+        id: 'performance',
+        label: 'Performance',
+        path: '/performance',
+        icon: BarChart3,
+        strictRoles: ['IT'],
+      },
+      {
         id: 'settings',
         label: 'Settings',
         path: '/settings',
@@ -67,7 +83,6 @@ export const NAVIGATION = [
         children: [
           { id: 'feedback', label: 'Feedback', path: '/feedback', icon: MessageSquare, adminOnly: true, roles: ['IT'] },
           { id: 'continuous-learning', label: 'Continuous Learning', path: '/continuous-learning', icon: RefreshCw, adminOnly: true, roles: ['IT'] },
-          { id: 'system-logs', label: 'System Logs', path: '/settings/system-logs', icon: ScrollText, itOnly: true, roles: ['IT'] },
         ],
       },
     ],
