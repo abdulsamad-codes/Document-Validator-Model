@@ -63,9 +63,9 @@ export const VALIDATION_TASK_STATUSES = [
 
 export const DOCUMENT_STATUSES = [
   { value: 'UPLOADED', label: 'Uploaded', variant: 'success' },
-  { value: 'PENDING', label: 'Uploaded', variant: 'success' },
+  { value: 'PENDING', label: 'Pending', variant: 'info' },
   { value: 'PROCESSING', label: 'Processing', variant: 'info' },
-  { value: 'COMPLETED', label: 'Uploaded', variant: 'success' },
+  { value: 'COMPLETED', label: 'Completed', variant: 'success' },
   { value: 'FAILED', label: 'Failed', variant: 'danger' },
   { value: 'MISSING', label: 'Missing', variant: 'neutral' },
   { value: 'UPLOADING', label: 'Uploading', variant: 'info' },
