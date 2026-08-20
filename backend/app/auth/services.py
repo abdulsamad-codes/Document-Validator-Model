@@ -38,11 +38,19 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class TokenPair:
-    """An access token and its matching opaque refresh token."""
+    """An access token and its matching opaque refresh token.
+
+    Attributes:
+        access_token: Signed JWT access token.
+        refresh_token: Opaque refresh token.
+        refresh_expires_in: Lifetime of the refresh token.
+        remember: Whether the session persists across browser restarts.
+    """
 
     access_token: str
     refresh_token: str
     refresh_expires_in: timedelta
+    remember: bool
 
 
 class AuthenticationService:
@@ -57,12 +65,16 @@ class AuthenticationService:
         self._users = UserRepository(db)
         self._refresh_tokens = RefreshTokenRepository(db)
 
-    def _issue_token_pair(self, user: User, settings: Settings) -> TokenPair:
+    def _issue_token_pair(
+        self, user: User, settings: Settings, *, remember: bool
+    ) -> TokenPair:
         """Issue a fresh access token and a persisted opaque refresh token.
 
         Args:
             user: Authenticated user.
             settings: Application settings for token lifetimes.
+            remember: Whether the refresh session persists across browser
+                restarts; recorded on the token record so it survives rotation.
 
         Returns:
             The access token, the new refresh token and its lifetime.
@@ -79,11 +91,13 @@ class AuthenticationService:
             user_id=user.id,
             token_hash=hash_token(refresh_value),
             expires_at=expires_at,
+            remember=remember,
         )
         return TokenPair(
             access_token=access_token,
             refresh_token=refresh_value,
             refresh_expires_in=timedelta(days=settings.refresh_token_expire_days),
+            remember=remember,
         )
 
     def login(
@@ -95,9 +109,10 @@ class AuthenticationService:
     ) -> TokenPair:
         """Authenticate a user by employee id/email and issue a token pair.
 
-        The ``remember`` flag only controls whether the refresh cookie persists
-        across browser restarts (handled by the route layer); it does not change
-        the server-side token lifetime.
+        The ``remember`` flag controls whether the refresh cookie persists
+        across browser restarts. It is recorded on the issued refresh token so
+        the same persistence choice carries through later token rotations; it
+        does not change the server-side token lifetime.
 
         Args:
             identifier: Employee id or email.
@@ -105,7 +120,7 @@ class AuthenticationService:
             remember: Whether the device should be remembered.
 
         Returns:
-            A fresh token pair.
+            A fresh token pair carrying the ``remember`` choice.
 
         Raises:
             InvalidCredentials: When the identifier or password is wrong.
@@ -117,13 +132,15 @@ class AuthenticationService:
             raise InvalidCredentials()
         if not user.is_active:
             raise AccountInactive()
-        return self._issue_token_pair(user, settings)
+        return self._issue_token_pair(user, settings, remember=remember)
 
     def refresh(self, refresh_token: str) -> TokenPair:
         """Validate a refresh token and issue a rotated token pair.
 
         The presented token is revoked before the replacement is issued so a
-        captured token can never be replayed (rotation).
+        captured token can never be replayed (rotation). The original login-time
+        ``remember`` choice is read off the revoked record and carried into the
+        replacement so the refresh cookie keeps its persistence behaviour.
 
         Args:
             refresh_token: Opaque token from the refresh cookie.
@@ -145,7 +162,7 @@ class AuthenticationService:
         if not user.is_active:
             raise AccountInactive()
         self._refresh_tokens.revoke(record)
-        return self._issue_token_pair(user, settings)
+        return self._issue_token_pair(user, settings, remember=record.remember)
 
     def logout(self, refresh_token: str | None) -> None:
         """Revoke a refresh token, making its session invalid.

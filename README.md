@@ -300,7 +300,7 @@ environment variables / `.env` (see `backend/.env.example`):
 
 | Variable                 | Default                                                                        | Purpose                                 |
 | ------------------------ | ------------------------------------------------------------------------------ | --------------------------------------- |
-| `ENVIRONMENT`          | `development`                                                                | dev/testing/production                  |
+| `ENVIRONMENT`          | `production`                                                                   | dev/testing/production; defaults to production (fail closed) |
 | `DEBUG`                | `false`                                                                      | Never enable in production              |
 | `SECRET_KEY`           | dev placeholder (rejected in prod)                                             | Token signing & crypto derivation       |
 | `DATABASE_URL`         | `postgresql+psycopg://postgres:postgres@localhost:5432/finance_verification` | DB connection                           |
@@ -310,6 +310,11 @@ environment variables / `.env` (see `backend/.env.example`):
 | `CONFIDENCE_THRESHOLD` | `0.85`                                                                       | Critical fields below this force review |
 | `DEFAULT_EMPLOYEE_*`   | `EMP-1001` etc.                                                              | Seeded account credentials              |
 
+> `ENVIRONMENT` defaults to `production` so an omitted value never silently
+> enables development behaviour (insecure cookies, dev secret key, debug mode).
+> Local development and tests set it explicitly: `backend/.env.example` ships
+> `ENVIRONMENT=development`, and CI runs with `ENVIRONMENT=testing`.
+>
 > The seed script **refuses to run** with the development default password when
 > `ENVIRONMENT=production`.
 

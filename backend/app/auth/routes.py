@@ -218,7 +218,7 @@ def refresh(request: Request, response: Response, db: _GET_DB) -> AuthResponse:
     )
     user = _service(db).get_user_by_access_token(token_pair.access_token)
     _set_access_cookie(response, token_pair.access_token, settings)
-    _set_refresh_cookie(response, token_pair.refresh_token, settings, remember=True)
+    _set_refresh_cookie(response, token_pair.refresh_token, settings, remember=token_pair.remember)
     return AuthResponse(user=user)
 
 

@@ -40,6 +40,7 @@ class AuditLogRepository(BaseRepository[AuditLog]):
         severity: str | None = None,
         previous_status: str | None = None,
         new_status: str | None = None,
+        commit: bool = True,
     ) -> AuditLog:
         """Create and persist a new audit log entry.
 
@@ -54,6 +55,11 @@ class AuditLogRepository(BaseRepository[AuditLog]):
             severity: Severity/category of the event.
             previous_status: Application status before the event, if any.
             new_status: Application status after the event, if any.
+            commit: When ``False``, adds and flushes the entry but defers the
+                commit to the caller so it shares the caller's transaction.
+                Used by services that need the audit write to be atomic with a
+                business-data mutation. Defaults to ``True`` for the
+                repository's self-contained-transaction contract.
 
         Returns:
             The persisted audit log entry.
@@ -71,6 +77,9 @@ class AuditLogRepository(BaseRepository[AuditLog]):
             new_status=new_status,
         )
         self._db.add(entry)
+        if not commit:
+            self._db.flush()
+            return entry
         return self._commit_and_refresh(entry)
 
     def search(

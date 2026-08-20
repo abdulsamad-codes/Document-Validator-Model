@@ -108,7 +108,12 @@ class Settings(BaseSettings):
     )
 
     app_name: str = Field(default="finance-verification-system")
-    environment: Environment = Field(default="development")
+    #: Fail closed: an omitted ``ENVIRONMENT`` must never silently enable
+    #: development behaviour (non-Secure cookies, dev secret key, debug mode).
+    #: Local development and CI set ``ENVIRONMENT`` explicitly (see
+    #: ``backend/.env``/``.env.example`` and ``.github/workflows/ci.yml``), so
+    #: the safe default is production.
+    environment: Environment = Field(default="production")
     debug: bool = Field(default=False)
     secret_key: SecretStr = Field(default=SecretStr(_DEV_SECRET_KEY))
     database_url: str = Field(default=_DEFAULT_DATABASE_URL)

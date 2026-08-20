@@ -298,42 +298,54 @@ class ConfidenceService:
         )
         overall = self._overall_confidence(entries)
 
-        for entry in entries:
-            entry_status = (
-                entry["status"]
-                if entry["resolved"]
-                else FieldVerificationStatus.PENDING_REVIEW.value
-                if entry["field_name"] in flagged_names
-                else FieldVerificationStatus.AUTO_VERIFIED.value
-            )
-            entry["row"] = self._fields.upsert(
-                ocr_result_id=entry["ocr_result_id"],
-                field_name=entry["field_name"],
-                extracted_value=entry["extracted_value"],
-                confidence_score=entry["score"],
-                confidence_source=entry["primary"],
-                confidence_reason=entry["reason"],
-                verification_status=entry_status,
-                normalized_value=entry["normalized_value"],
-            )
+        try:
+            for entry in entries:
+                entry_status = (
+                    entry["status"]
+                    if entry["resolved"]
+                    else FieldVerificationStatus.PENDING_REVIEW.value
+                    if entry["field_name"] in flagged_names
+                    else FieldVerificationStatus.AUTO_VERIFIED.value
+                )
+                entry["row"] = self._fields.upsert(
+                    ocr_result_id=entry["ocr_result_id"],
+                    field_name=entry["field_name"],
+                    extracted_value=entry["extracted_value"],
+                    confidence_score=entry["score"],
+                    confidence_source=entry["primary"],
+                    confidence_reason=entry["reason"],
+                    verification_status=entry_status,
+                    normalized_value=entry["normalized_value"],
+                    commit=False,
+                )
 
-        fields_requiring_review = [
-            self._to_field_result(entry)
-            for entry in entries
-            if entry["field_name"] in flagged_names
-        ]
-        self._audit.create(
-            application_id=application_id,
-            username="system",
-            action=ACTION_EVALUATED,
-            details={
-                "status": status.value,
-                "version": CONFIDENCE_VERSION,
-                "field_count": len(entries),
-                "flagged_fields": sorted(flagged_names),
-                "critical_failures": critical_failures,
-            },
-        )
+            fields_requiring_review = [
+                self._to_field_result(entry)
+                for entry in entries
+                if entry["field_name"] in flagged_names
+            ]
+            # The audit write must share the transaction with the field upserts:
+            # both persist together or neither does. Deferring the audit commit
+            # (commit=False) and committing once afterwards keeps them atomic,
+            # so a failed audit write rolls the evaluation back instead of
+            # leaving an unaudited business change.
+            self._audit.create(
+                application_id=application_id,
+                username="system",
+                action=ACTION_EVALUATED,
+                details={
+                    "status": status.value,
+                    "version": CONFIDENCE_VERSION,
+                    "field_count": len(entries),
+                    "flagged_fields": sorted(flagged_names),
+                    "critical_failures": critical_failures,
+                },
+                commit=False,
+            )
+            self._db.commit()
+        except Exception:
+            self._db.rollback()
+            raise
         overall_display = f"{overall:.3f}" if overall is not None else "None"
         logger.info(
             "Confidence evaluated for application id=%s: status=%s "
@@ -394,41 +406,52 @@ class ConfidenceService:
         flagged_names = {field.field_name for field in pending}
         validate_review_request(request, flagged_names)
 
-        halted = False
-        decided: dict[str, str] = {}
-        for decision in request.decisions:
-            targets = [field for field in pending if field.field_name == decision.field_name]
-            for field in targets:
-                self._apply_decision(
-                    application_id=application_id,
-                    field=field,
-                    decision=decision.decision,
-                    corrected_value=decision.corrected_value,
-                    reviewer_name=reviewer_name,
-                )
-                decided[field.field_name] = decision.decision.value
-            if decision.decision is ReviewDecisionType.CANNOT_VERIFY:
-                halted = True
+        try:
+            halted = False
+            decided: dict[str, str] = {}
+            for decision in request.decisions:
+                targets = [field for field in pending if field.field_name == decision.field_name]
+                for field in targets:
+                    self._apply_decision(
+                        application_id=application_id,
+                        field=field,
+                        decision=decision.decision,
+                        corrected_value=decision.corrected_value,
+                        reviewer_name=reviewer_name,
+                        commit=False,
+                    )
+                    decided[field.field_name] = decision.decision.value
+                if decision.decision is ReviewDecisionType.CANNOT_VERIFY:
+                    halted = True
 
-        self._db.commit()
-        status = (
-            EvaluationStatus.PROCESSING_HALTED
-            if halted
-            else EvaluationStatus.READY_FOR_NORMALIZATION
-        )
-        self._audit.create(
-            application_id=application_id,
-            username=reviewer_name,
-            action=ACTION_REVIEWED,
-            details={"status": status.value, "decisions": decided},
-        )
-        if halted:
+            status = (
+                EvaluationStatus.PROCESSING_HALTED
+                if halted
+                else EvaluationStatus.READY_FOR_NORMALIZATION
+            )
+            # The summary audit writes must share the transaction with the
+            # field mutations: everything commits together once below, so a
+            # failed audit write rolls the review back instead of leaving an
+            # unaudited business change.
             self._audit.create(
                 application_id=application_id,
                 username=reviewer_name,
-                action=ACTION_HALTED,
-                details={"status": status.value, "halted_fields": decided},
+                action=ACTION_REVIEWED,
+                details={"status": status.value, "decisions": decided},
+                commit=False,
             )
+            if halted:
+                self._audit.create(
+                    application_id=application_id,
+                    username=reviewer_name,
+                    action=ACTION_HALTED,
+                    details={"status": status.value, "halted_fields": decided},
+                    commit=False,
+                )
+            self._db.commit()
+        except Exception:
+            self._db.rollback()
+            raise
         logger.info(
             "Confidence review applied for application id=%s by reviewer=%s: "
             "status=%s decisions=%s",
@@ -535,8 +558,21 @@ class ConfidenceService:
         decision: ReviewDecisionType,
         corrected_value: str | None,
         reviewer_name: str,
+        commit: bool,
     ) -> None:
-        """Apply one employee decision to a pending field row."""
+        """Apply one employee decision to a pending field row.
+
+        Args:
+            application_id: Id of the application being reviewed.
+            field: The pending field row to mutate.
+            decision: The reviewer's decision.
+            corrected_value: Corrected value, when the decision is CORRECTED.
+            reviewer_name: Identity of the reviewer.
+            commit: Whether the audit (and feedback) writes commit immediately
+                or are deferred to the caller's single transaction. ``review``
+                passes ``False`` so the mutation, feedback sample and audit
+                entry all commit together.
+        """
         if decision is ReviewDecisionType.VERIFIED:
             field.human_verified = True
             field.reviewer = reviewer_name
@@ -548,6 +584,7 @@ class ConfidenceService:
                 username=reviewer_name,
                 action=ACTION_VERIFIED,
                 details={"field_name": field.field_name},
+                commit=commit,
             )
             logger.info(
                 "Field %s verified for application id=%s",
@@ -566,6 +603,13 @@ class ConfidenceService:
             field.extracted_value = corrected_value or ""
             field.verification_status = FieldVerificationStatus.CORRECTED.value
             field.confidence_score = 1.0
+            self._audit.create(
+                application_id=application_id,
+                username=reviewer_name,
+                action=ACTION_CORRECTED,
+                details={"field_name": field.field_name},
+                commit=commit,
+            )
             self._feedback.create(
                 application_id=application_id,
                 field_name=field.field_name,
@@ -579,12 +623,7 @@ class ConfidenceService:
                 reviewer=reviewer_name,
                 decision=ReviewDecisionType.CORRECTED.value,
                 origin=ORIGIN_LOW_CONFIDENCE_REVIEW,
-            )
-            self._audit.create(
-                application_id=application_id,
-                username=reviewer_name,
-                action=ACTION_CORRECTED,
-                details={"field_name": field.field_name},
+                commit=commit,
             )
             logger.info(
                 "Field %s corrected for application id=%s (feedback recorded)",
@@ -601,6 +640,7 @@ class ConfidenceService:
             username=reviewer_name,
             action=ACTION_CANNOT_VERIFY,
             details={"field_name": field.field_name},
+            commit=commit,
         )
         logger.warning(
             "Field %s cannot be verified for application id=%s; processing halted",

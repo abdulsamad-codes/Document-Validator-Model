@@ -94,35 +94,45 @@ class NormalizationService:
 
         items: list[NormalizedFieldItem] = []
         summary = NormalizationSummary()
-        for field in fields:
-            item = self.normalize_field(
-                field_name=field.field_name,
-                value=field.human_corrected_value or field.extracted_value or "",
-                document_id=context[field.ocr_result_id][0],
-                file_name=context[field.ocr_result_id][1],
-                verification_status=field.verification_status,
-            )
-            items.append(item)
-            if item.status is NormalizationOutcome.NORMALIZED:
-                summary.normalized += 1
-                field.normalized_value = item.normalized_value
-            elif item.status is NormalizationOutcome.SKIPPED:
-                summary.skipped += 1
-            else:
-                summary.failed += 1
-        summary.total = len(items)
+        try:
+            for field in fields:
+                item = self.normalize_field(
+                    field_name=field.field_name,
+                    value=field.human_corrected_value or field.extracted_value or "",
+                    document_id=context[field.ocr_result_id][0],
+                    file_name=context[field.ocr_result_id][1],
+                    verification_status=field.verification_status,
+                )
+                items.append(item)
+                if item.status is NormalizationOutcome.NORMALIZED:
+                    summary.normalized += 1
+                    field.normalized_value = item.normalized_value
+                elif item.status is NormalizationOutcome.SKIPPED:
+                    summary.skipped += 1
+                else:
+                    summary.failed += 1
+            summary.total = len(items)
 
-        self._db.commit()
-        self._audit.create(
-            application_id=application_id,
-            username="system",
-            action=ACTION_NORMALIZED,
-            details={
-                "status": NormalizationStatus.READY_FOR_BUSINESS_VALIDATION.value,
-                "version": NORMALIZATION_VERSION,
-                "summary": summary.model_dump(),
-            },
-        )
+            # The audit write must share the transaction with the field
+            # mutations: both persist together or neither does. Deferring the
+            # audit commit (commit=False) and committing once afterwards keeps
+            # them atomic, so a failed audit write rolls the mutations back
+            # instead of leaving an unaudited business change.
+            self._audit.create(
+                application_id=application_id,
+                username="system",
+                action=ACTION_NORMALIZED,
+                details={
+                    "status": NormalizationStatus.READY_FOR_BUSINESS_VALIDATION.value,
+                    "version": NORMALIZATION_VERSION,
+                    "summary": summary.model_dump(),
+                },
+                commit=False,
+            )
+            self._db.commit()
+        except Exception:
+            self._db.rollback()
+            raise
         logger.info(
             "Normalization completed for application id=%s: total=%s "
             "normalized=%s skipped=%s failed=%s",

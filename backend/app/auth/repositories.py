@@ -80,6 +80,7 @@ class RefreshTokenRepository(BaseRepository[RefreshToken]):
         user_id: int,
         token_hash: str,
         expires_at: datetime,
+        remember: bool = False,
     ) -> RefreshToken:
         """Persist a new refresh token record.
 
@@ -87,6 +88,7 @@ class RefreshTokenRepository(BaseRepository[RefreshToken]):
             user_id: Owning user.
             token_hash: SHA-256 digest of the opaque token value.
             expires_at: Absolute expiry of the token.
+            remember: Whether the session persists across browser restarts.
 
         Returns:
             The persisted token record.
@@ -95,6 +97,7 @@ class RefreshTokenRepository(BaseRepository[RefreshToken]):
             user_id=user_id,
             token_hash=token_hash,
             expires_at=expires_at,
+            remember=remember,
         )
         self._db.add(entry)
         return self._commit_and_refresh(entry)

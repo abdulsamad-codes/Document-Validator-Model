@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -29,6 +29,9 @@ class RefreshToken(Base):
         token_hash: SHA-256 digest of the opaque token value.
         expires_at: When the token can no longer be used (UTC).
         revoked_at: When the token was revoked, or ``None`` while active.
+        remember: Whether the device should be remembered across browser
+            restarts; carried across rotation so the refresh cookie keeps the
+            login-time persistence choice.
         created_at: When the token was issued (UTC).
     """
 
@@ -46,6 +49,12 @@ class RefreshToken(Base):
         nullable=False,
     )
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    remember: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default="false",
+        nullable=False,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

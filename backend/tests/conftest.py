@@ -52,6 +52,11 @@ _TEST_DATABASE_URL = os.environ.get(
     + "/finance_verification_test",
 )
 os.environ["DATABASE_URL"] = _TEST_DATABASE_URL
+# Pin the environment explicitly (matching CI) instead of relying on the
+# ``.env`` file's ``development`` value or the production default. Tests are
+# deterministic no matter which directory pytest runs from, and never inherit
+# the unsafe "omitted ENVIRONMENT" case that ``config.py`` now fails closed on.
+os.environ["ENVIRONMENT"] = "testing"
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

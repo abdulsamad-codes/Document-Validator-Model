@@ -36,6 +36,7 @@ class ExtractedFieldRepository(BaseRepository[ExtractedField]):
         confidence_reason: str | None,
         verification_status: str | None,
         normalized_value: str | None = None,
+        commit: bool = True,
     ) -> ExtractedField:
         """Create or refresh the field row keyed on the OCR result and name.
 
@@ -53,6 +54,11 @@ class ExtractedFieldRepository(BaseRepository[ExtractedField]):
             confidence_reason: Human-readable explanation of the score.
             verification_status: Per-field verification state.
             normalized_value: Canonical form of the value, if available.
+            commit: When ``False``, adds/mutates and flushes the row but defers
+                the commit to the caller so it shares the caller's transaction
+                (used when a surrounding service needs the field write to be
+                atomic with an audit write). Defaults to ``True`` for the
+                repository's self-contained-transaction contract.
 
         Returns:
             The persisted (created or updated) field row.
@@ -71,6 +77,9 @@ class ExtractedFieldRepository(BaseRepository[ExtractedField]):
         field.confidence_reason = confidence_reason
         field.verification_status = verification_status
         field.normalized_value = normalized_value
+        if not commit:
+            self._db.flush()
+            return field
         return self._commit_and_refresh(field)
 
     def get_by_ocr_result_and_name(
