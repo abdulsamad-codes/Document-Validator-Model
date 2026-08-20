@@ -643,7 +643,7 @@ class BusinessRequirementDocumentExtractor(RegexExtractor):
 
     _patterns = {
         "digitization_intent_confirmed": re.compile(
-            r"(KPITB'?S?\s+Fin\s*Tech\s+Unit)",
+            r"(KPITB'?S?\s+Fin\s*Tech\s+Unit|Khyber\s+Pakhtunkhwa\s+Information\s+Technology\s+Board\s*\n?\(?KPITB\)?)",
             re.IGNORECASE,
         ),
         "revenue_services_listed": re.compile(
