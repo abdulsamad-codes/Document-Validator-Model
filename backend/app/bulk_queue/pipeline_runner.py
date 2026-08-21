@@ -78,7 +78,7 @@ class PipelineRunnerService:
         self._run_stage("rule_validation", lambda: RuleEngineService(self._db).validate(
             application_id=application_id
         ))
-        self._mark_pending_review(application_id)
+        self._run_stage("mark_pending_review", lambda: self._mark_pending_review(application_id))
         logger.info("Pipeline completed for application id=%s", application_id)
 
     def _mark_pending_review(self, application_id: int) -> None:

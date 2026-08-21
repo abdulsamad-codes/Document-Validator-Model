@@ -42,6 +42,7 @@ class FeedbackRepository(BaseRepository[FeedbackEntry]):
         reviewer: str | None = None,
         decision: str | None = None,
         origin: str | None = None,
+        commit: bool = True,
     ) -> FeedbackEntry:
         """Create and persist a new feedback dataset sample.
 
@@ -60,6 +61,11 @@ class FeedbackRepository(BaseRepository[FeedbackEntry]):
             decision: Review decision that produced the correction.
             origin: Whether the correction came from a low-confidence review
                 or the final human review.
+            commit: When ``False``, adds and flushes the entry but defers the
+                commit to the caller so it shares the caller's transaction
+                (used when a surrounding service needs the feedback write to be
+                atomic with an audit write). Defaults to ``True`` for the
+                repository's self-contained-transaction contract.
 
         Returns:
             The persisted feedback entry.
@@ -80,6 +86,9 @@ class FeedbackRepository(BaseRepository[FeedbackEntry]):
             origin=origin,
         )
         self._db.add(entry)
+        if not commit:
+            self._db.flush()
+            return entry
         return self._commit_and_refresh(entry)
 
     def count(self) -> int:

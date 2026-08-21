@@ -1,53 +1,73 @@
 """Shared fixtures for the upload test suite.
 
-Uploads are exercised through the real FastAPI application and a genuinely
-isolated database (see the ``DATABASE_URL`` override directly below -- always
-the configured dev/CI database's name with ``_test`` appended, never the real
-one), while the storage backend is redirected to a per-test temporary
-directory so the repository's ``storage/`` tree is never touched. The test
-database is wiped before and after every test via the cascade on
-``applications`` (which removes documents, OCR data, validations and
-reviews); ``_wipe_database`` additionally refuses to run at all against a
-database whose name doesn't contain "test", as a second, independent guard.
+Uploads are exercised through the real FastAPI application. The database is a
+**dedicated test database** (``TEST_DATABASE_URL``, or the development database
+name suffixed ``_test``): the ``DATABASE_URL`` environment variable is pointed
+at it *before any application module is imported*, so the SQLAlchemy engine and
+session factory built at import time bind to the test database -- never the
+live development database that the running backend and queue worker use. A
+session-scoped autouse fixture recreates the test database schema from scratch
+(``alembic upgrade head``) once per run.
+
+The storage backend is redirected to a per-test temporary directory so the
+repository's ``storage/`` tree is never touched. The database is wiped before
+and after every test via the cascade on ``applications`` (which removes
+documents, OCR data, validations and reviews); ``_wipe_database`` additionally
+refuses to run at all against a database whose name doesn't contain "test", as
+a second, independent guard against ever wiping the real development database.
 """
 
 import os
 from pathlib import Path
-from urllib.parse import urlsplit, urlunsplit
 
-from dotenv import dotenv_values
+# ---------------------------------------------------------------------------
+# Point the application engine at a dedicated test database BEFORE any app
+# module is imported. ``app.database.connection`` builds its engine and session
+# factory at import time from ``DATABASE_URL``, so this must run before the
+# ``from app...`` imports below.
+#
+# The development URL is read from the same ``.env`` file the application uses
+# (``os.environ`` does not contain it unless it was exported), and the test URL
+# is derived by appending ``_test`` to the database name. A caller can override
+# either side explicitly via ``TEST_DATABASE_URL``.
+# ---------------------------------------------------------------------------
 
-#: Point every test at an isolated ``..._test`` database, derived from
-#: whatever DATABASE_URL is already configured (dev locally, CI elsewhere) --
-#: never hardcoded, never the real database. Must run before
-#: ``app.database.connection`` (or anything importing it) is first imported
-#: anywhere in the test session: its ``engine``/``SessionLocal`` are created
-#: once at module-import time from the settings available *then*, so
-#: overriding the setting after that point would have no effect.
-#:
-#: DATABASE_URL is read via ``dotenv_values`` rather than ``os.environ``
-#: because it normally lives only in ``.env`` (loaded internally by
-#: ``pydantic-settings`` when ``Settings()`` is constructed) -- it is not
-#: exported as a real process environment variable, so ``os.environ`` alone
-#: would silently miss it and this override would do nothing.
-_dev_database_url = os.environ.get("DATABASE_URL") or dotenv_values(".env").get(
-    "DATABASE_URL", ""
+
+def _dotenv_database_url() -> str:
+    """Read DATABASE_URL from the backend's .env file, if present."""
+    dotenv = Path(__file__).resolve().parent.parent / ".env"
+    if not dotenv.is_file():
+        return ""
+    for line in dotenv.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line.startswith("DATABASE_URL="):
+            return line.split("=", 1)[1].strip().strip('"').strip("'")
+    return ""
+
+
+_DOTENV_DATABASE_URL = _dotenv_database_url()
+_TEST_DATABASE_URL = os.environ.get(
+    "TEST_DATABASE_URL",
+    os.environ.get("DATABASE_URL", _DOTENV_DATABASE_URL).rsplit("/", 1)[0]
+    + "/finance_verification_test",
 )
-if _dev_database_url:
-    _parts = urlsplit(_dev_database_url)
-    _test_db_name = (_parts.path.lstrip("/") or "finance_verification") + "_test"
-    os.environ["DATABASE_URL"] = urlunsplit(_parts._replace(path=f"/{_test_db_name}"))
+os.environ["DATABASE_URL"] = _TEST_DATABASE_URL
+# Pin the environment explicitly (matching CI) instead of relying on the
+# ``.env`` file's ``development`` value or the production default. Tests are
+# deterministic no matter which directory pytest runs from, and never inherit
+# the unsafe "omitted ENVIRONMENT" case that ``config.py`` now fails closed on.
+os.environ["ENVIRONMENT"] = "testing"
 
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import text
+import pytest  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import text  # noqa: E402
 
-from app.auth.seed import seed as seed_default_account
-from app.core.config import get_settings
-from app.core.security import hash_password
-from app.database.connection import SessionLocal
-from app.database.models.user import User
-from app.main import app
+from app.auth.seed import seed as seed_default_account  # noqa: E402
+from app.core.config import get_settings  # noqa: E402
+from app.core.security import hash_password  # noqa: E402
+from app.database.connection import SessionLocal  # noqa: E402
+from app.database.models.user import User  # noqa: E402
+from app.main import app  # noqa: E402
 
 #: Credentials for the fixed operator identity the ``authenticated_client``
 #: fixture logs in as. Safe to hardcode: ``isolated_database`` wipes every
@@ -88,6 +108,8 @@ def _wipe_database() -> None:
                 "CONTEXT.md this guard exists to prevent."
             )
         db.execute(text("DELETE FROM refresh_tokens"))
+        db.execute(text("DELETE FROM audit_logs"))
+        db.execute(text("DELETE FROM application_validation_history"))
         db.execute(text("DELETE FROM users"))
         db.execute(text("DELETE FROM applications"))
         db.commit()
@@ -127,15 +149,33 @@ def authenticated_client(client: TestClient) -> TestClient:
     same ``TestClient``, just with a valid session cookie already set, so
     every subsequent request on it carries the cookie automatically.
     """
+    return _login_as(
+        client,
+        _TEST_OPERATOR_EMPLOYEE_ID,
+        _TEST_OPERATOR_PASSWORD,
+        name="Test Operator",
+        role="Verification Officer",
+    )
+
+
+def _login_as(
+    client: TestClient,
+    employee_id: str,
+    password: str,
+    *,
+    name: str,
+    role: str,
+) -> TestClient:
+    """Create a user, log it in, and return the cookie-carrying client."""
     db = SessionLocal()
     try:
         db.add(
             User(
-                employee_id=_TEST_OPERATOR_EMPLOYEE_ID,
-                email="test-operator@example.test",
-                name="Test Operator",
-                role="Verification Officer",
-                password_hash=hash_password(_TEST_OPERATOR_PASSWORD),
+                employee_id=employee_id,
+                email=f"{employee_id.lower()}@example.test",
+                name=name,
+                role=role,
+                password_hash=hash_password(password),
                 is_active=True,
             )
         )
@@ -145,13 +185,131 @@ def authenticated_client(client: TestClient) -> TestClient:
     response = client.post(
         f"{get_settings().api_prefix}/auth/login",
         json={
-            "identifier": _TEST_OPERATOR_EMPLOYEE_ID,
-            "password": _TEST_OPERATOR_PASSWORD,
+            "identifier": employee_id,
+            "password": password,
             "remember": False,
         },
     )
     assert response.status_code == 200, response.text
     return client
+
+
+@pytest.fixture()
+def operator_client(client: TestClient) -> TestClient:
+    """A ``client`` logged in as an OPERATOR-role user.
+
+    Roles are stored as free-form strings, so this fixture creates a user whose
+    stored role is the canonical ``OPERATOR`` string, which
+    :func:`app.auth.roles.effective_role` returns unchanged.
+    """
+    return _login_as_role(client, "OPERATOR", "TEST-OPERATOR")
+
+
+@pytest.fixture()
+def reviewer_client(client: TestClient) -> TestClient:
+    """A ``client`` logged in as a REVIEWER-role user (canonical string)."""
+    return _login_as_role(client, "REVIEWER", "TEST-REVIEWER")
+
+
+@pytest.fixture()
+def it_client(client: TestClient) -> TestClient:
+    """A ``client`` logged in as an IT-role user (canonical string)."""
+    return _login_as_role(client, "IT", "TEST-IT")
+
+
+@pytest.fixture()
+def employee_client(client: TestClient) -> TestClient:
+    """A ``client`` logged in as the Employee all-access account."""
+    return _login_as_role(client, "EMPLOYEE", "TEST-EMPLOYEE")
+
+
+def _login_as_role(client: TestClient, role: str, employee_id: str) -> TestClient:
+    """Create a user with a specific stored role and log it in."""
+    return _login_as(
+        client,
+        employee_id,
+        _TEST_OPERATOR_PASSWORD,
+        name=f"Test {role}",
+        role=role,
+    )
+
+
+@pytest.fixture(scope="session", autouse=True)
+def test_database():
+    """Create and migrate the dedicated test database once per session.
+
+    Runs before any test: (1) connects to the server and creates the ``*_test``
+    database if it does not exist, then (2) applies all Alembic migrations to it
+    so its schema matches ``alembic upgrade head``. This is what lets
+    ``isolated_database`` wipe tables before/after every test with zero risk to
+    the live development database.
+
+    The database role needs the ``CREATEDB`` privilege. On this machine the
+    application role (``finance_app``) was created without it, so the test
+    database must be created once by an administrator:
+
+        CREATE DATABASE finance_verification_test OWNER finance_app;
+
+    until then, this fixture raises with instructions rather than silently
+    falling back to the development database.
+    """
+    _create_test_database_if_missing()
+    _migrate_test_database()
+    yield
+
+
+def _server_superuser_url() -> str:
+    """Return the test URL rewritten to the maintenance ``postgres`` database.
+
+    Postgres cannot run ``CREATE DATABASE`` from inside a transaction and the
+    target database may not exist yet, so the creation connection must attach
+    to a database that always exists. Same credentials, database swapped.
+    """
+    from sqlalchemy.engine import make_url
+
+    url = make_url(_TEST_DATABASE_URL)
+    return url.set(database="postgres")
+
+
+def _create_test_database_if_missing() -> None:
+    """Create the dedicated test database when it does not exist."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.engine import make_url
+
+    url = make_url(_TEST_DATABASE_URL)
+    try:
+        engine = create_engine(_server_superuser_url(), isolation_level="AUTOCOMMIT")
+        try:
+            with engine.connect() as conn:
+                exists = conn.execute(
+                    text("SELECT 1 FROM pg_database WHERE datname = :name"),
+                    {"name": url.database},
+                ).scalar()
+                if not exists:
+                    conn.execute(text(f'CREATE DATABASE "{url.database}"'))
+        finally:
+            engine.dispose()
+    except Exception as exc:  # pragma: no cover - environment provisioning
+        if "InsufficientPrivilege" in str(exc):
+            raise RuntimeError(
+                "Cannot create the test database "
+                f'"{url.database}": the application role lacks CREATEDB. '
+                "Create it once as a database administrator, e.g.\n\n"
+                "    CREATE DATABASE finance_verification_test OWNER finance_app;\n\n"
+                "or point TEST_DATABASE_URL at a pre-created database."
+            ) from exc
+        raise
+
+
+def _migrate_test_database() -> None:
+    """Apply every Alembic migration to the test database (``upgrade head``)."""
+    from alembic import command
+    from alembic.config import Config
+
+    backend = Path(__file__).resolve().parent.parent
+    cfg = Config(str(backend / "alembic.ini"))
+    cfg.set_main_option("script_location", str(backend / "alembic"))
+    command.upgrade(cfg, "head")
 
 
 @pytest.fixture(autouse=True)

@@ -48,6 +48,10 @@ logger = logging.getLogger(__name__)
 #: enqueued -- see PIPELINE_BLOCKED handling in _maybe_start_pipeline.
 ACTION_PIPELINE_BLOCKED = "PIPELINE_BLOCKED_NO_PROCESSED_DOCUMENTS"
 
+#: Audit action recorded when the APPLICATION_PIPELINE job permanently fails
+#: after exhausting its retry budget -- see _handle_pipeline_failure.
+ACTION_PIPELINE_FAILED = "APPLICATION_PIPELINE_FAILED"
+
 #: Seconds between process-liveness heartbeat file writes -- independent of
 #: (and much coarser than) the per-job DB heartbeat in _start_heartbeat, which
 #: exists to prove one claimed job is still being worked. This one exists to
@@ -297,6 +301,8 @@ class BulkQueueWorker:
                 JobStatus.FAILED,
             ):
                 self._maybe_start_pipeline(db, jobs, job.application_id)
+            elif job.job_type is JobType.APPLICATION_PIPELINE and job.status is JobStatus.FAILED:
+                self._handle_pipeline_failure(db, job)
         finally:
             stop_heartbeat()
 
@@ -339,6 +345,48 @@ class BulkQueueWorker:
         )
         if enqueued is not None:
             logger.info("Pipeline job enqueued for application id=%s", application_id)
+
+    def _handle_pipeline_failure(
+        self,
+        db: Session,
+        job: QueueJob,
+    ) -> None:
+        """Handle a permanently failed APPLICATION_PIPELINE job.
+
+        When the pipeline runner exhausts its retry budget the application must
+        not stay silently stuck at ``PROCESSING``. This records an audit trail
+        and moves the application to ``PROCESSING_FAILED`` so the UI and
+        operators can see the failure, investigate the ``last_error`` on the
+        pipeline queue job, and trigger a manual retry.
+
+        Only fires for permanently ``FAILED`` jobs (not ``RETRY_WAITING``),
+        and only when the application is still at ``PROCESSING`` to avoid
+        overwriting a status a human or another path has already set.
+        """
+        applications = ApplicationRepository(db)
+        application = applications.get_by_id(job.application_id)
+        if application is None:
+            return
+        if application.status is not ApplicationStatus.PROCESSING:
+            return
+        error_detail = job.last_error or "Pipeline job failed without error detail"
+        logger.error(
+            "Application pipeline permanently failed for application id=%s: %s",
+            job.application_id,
+            error_detail,
+        )
+        AuditLogRepository(db).create(
+            application_id=job.application_id,
+            username="system",
+            action=ACTION_PIPELINE_FAILED,
+            details={
+                "reason": "APPLICATION_PIPELINE job exhausted all retries",
+                "queue_job_id": job.id,
+                "last_error": error_detail,
+            },
+        )
+        applications.update(application, status=ApplicationStatus.PROCESSING_FAILED)
+        db.commit()
 
 
 def drain_queue(

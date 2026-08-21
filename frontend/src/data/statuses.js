@@ -13,6 +13,7 @@ export const APPLICATION_STATUSES = [
   { value: 'PROCESSING', label: 'Processing', variant: 'info', color: 'sky' },
   { value: 'PROCESSING_FAILED', label: 'Processing Failed', variant: 'danger', color: 'rose' },
   { value: 'PENDING_REVIEW', label: 'Under Review', variant: 'warning', color: 'orange' },
+  { value: 'NEEDS_DOCUMENTS', label: 'Awaiting Documents', variant: 'warning', color: 'orange' },
   { value: 'APPROVED', label: 'Approved', variant: 'success', color: 'green' },
   { value: 'REJECTED', label: 'Rejected', variant: 'danger', color: 'red' },
   { value: 'CORRECTED', label: 'Corrected', variant: 'neutral', color: 'purple' },
@@ -53,12 +54,23 @@ export const VERIFICATION_SEVERITIES = [
  *
  * Mirrors the backend `ValidationTaskStatus` enum.
  */
-export const VALIDATION_TASK_STATUSES = [
-  { value: 'PENDING', label: 'Pending', variant: 'info' },
-  { value: 'IN_REVIEW', label: 'In Review', variant: 'warning' },
-  { value: 'VALIDATED', label: 'Validated', variant: 'success' },
-  { value: 'REJECTED', label: 'Rejected', variant: 'danger' },
-  { value: 'NEEDS_CORRECTION', label: 'Needs Correction', variant: 'neutral' },
+/**
+ * Operator validation workflow events shown in an application's history.
+ *
+ * Raw backend `ValidationEventType` values are mapped to operator-friendly
+ * labels so the UI never exposes internal implementation detail. Severity
+ * drives the badge tone used in the history timeline.
+ */
+export const VALIDATION_HISTORY_EVENTS = [
+  { value: 'DOCUMENTS_REQUESTED', label: 'Documents requested', variant: 'warning' },
+  { value: 'DOCUMENTS_RECEIVED', label: 'Documents received', variant: 'success' },
+  { value: 'OPERATOR_SUBMITTED', label: 'Submitted for processing', variant: 'info' },
+  { value: 'OPERATOR_REJECTED', label: 'Rejected', variant: 'danger' },
+  { value: 'SUBMITTED_FOR_PROCESSING', label: 'Submitted for processing', variant: 'info' },
+  { value: 'PROCESSING_FAILED', label: 'Processing failed', variant: 'danger' },
+  { value: 'REVIEW_APPROVED', label: 'Approved', variant: 'success' },
+  { value: 'REVIEW_CORRECTED', label: 'Corrected', variant: 'neutral' },
+  { value: 'REVIEW_REJECTED', label: 'Rejected', variant: 'danger' },
 ];
 
 export const DOCUMENT_STATUSES = [
@@ -140,8 +152,19 @@ export function getDocumentStatus(value) {
   return findStatus(DOCUMENT_STATUSES, value);
 }
 
-export function getValidationTaskStatus(value) {
-  return findStatus(VALIDATION_TASK_STATUSES, value);
+/**
+ * Map a raw validation-history event type to an operator-friendly entry.
+ *
+ * @param {string} value A backend `ValidationEventType` value.
+ * @returns {object} The corresponding history event entry.
+ */
+export function getValidationHistoryEvent(value) {
+  return (
+    VALIDATION_HISTORY_EVENTS.find((event) => event.value === value) ?? {
+      label: readableLabel(value),
+      variant: 'neutral',
+    }
+  );
 }
 
 /**

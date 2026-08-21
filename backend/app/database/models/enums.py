@@ -18,6 +18,7 @@ class ApplicationStatus(str, Enum):
     PROCESSING = "PROCESSING"
     PROCESSING_FAILED = "PROCESSING_FAILED"
     PENDING_REVIEW = "PENDING_REVIEW"
+    NEEDS_DOCUMENTS = "NEEDS_DOCUMENTS"
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
     CORRECTED = "CORRECTED"
@@ -185,3 +186,22 @@ class ValidationLogResult(str, Enum):
     REJECTED = "REJECTED"
     REVIEWED = "REVIEWED"
     INFO = "INFO"
+
+
+class ValidationEventType(str, Enum):
+    """Every kind of application-level event the validation history records.
+
+    History rows are append-only: each event creates a new row so repeated
+    document submissions and repeated operator checks preserve their full
+    history instead of overwriting earlier records.
+    """
+
+    DOCUMENTS_REQUESTED = "DOCUMENTS_REQUESTED"
+    DOCUMENTS_RECEIVED = "DOCUMENTS_RECEIVED"
+    OPERATOR_SUBMITTED = "OPERATOR_SUBMITTED"
+    OPERATOR_REJECTED = "OPERATOR_REJECTED"
+    SUBMITTED_FOR_PROCESSING = "SUBMITTED_FOR_PROCESSING"
+    PROCESSING_FAILED = "PROCESSING_FAILED"
+    REVIEW_APPROVED = "REVIEW_APPROVED"
+    REVIEW_CORRECTED = "REVIEW_CORRECTED"
+    REVIEW_REJECTED = "REVIEW_REJECTED"

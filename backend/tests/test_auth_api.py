@@ -54,6 +54,19 @@ def _active_refresh_tokens(db) -> int:
     )
 
 
+def _refresh_cookie_segment(response) -> str:
+    """Return the refresh-cookie portion of a response's Set-Cookie header.
+
+    The refresh cookie is set after the access cookie, so slicing the combined
+    ``Set-Cookie`` header from the refresh cookie's name onwards isolates its
+    attributes (e.g. whether ``Max-Age`` is present).
+    """
+    set_cookie = response.headers.get("set-cookie", "")
+    start = set_cookie.find(REFRESH_TOKEN_COOKIE)
+    assert start != -1, f"refresh cookie missing from Set-Cookie: {set_cookie!r}"
+    return set_cookie[start:]
+
+
 class TestLogin:
     """POST /auth/login."""
 
@@ -154,6 +167,36 @@ class TestLogin:
         assert f"Path=/api/v1/auth" in set_cookie
         assert "Path=/" in set_cookie
 
+    def test_login_remembered_sets_persistent_refresh_cookie(
+        self, client: TestClient
+    ):
+        _create_user()
+        response = client.post(
+            "/api/v1/auth/login",
+            json={
+                "identifier": DEFAULT_IDENTIFIER,
+                "password": DEFAULT_PASSWORD,
+                "remember": True,
+            },
+        )
+        assert response.status_code == 200
+        assert "Max-Age=" in _refresh_cookie_segment(response)
+
+    def test_login_unremembered_sets_session_refresh_cookie(
+        self, client: TestClient
+    ):
+        _create_user()
+        response = client.post(
+            "/api/v1/auth/login",
+            json={
+                "identifier": DEFAULT_IDENTIFIER,
+                "password": DEFAULT_PASSWORD,
+                "remember": False,
+            },
+        )
+        assert response.status_code == 200
+        assert "Max-Age=" not in _refresh_cookie_segment(response)
+
 
 class TestMe:
     """GET /auth/me."""
@@ -242,6 +285,48 @@ class TestRefresh:
     def test_refresh_without_cookie_is_401(self, client: TestClient):
         response = client.post("/api/v1/auth/refresh")
         assert response.status_code == 401
+
+    def test_refresh_preserves_persistent_cookie_for_remembered_login(
+        self, client: TestClient
+    ):
+        _create_user()
+        client.post(
+            "/api/v1/auth/login",
+            json={
+                "identifier": DEFAULT_IDENTIFIER,
+                "password": DEFAULT_PASSWORD,
+                "remember": True,
+            },
+        )
+        response = client.post("/api/v1/auth/refresh")
+        assert response.status_code == 200
+        assert "Max-Age=" in _refresh_cookie_segment(response)
+        with SessionLocal() as db:
+            remember = db.scalar(
+                text("SELECT remember FROM refresh_tokens WHERE revoked_at IS NULL")
+            )
+            assert remember is True
+
+    def test_refresh_keeps_session_cookie_for_unremembered_login(
+        self, client: TestClient
+    ):
+        _create_user()
+        client.post(
+            "/api/v1/auth/login",
+            json={
+                "identifier": DEFAULT_IDENTIFIER,
+                "password": DEFAULT_PASSWORD,
+                "remember": False,
+            },
+        )
+        response = client.post("/api/v1/auth/refresh")
+        assert response.status_code == 200
+        assert "Max-Age=" not in _refresh_cookie_segment(response)
+        with SessionLocal() as db:
+            remember = db.scalar(
+                text("SELECT remember FROM refresh_tokens WHERE revoked_at IS NULL")
+            )
+            assert remember is False
 
 
 class TestLogout:

@@ -14,7 +14,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_role
+from app.auth.roles import ROLE_REVIEWER
 from app.database.connection import get_db
 from app.database.models.user import User
 from app.human_verification.exceptions import HumanReviewError
@@ -34,6 +35,7 @@ router = APIRouter(tags=["human-verification"])
 
 _GET_DB = Annotated[Session, Depends(get_db)]
 _CURRENT_USER = Annotated[User, Depends(get_current_user)]
+_REVIEWER = Annotated[User, Depends(require_role(ROLE_REVIEWER))]
 
 #: Shared OpenAPI error-response documentation reused by every endpoint.
 _ERROR_RESPONSES = {
@@ -139,15 +141,18 @@ def submit_human_review(
     application_id: int,
     request: HumanReviewRequest,
     db: _GET_DB,
-    current_user: _CURRENT_USER,
+    current_user: _REVIEWER,
 ) -> ReviewSummary:
-    """Submit the employee's final decision for an application.
+    """Submit the reviewer's final decision for an application.
+
+    Only users with the reviewer role may record a final decision; other roles
+    receive ``403 Forbidden``.
 
     Args:
         application_id: Id of the application.
-        request: Review payload with the employee's decision.
+        request: Review payload with the reviewer's decision.
         db: Active database session.
-        current_user: The authenticated employee, recorded as the reviewer.
+        current_user: The authenticated reviewer, recorded as the reviewer.
 
     Returns:
         A summary of the recorded review.

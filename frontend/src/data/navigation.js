@@ -1,7 +1,10 @@
 import {
   Activity,
+  BarChart3,
+  ClipboardCheck,
   FileText,
   FolderOpen,
+  History,
   LayoutDashboard,
   MessageSquare,
   RefreshCw,
@@ -15,11 +18,19 @@ import {
  * Each section groups top-level links only. Feedback collection and Continuous
  * Learning are internal administrative functions and are deliberately not
  * sidebar entries: they hang off the Settings item as admin-only child links
- * and are surfaced on the Settings page. Internal document-processing stages
- * (technical validation, extraction, confidence, normalisation, business
- * rules, ...) are intentionally absent: they run automatically as part of
- * application verification and will surface later inside an application's
- * status view, not as sidebar navigation.
+ * and are surfaced on the Settings page. Application History and Performance
+ * are IT-only operational views and are top-level System entries restricted
+ * to the IT role. Internal document-processing stages (technical validation,
+ * extraction, confidence, normalisation, business rules, ...) are
+ * intentionally absent: they run automatically as part of application
+ * verification and will surface later inside an application's status view,
+ * not as sidebar navigation.
+ *
+ * Role visibility: an item with a `roles` array is shown to users whose
+ * canonical role is listed, with Employee allowed through normal role gates.
+ * An item with `strictRoles` requires an exact canonical role. Items without
+ * either list are shown to every authenticated user. This is a UI/UX gate only:
+ * routes stay registered and the backend 403 remains the security gate.
  */
 export const NAVIGATION = [
   {
@@ -41,8 +52,9 @@ export const NAVIGATION = [
     id: 'verification',
     label: 'Verification',
     items: [
-      { id: 'reports', label: 'Validation Report', path: '/reports', icon: FileText },
-      { id: 'human-review', label: 'Human Review', path: '/human-review', icon: UserCheck },
+      { id: 'validation', label: 'Validation', path: '/validation', icon: ClipboardCheck, roles: ['OPERATOR'] },
+      { id: 'reports', label: 'Validation Report', path: '/reports', icon: FileText, roles: ['REVIEWER'] },
+      { id: 'human-review', label: 'Human Review', path: '/human-review', icon: UserCheck, roles: ['REVIEWER'] },
     ],
   },
   {
@@ -50,13 +62,27 @@ export const NAVIGATION = [
     label: 'System',
     items: [
       {
+        id: 'application-history',
+        label: 'Application History',
+        path: '/application-history',
+        icon: History,
+        strictRoles: ['IT'],
+      },
+      {
+        id: 'performance',
+        label: 'Performance',
+        path: '/performance',
+        icon: BarChart3,
+        strictRoles: ['IT'],
+      },
+      {
         id: 'settings',
         label: 'Settings',
         path: '/settings',
         icon: Settings,
         children: [
-          { id: 'feedback', label: 'Feedback', path: '/feedback', icon: MessageSquare, adminOnly: true },
-          { id: 'continuous-learning', label: 'Continuous Learning', path: '/continuous-learning', icon: RefreshCw, adminOnly: true },
+          { id: 'feedback', label: 'Feedback', path: '/feedback', icon: MessageSquare, adminOnly: true, roles: ['IT'] },
+          { id: 'continuous-learning', label: 'Continuous Learning', path: '/continuous-learning', icon: RefreshCw, adminOnly: true, roles: ['IT'] },
         ],
       },
     ],
@@ -101,7 +127,7 @@ export function findNavItem(path) {
   const all = [...NAV_ITEMS, ...ADMIN_NAV_ITEMS];
   const exact = all.find((item) => item.path === path);
   if (exact) {
-    if (exact.adminOnly) {
+    if (exact.adminOnly || exact.itOnly) {
       return NAV_ITEMS.find((item) => item.children?.some((child) => child.id === exact.id)) ?? exact;
     }
     return exact;

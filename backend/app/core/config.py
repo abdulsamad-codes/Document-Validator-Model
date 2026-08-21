@@ -108,7 +108,12 @@ class Settings(BaseSettings):
     )
 
     app_name: str = Field(default="finance-verification-system")
-    environment: Environment = Field(default="development")
+    #: Fail closed: an omitted ``ENVIRONMENT`` must never silently enable
+    #: development behaviour (non-Secure cookies, dev secret key, debug mode).
+    #: Local development and CI set ``ENVIRONMENT`` explicitly (see
+    #: ``backend/.env``/``.env.example`` and ``.github/workflows/ci.yml``), so
+    #: the safe default is production.
+    environment: Environment = Field(default="production")
     debug: bool = Field(default=False)
     secret_key: SecretStr = Field(default=SecretStr(_DEV_SECRET_KEY))
     database_url: str = Field(default=_DEFAULT_DATABASE_URL)
@@ -132,6 +137,24 @@ class Settings(BaseSettings):
     default_employee_name: str = Field(default="Employee")
     default_employee_role: str = Field(default="Verification Officer")
     default_employee_password: SecretStr = Field(
+        default=SecretStr("12345678"),
+    )
+    default_operator_id: str = Field(default="operator")
+    default_operator_email: str = Field(default="operator@fintech.local")
+    default_operator_name: str = Field(default="Operator")
+    default_operator_password: SecretStr = Field(
+        default=SecretStr("12345678"),
+    )
+    default_reviewer_id: str = Field(default="reviewer")
+    default_reviewer_email: str = Field(default="reviewer@fintech.local")
+    default_reviewer_name: str = Field(default="Reviewer")
+    default_reviewer_password: SecretStr = Field(
+        default=SecretStr("12345678"),
+    )
+    default_it_id: str = Field(default="it")
+    default_it_email: str = Field(default="it@fintech.local")
+    default_it_name: str = Field(default="IT")
+    default_it_password: SecretStr = Field(
         default=SecretStr("12345678"),
     )
     bulk_queue_workers: int = Field(default=1, ge=1, le=16)

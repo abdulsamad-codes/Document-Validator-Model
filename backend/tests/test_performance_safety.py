@@ -272,7 +272,11 @@ def test_queue_worker_processes_each_document_exactly_once(
     first = BulkQueueWorker(processor_factory=DocumentProcessingService).run_until_empty()
     second = BulkQueueWorker(processor_factory=DocumentProcessingService).run_until_empty()
 
-    assert first.succeeded == 2
+    assert first.succeeded == 3, (
+        "the two DOCUMENT_OCR jobs plus the auto-enqueued APPLICATION_PIPELINE "
+        "job (which runs analysis/confidence/normalization/rule-validation now "
+        "that extraction succeeds on these document types)"
+    )
     assert second.processed == 0, "completed documents must never be reprocessed"
     assert engine.calls == 2, "2 scanned pages OCR'd, digital PDF never"
 

@@ -1,6 +1,8 @@
 import QuickActions from '../../components/dashboard/QuickActions/QuickActions';
 import RecentActivity from '../../components/dashboard/RecentActivity/RecentActivity';
 import RecentApplications from '../../components/dashboard/RecentApplications/RecentApplications';
+import { getDashboardWelcome } from '../../data/dashboard';
+import { useAuth } from '../../hooks/useAuth';
 import styles from './Dashboard.module.css';
 
 /**
@@ -12,13 +14,13 @@ import styles from './Dashboard.module.css';
  * once the dashboard API integration is implemented in a later phase.
  */
 function Dashboard() {
+  const { user } = useAuth();
+
   return (
     <div className={styles.page}>
       <header className={styles.header}>
         <h2 className={styles.welcome}>Welcome back!</h2>
-        <p className={styles.subtitle}>
-          Here's an overview of your financial document verification workspace.
-        </p>
+        <p className={styles.subtitle}>{getDashboardWelcome(user)}</p>
       </header>
 
       <QuickActions />

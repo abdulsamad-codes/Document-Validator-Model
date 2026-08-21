@@ -6,6 +6,8 @@ import EmptyState from '../../common/EmptyState/EmptyState';
 import ErrorState from '../../common/ErrorState/ErrorState';
 import StatusChip from '../../common/StatusChip/StatusChip';
 import { useApplicationsStore } from '../../../store/ApplicationsContext';
+import { useAuth } from '../../../hooks/useAuth';
+import { isEmployee, isOperator } from '../../../utils/roles';
 import { computeDocumentProgress } from '../../../data/documents';
 import { formatDate } from '../../../utils/format';
 import styles from './RecentApplications.module.css';
@@ -73,7 +75,10 @@ function DocumentChecklist({ documents }) {
 function RecentApplications() {
   const { recentApplications, documentsByApplication, loadDocuments, loading, error, reload } =
     useApplicationsStore();
+  const { user } = useAuth();
   const [expandedId, setExpandedId] = useState(null);
+
+  const canCreateApplication = isEmployee(user) || isOperator(user);
 
   useEffect(() => {
     for (const application of recentApplications) {
@@ -105,10 +110,12 @@ function RecentApplications() {
           title="No applications yet"
           message="Create an application to begin the document verification process."
           action={
-            <Link to="/applications/new" className={styles.createBtn}>
-              <Plus aria-hidden="true" />
-              Create New Application
-            </Link>
+            canCreateApplication ? (
+              <Link to="/applications/new" className={styles.createBtn}>
+                <Plus aria-hidden="true" />
+                Create New Application
+              </Link>
+            ) : undefined
           }
         />
       ) : (

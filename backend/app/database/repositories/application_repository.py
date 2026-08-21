@@ -2,7 +2,7 @@
 
 from collections.abc import Sequence
 
-from sqlalchemy import select
+from sqlalchemy import Select, or_, select
 from sqlalchemy.orm import Session
 
 from app.database.models.application import Application
@@ -102,3 +102,55 @@ class ApplicationRepository(BaseRepository[Application]):
         if status is not None:
             statement = statement.where(Application.status == status)
         return self._db.scalars(statement).all()
+
+    def search(
+        self,
+        *,
+        offset: int = 0,
+        limit: int = 50,
+        query: str | None = None,
+        status: ApplicationStatus | None = None,
+    ) -> tuple[Sequence[Application], int]:
+        """Search applications by free-text query, optionally by status.
+
+        The free-text query matches the application id (when the query parses
+        as an integer), the display name and the submitter, so IT can find an
+        application by ``123``, by ``TMA Khal Dir Lower`` or by the uploader's
+        identifier alike.
+
+        Args:
+            offset: Number of rows to skip.
+            limit: Maximum number of rows to return.
+            query: Free-text substring match against id/name/created_by.
+            status: When given, only return applications in this status.
+
+        Returns:
+            A tuple of matching applications (newest first) and the total count.
+        """
+        statement = select(Application).order_by(
+            Application.submitted_at.desc(), Application.id.desc()
+        )
+        statement = self._apply_filters(statement, query=query, status=status)
+        total = len(self._db.scalars(statement.with_only_columns(Application.id)).all())
+        rows = list(self._db.scalars(statement.offset(offset).limit(limit)).all())
+        return rows, total
+
+    @staticmethod
+    def _apply_filters(
+        statement: Select,
+        *,
+        query: str | None,
+        status: ApplicationStatus | None,
+    ) -> Select:
+        """Apply the search filters to a select statement."""
+        if status is not None:
+            statement = statement.where(Application.status == status)
+        if query:
+            conditions = [
+                Application.name.ilike(f"%{query}%"),
+                Application.created_by.ilike(f"%{query}%"),
+            ]
+            if query.isdigit():
+                conditions.append(Application.id == int(query))
+            statement = statement.where(or_(*conditions))
+        return statement

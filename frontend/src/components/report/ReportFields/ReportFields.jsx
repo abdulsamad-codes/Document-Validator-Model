@@ -22,8 +22,8 @@ function ReportFields({ normalized, analysisItems }) {
           <tr>
             <th scope="col">Field</th>
             <th scope="col">Source document</th>
-            <th scope="col">Extracted value</th>
-            <th scope="col">Normalized value</th>
+            <th scope="col">Value from document</th>
+            <th scope="col">Standardized value</th>
             <th scope="col">Status</th>
           </tr>
         </thead>
@@ -38,8 +38,8 @@ function ReportFields({ normalized, analysisItems }) {
                 <td data-label="Source document" className={styles.mutedCell}>
                   {field.file_name}
                 </td>
-                <td data-label="Extracted value">{field.extracted_value || '—'}</td>
-                <td data-label="Normalized value">{field.normalized_value || '—'}</td>
+                <td data-label="Value from document">{field.extracted_value || '—'}</td>
+                <td data-label="Standardized value">{field.normalized_value || '—'}</td>
                 <td data-label="Status">
                   <StatusChip label={status.label} variant={status.variant} />
                 </td>
@@ -77,7 +77,7 @@ function ReportFields({ normalized, analysisItems }) {
 
   return (
     <p className={styles.empty}>
-      No extracted field results are available for this application.
+      No field results are available for this application.
     </p>
   );
 }

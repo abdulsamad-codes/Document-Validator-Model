@@ -81,19 +81,19 @@ function ReportSummaryCards({ overallStatus, report, completeness }) {
         </SummaryCard>
         <SummaryCard
           icon={FileCheck2}
-          title="Extracted Fields"
+          title="Fields Reviewed"
           value={extraction.total_fields ?? 0}
-          detail={`${extraction.auto_verified ?? 0} auto-verified · ${extraction.pending_review ?? 0} pending review`}
+          detail={`${extraction.auto_verified ?? 0} verified automatically · ${extraction.pending_review ?? 0} need review`}
         />
         <SummaryCard
           icon={Percent}
-          title="Overall Confidence"
+          title="Field Review Progress"
           value={
             extraction.overall_confidence != null
               ? `${Math.round(extraction.overall_confidence * 100)}%`
               : '—'
           }
-          detail="Across all extracted fields"
+          detail="Across all reviewed fields"
         />
         <SummaryCard
           icon={FileCheck2}

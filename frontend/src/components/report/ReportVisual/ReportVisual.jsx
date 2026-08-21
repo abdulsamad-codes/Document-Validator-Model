@@ -1,4 +1,4 @@
-import { CheckCircle2, Fingerprint, Stamp, XCircle } from 'lucide-react';
+import { CheckCircle2, Fingerprint, Stamp } from 'lucide-react';
 import styles from './ReportVisual.module.css';
 
 function Stat({ label, value }) {
@@ -15,7 +15,7 @@ function Stat({ label, value }) {
  *
  * Renders the aggregated detection totals stored by the pipeline: how many
  * documents were checked and how many had signatures and stamps present or
- * missing, plus the average detection confidence.
+ * missing.
  *
  * @param {object} props
  * @param {object|null} props.visual The report's visual detection summary.
@@ -66,25 +66,6 @@ function ReportVisual({ visual }) {
         </div>
         <div className={styles.stats}>
           <Stat value={visual.documents_checked ?? 0} label="Verified" />
-        </div>
-      </div>
-
-      <div className={styles.card}>
-        <div className={styles.cardHeader}>
-          <div className={styles.iconWrap} aria-hidden="true">
-            <XCircle />
-          </div>
-          <h4 className={styles.cardTitle}>Average Confidence</h4>
-        </div>
-        <div className={styles.stats}>
-          <Stat
-            value={
-              visual.average_confidence != null
-                ? `${Math.round(visual.average_confidence * 100)}%`
-                : '—'
-            }
-            label="Detections"
-          />
         </div>
       </div>
     </div>

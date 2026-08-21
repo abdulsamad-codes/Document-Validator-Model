@@ -29,6 +29,7 @@ import PreferenceRow from '../../components/settings/PreferenceRow/PreferenceRow
 import { ADMIN_NAV_ITEMS } from '../../data/navigation';
 import { useAuth } from '../../hooks/useAuth';
 import { humanizeEnum } from '../../utils/format';
+import { isEmployee, isIt } from '../../utils/roles';
 import { getPreferences, setPreference } from '../../utils/preferences';
 import styles from './SettingsPage.module.css';
 
@@ -183,7 +184,9 @@ function SettingsPage() {
     }
   };
 
-  const administrationItems = ADMIN_NAV_ITEMS.map((item) => {
+  const showAdministration = isEmployee(user) || isIt(user);
+
+  const administrationItems = ADMIN_NAV_ITEMS.filter((item) => !item.itOnly).map((item) => {
     const iconByType = {
       feedback: MessageSquare,
       'continuous-learning': RefreshCw,
@@ -402,41 +405,43 @@ function SettingsPage() {
             </div>
           </section>
 
-          <section className={styles.card} aria-label="Administration settings">
-            <div className={styles.cardHeader}>
-              <span className={styles.cardIcon} aria-hidden="true">
-                <ShieldCheck />
-              </span>
-              <div className={styles.cardTitleWrap}>
-                <h3 className={styles.cardTitle}>Administration</h3>
-                <p className={styles.cardDescription}>
-                  Internal system and AI dataset management. Restricted to administrators.
-                </p>
+          {showAdministration && (
+            <section className={styles.card} aria-label="Administration settings">
+              <div className={styles.cardHeader}>
+                <span className={styles.cardIcon} aria-hidden="true">
+                  <ShieldCheck />
+                </span>
+                <div className={styles.cardTitleWrap}>
+                  <h3 className={styles.cardTitle}>Administration</h3>
+                  <p className={styles.cardDescription}>
+                    Internal system and AI dataset management. Restricted by role.
+                  </p>
+                </div>
+                <span className={styles.restricted}>Restricted</span>
               </div>
-              <span className={styles.restricted}>Restricted</span>
-            </div>
 
-            <ul className={styles.adminList}>
-              {administrationItems.map(({ id, label, path, Icon }) => (
-                <li key={id}>
-                  <Link to={path} className={styles.adminLink}>
-                    <span className={styles.adminIcon} aria-hidden="true">
-                      <Icon />
-                    </span>
-                    <span className={styles.adminMeta}>
-                      <span className={styles.adminLabel}>{label}</span>
-                      <span className={styles.adminHint}>
-                        {id === 'feedback'
-                          ? 'Review correction history and export analytics.'
-                          : 'Manage dataset versions, generation and exports.'}
+              <ul className={styles.adminList}>
+                {administrationItems.map(({ id, label, path, Icon }) => (
+                  <li key={id}>
+                    <Link to={path} className={styles.adminLink}>
+                      <span className={styles.adminIcon} aria-hidden="true">
+                        <Icon />
                       </span>
-                    </span>
-                    <ArrowRight className={styles.adminArrow} aria-hidden="true" />
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </section>
+                      <span className={styles.adminMeta}>
+                        <span className={styles.adminLabel}>{label}</span>
+                        <span className={styles.adminHint}>
+                          {id === 'feedback'
+                            ? 'Review correction history and export analytics.'
+                            : 'Manage dataset versions, generation and exports.'}
+                        </span>
+                      </span>
+                      <ArrowRight className={styles.adminArrow} aria-hidden="true" />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
         </>
       )}
 

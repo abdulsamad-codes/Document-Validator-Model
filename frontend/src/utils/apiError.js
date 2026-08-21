@@ -30,6 +30,7 @@ export function getApiErrorMessage(error) {
 
   const fallbacks = {
     400: 'The request was invalid.',
+    403: 'You do not have permission to perform this action.',
     404: 'The requested resource was not found.',
     409: 'A duplicate upload was rejected.',
     413: 'The file exceeds the maximum allowed size.',

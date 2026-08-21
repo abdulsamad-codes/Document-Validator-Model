@@ -585,6 +585,449 @@ def test_extract_tripartite_agreement_compound_table_layout():
         f"account_number: expected 'PK99FAKE00012345678901'; got {fields.get('account_number')!r}"
     )
 
+#: Synthetic (fabricated, non-real) fixtures for the structural bank-account
+#: block parser, mirroring the real OCR layouts confirmed in Confidential Data/
+#: (see the extractor docstrings). Every account number / IBAN / CNIC below is
+#: invented; the "PK99FAKE..." IBAN shape keeps the values unambiguously fake.
+#: The column-table shape comes from TMA Lal Dir Upper (header block mapped
+#: positionally onto the value block, with an OCR-noise header line), the
+#: interleaved/dotted-leader/wrapped shapes from the four GDA Abbotabad AMC
+#: copies (Allied, ZTBL, NBP, BOK).
+TRIPARTITE_COLUMN_TABLE_TEXT = """TRIPARTITE AGREEMENT
+This Tripartite Agreement is made and entered into by and between:
+1-Link (Private) Limited, ... (hereinafter referred to as '1-Link')
+Bank details shall be maintained as follows:
+S#
+Bank Name
+IENT
+Account Title
+IBAN/Account No
+01
+Sample Bank Branch
+Sample Regional Development Authority
+PK99FAKE0000000000000000
+Branch (0312)
+"""
+
+DOTTED_LEADER_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+ACCOUNT NUMBER:... 00112233445566
+Title of AccOunt: SAMPLE DEVELOPMENT AUTHORITY.
+IBAN:PK99FAKE0000000000000000...
+"""
+
+COMBINED_VALUE_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+This is to certify that the following account is maintained with us:
+Title of Account
+SAMPLE AUTHORITY
+Account No/IBAN
+00112233445566/PK99FAKE0000000000000000
+Date of Account Opening
+01 JANUARY 2000
+"""
+
+WRAPPED_TITLE_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+TITLE OF ACCOUNT
+SAMPLE AUTHORITY (SAMPLE REGIONAL
+DEVELOPMENT
+FUND)
+CNIC OF AUTHORIZED SIGNATORY
+12345-1234567-1
+ACCOUNT NO
+1234567890
+ACCOUNT NO/IBAN
+PK99FAKE0000000000000000
+"""
+
+FIRST_MATCH_WINS_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+ACCOUNT NUMBER:... 00112233445566
+Title of AccOunt: FIRST PAGE AUTHORITY.
+IBAN:PK99FAKE0000000000000000...
+--- page break ---
+Account Title
+SECOND PAGE AUTHORITY
+Account NO.
+PK88FAKE0000000000000000
+"""
+
+ROW_INDEX_GUARD_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+Account Title
+Sample Authority
+Account No
+01
+Account Status
+Active
+"""
+
+PARTIAL_CERT_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+Account Title: SAMPLE AUTHORITY
+"""
+
+PARENTHETICAL_LABEL_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+Title of Account
+SAMPLE AUTHORITY
+Account No. (T-24 System)
+00112233445566
+IBAN: PK99FAKE0000000000000000
+"""
+
+PARENTHETICAL_LABEL_INLINE_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+Account Title: SAMPLE AUTHORITY
+Account No. (T-24 System): 00112233445566
+"""
+
+PAREN_IBAN_INLINE_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+Account No.: PK99FAKE0000000000000000
+"""
+
+PARALLEL_GENERATIONS_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+This is to certify that the account of SAMPLE SPORTS AUTHORITY maintained
+with this branch is in good standing.
+Account No. (T-24 System)
+00112233445566
+Account No. (CBS)
+00112233445567
+Account No. (Core Banking)
+00112233445568
+"""
+
+SENTENCE_NO_OWNERSHIP_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+This is to certify that the following account is maintained with us.
+Account No.
+00112233445566
+"""
+
+PAREN_IBAN_OCR_NOISE_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+This is to certify that the following account is maintained with us.
+account number (1BAN) PK99FAKE0000000000000000 titled as Tehsil General Account
+Account Title
+SAMPLE AUTHORITY
+"""
+
+SUBJECT_VERB_SENTENCE_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+It is certified that SAMPLE SPORTS AUTHORITY maintaining account with SAMPLE
+BANK Mandian Branch (1234) as per below mentioned details.
+ACCOUNT NO
+00112233445566
+"""
+
+SUBJECT_VERB_IS_SENTENCE_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+This is to certify that SAMPLE SPORTS AUTHORITY is maintaining a current
+account with our bank.
+ACCOUNT NO
+00112233445566
+"""
+
+SUBJECT_VERB_TITLE_CASE_SENTENCE_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+This is to certify that Sample Sports Complex is maintaining a current account
+at The Bank of Khyber since 01-01-2000. Following are the account details:
+ACCOUNT NO
+00112233445566
+"""
+
+WE_ARE_MAINTAINING_SENTENCE_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+We are maintaining the above mentioned account in our branch.
+ACCOUNT NO
+00112233445566
+"""
+
+BALANCED_PAREN_TITLE_STOP_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+TITLE OF ACCOUNT
+SAMPLE SPORTS (SAMPLE DEVELOPMENT
+AUTHORITY)
+SAMPLE FUND
+CNIC OF AUTHORIZED SIGNATORY
+12345-1234567-1
+ACCOUNT NO
+1234567890
+"""
+
+PREFIXED_GENERATIONS_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+This is to certify that SAMPLE SPORTS COMPLEX is maintaining a BOK Saving Account at The Bank of
+Khyber, Main Corporate Branch Peshawar. Following are the account details:
+Old Account No (U-Bank Plus)
+00112233445560
+Old IBAN No. (U-Bank Plus)
+PK99FAKE0100010200000001
+Account No. (T-24 System)
+00112233445561
+IBAN No. (T-24 System)
+PK99FAKE0200010000000001
+New Account No. (T-24 Islamic)
+00112233445562
+New IBAN No. (T-24 Islamic)
+PK99FAKE0300010000000001
+"""
+
+OLD_PREFIX_BEFORE_ANCHORED_TEXT = """ACCOUNT MAINTENANCE CERTIFICATE
+This is to certify that SAMPLE SPORTS COMPLEX is maintaining a BOK Saving Account at The Bank of
+Khyber, Main Corporate Branch Peshawar. Following are the account details:
+Old Account No (U-Bank Plus)
+00112233445560
+Account No. (T-24 System)
+00112233445561
+IBAN No. (T-24 System)
+PK99FAKE0200010000000001
+"""
+
+
+def test_extract_tripartite_column_table_positions_values_by_header():
+    # The real Tripartite layout is a stacked column table whose header block
+    # ("S# / Bank Name / IENT / Account Title / IBAN/Account No") maps
+    # positionally onto the value block. The OCR-noise "IENT" header must not
+    # shift the mapping, the row index "01" must not become the account number,
+    # and the IBAN-only value in the account slot must be promoted to
+    # account_number (Tripartite has no separate iban field).
+    fields = extract_fields(
+        TRIPARTITE_COLUMN_TABLE_TEXT,
+        AnalyzedDocumentType.TRIPARTITE_AGREEMENT,
+    )
+    assert fields["account_holder"] == "Sample Regional Development Authority"
+    assert fields["account_number"] == "PK99FAKE0000000000000000"
+    assert "iban" not in fields
+
+
+def test_extract_dotted_leader_same_line_values():
+    # ZTBL's AMC uses "Label:... value" dotted leaders; trailing separator dots
+    # on the IBAN value are OCR noise and must be stripped.
+    fields = extract_fields(
+        DOTTED_LEADER_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_holder"] == "SAMPLE DEVELOPMENT AUTHORITY"
+    assert fields["account_number"] == "00112233445566"
+    assert fields["iban"] == "PK99FAKE0000000000000000"
+
+
+def test_extract_combined_account_number_iban_value():
+    # Allied's AMC lists "Account No/IBAN" with a combined "<number>/<IBAN>"
+    # value that must be split into the two fields.
+    fields = extract_fields(
+        COMBINED_VALUE_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_holder"] == "SAMPLE AUTHORITY"
+    assert fields["account_number"] == "00112233445566"
+    assert fields["iban"] == "PK99FAKE0000000000000000"
+
+
+def test_extract_wrapped_multiline_account_title():
+    # NBP's AMC wraps the account title across three OCR lines; capture must
+    # join them and stop before the next field's label ("CNIC OF AUTHORIZED
+    # SIGNATORY"), while the later IBAN-only "ACCOUNT NO/IBAN" value must feed
+    # the iban field, not overwrite the plain account number.
+    fields = extract_fields(
+        WRAPPED_TITLE_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_holder"] == (
+        "SAMPLE AUTHORITY (SAMPLE REGIONAL DEVELOPMENT FUND)"
+    )
+    assert fields["account_number"] == "1234567890"
+    assert fields["iban"] == "PK99FAKE0000000000000000"
+
+
+def test_extract_first_page_value_wins_over_later_page():
+    # ZTBL's page 1 and NRSP's page 2 both state account details for the same
+    # document; the page-1 values must win (first match in document order), so
+    # the account number is never the page-2 IBAN-shaped value.
+    fields = extract_fields(
+        FIRST_MATCH_WINS_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_holder"] == "FIRST PAGE AUTHORITY"
+    assert fields["account_number"] == "00112233445566"
+    assert fields["iban"] == "PK99FAKE0000000000000000"
+
+
+def test_extract_row_index_never_becomes_account_number():
+    # An all-digit value of length <= 3 (a table row index / page marker) must
+    # never be captured as the account number -- the shape guard rejects it,
+    # which generalizes across row indices 01/02/03 rather than blacklisting a
+    # specific value.
+    fields = extract_fields(
+        ROW_INDEX_GUARD_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_holder"] == "Sample Authority"
+    assert "account_number" not in fields
+    assert "iban" not in fields
+
+
+def test_extract_partial_certificate_missing_fields_are_absent():
+    # A certificate that genuinely carries no account number must report the
+    # field as absent rather than fabricate one.
+    fields = extract_fields(
+        PARTIAL_CERT_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_holder"] == "SAMPLE AUTHORITY"
+    assert "account_number" not in fields
+    assert "iban" not in fields
+
+
+def test_extract_parenthetical_label_value_on_next_line():
+    # The real DG_Sports AMC labels its account number "Account No. (T-24
+    # System)" -- a parenthetical naming the bank system. The qualifier must be
+    # consumed into the label (not mistaken for an inline value) so the number
+    # on the following line is captured.
+    fields = extract_fields(
+        PARENTHETICAL_LABEL_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_holder"] == "SAMPLE AUTHORITY"
+    assert fields["account_number"] == "00112233445566"
+    assert fields["iban"] == "PK99FAKE0000000000000000"
+
+
+def test_extract_parenthetical_label_inline_value_after_colon():
+    # The same qualifier shape with the value on the same line after a colon
+    # must also extract, and a parenthetical IBAN value must never be eaten by
+    # the qualifier-stripping rule.
+    fields = extract_fields(
+        PARENTHETICAL_LABEL_INLINE_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_holder"] == "SAMPLE AUTHORITY"
+    assert fields["account_number"] == "00112233445566"
+    fields = extract_fields(
+        PAREN_IBAN_INLINE_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["iban"] == "PK99FAKE0000000000000000"
+
+
+def test_extract_first_of_parallel_account_generations():
+    # The real DG_Sports AMC certifies the account under three parallel bank
+    # systems (T-24, CBS, Core), each its own labeled block, and states the
+    # holder only in prose -- never as its own field. The first valid account
+    # number in document order wins, and the sentence-level fallback recovers
+    # the holder.
+    fields = extract_fields(
+        PARALLEL_GENERATIONS_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_holder"] == "SAMPLE SPORTS AUTHORITY"
+    assert fields["account_number"] == "00112233445566"
+
+
+def test_extract_skips_old_and_new_prefixed_generation_labels():
+    # The real DG_Sports AMC's first and third generation labels are prefixed
+    # with "Old"/"New" ("Old Account No (U-Bank Plus)", "New Account No.
+    # (T-24 Islamic)") -- they must NOT be read as the anchored account-number
+    # label (the anchor pattern matches from the start of the line, so "Old
+    # Account No" and "New Account No" do not match it), and their values must
+    # not be captured. The first genuinely anchored "Account No. (T-24
+    # System)" block wins, and its IBAN must come from that same generation
+    # (not an older/newer one).
+    fields = extract_fields(
+        PREFIXED_GENERATIONS_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_holder"] == "SAMPLE SPORTS COMPLEX"
+    assert fields["account_number"] == "00112233445561"
+    assert fields["iban"] == "PK99FAKE0200010000000001"
+
+
+def test_extract_old_prefixed_block_before_anchored_block_does_not_win():
+    # Even when an "Old Account No (U-Bank Plus)" block appears BEFORE the
+    # genuinely anchored "Account No." block in document order, the prefixed
+    # label is not an account-number anchor, so the anchored block still wins.
+    # This pins the real DG_Sports shape: the old-generation value must never
+    # leak in as the account number.
+    fields = extract_fields(
+        OLD_PREFIX_BEFORE_ANCHORED_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_holder"] == "SAMPLE SPORTS COMPLEX"
+    assert fields["account_number"] == "00112233445561"
+    assert fields["iban"] == "PK99FAKE0200010000000001"
+
+
+def test_extract_holder_from_sentence_only_no_false_positive():
+    # The sentence fallback must not fire on prose that merely mentions the
+    # word "account" without ownership ("account is maintained with us") and
+    # must not surface a placeholder or bank-name noise as the holder.
+    fields = extract_fields(
+        SENTENCE_NO_OWNERSHIP_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_number"] == "00112233445566"
+    assert "account_holder" not in fields
+
+
+def test_extract_account_number_from_ocr_noise_prose_tail():
+    # A qualifier-stripped OCR line whose trailing prose ("...titled as Tehsil
+    # General Account") is not part of the number must still yield the real
+    # IBAN-shaped token, never a prose-laden account_number value.
+    fields = extract_fields(
+        PAREN_IBAN_OCR_NOISE_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_number"] == "PK99FAKE0000000000000000"
+    assert fields["iban"] == "PK99FAKE0000000000000000"
+
+
+def test_extract_holder_from_subject_verb_sentence():
+    # The real DG_Sports/GDA AMC certifying sentence states the holder as the
+    # subject ("It is certified that [ORG] maintaining account with ..."),
+    # opposite word order from the "account of X" patterns. The subject-verb
+    # pattern must recover it when no labeled holder exists.
+    fields = extract_fields(
+        SUBJECT_VERB_SENTENCE_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_holder"] == "SAMPLE SPORTS AUTHORITY"
+    assert fields["account_number"] == "00112233445566"
+
+
+def test_extract_holder_from_is_maintaining_sentence():
+    # The same subject-verb shape with an explicit "is" ("... is maintaining a
+    # ... Account") must also match.
+    fields = extract_fields(
+        SUBJECT_VERB_IS_SENTENCE_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_holder"] == "SAMPLE SPORTS AUTHORITY"
+    assert fields["account_number"] == "00112233445566"
+
+
+def test_extract_holder_from_title_case_subject_verb_sentence():
+    # The real DG_Sports AMC states the holder in Title Case ("certify that
+    # Sample Sports Complex is maintaining ...") with no labeled holder field;
+    # the sentence capture must accept mixed-case names, not just ALL-CAPS.
+    fields = extract_fields(
+        SUBJECT_VERB_TITLE_CASE_SENTENCE_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_holder"] == "Sample Sports Complex"
+    assert fields["account_number"] == "00112233445566"
+
+
+def test_extract_holder_sentence_rejects_bank_as_subject():
+    # "We are maintaining the above mentioned account in our branch" names no
+    # holder; the subject is the bank/branch itself, which the sentence path
+    # must not surface as an account holder (labeled titles are unaffected).
+    fields = extract_fields(
+        WE_ARE_MAINTAINING_SENTENCE_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_number"] == "00112233445566"
+    assert "account_holder" not in fields
+
+
+def test_extract_wrapped_parenthetical_title_stops_at_balance():
+    # A wrapped parenthetical title is complete once its closing paren is
+    # consumed; a trailing unrelated all-caps line must not be absorbed.
+    # (GDA copy3's "DG GDA (GALIYAT DEVELOPMENT AUTHORITY)" followed by
+    # "DEVELOPMENT FUND".)
+    fields = extract_fields(
+        BALANCED_PAREN_TITLE_STOP_TEXT,
+        AnalyzedDocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
+    )
+    assert fields["account_holder"] == "SAMPLE SPORTS (SAMPLE DEVELOPMENT AUTHORITY)"
+    assert "SAMPLE FUND" not in fields["account_holder"]
+    assert fields["account_number"] == "1234567890"
+
 
 def test_checklist_field_labels_never_route_into_keyword_detection():
     # The Account Maintenance Certificate's own field labels ("IBAN",

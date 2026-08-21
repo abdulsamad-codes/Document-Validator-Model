@@ -209,6 +209,7 @@ def upload_document(
         Form(ge=1, description="1-based copy slot within the type (defaults to 1)."),
     ] = None,
     db: _GET_DB = ...,
+    current_user: _CURRENT_USER = ...,
 ) -> DocumentUploadResponse:
     """Upload a document for an application.
 
@@ -220,6 +221,8 @@ def upload_document(
             type. When omitted the upload targets the first available slot,
             which the service treats as copy 1.
         db: Active database session.
+        current_user: The authenticated employee, recorded as the actor when
+            the upload satisfies a pending document request.
 
     Returns:
         The persisted document metadata.
@@ -236,6 +239,7 @@ def upload_document(
         filename=file.filename or "",
         content_type=file.content_type or "",
         file=file.file,
+        user=current_user,
     )
     return DocumentUploadResponse(
         message="Document uploaded successfully",
@@ -432,6 +436,7 @@ def upload_bulk_document(
     application_id: int,
     file: Annotated[UploadFile | None, File(description="The combined bulk PDF file.")] = None,
     db: _GET_DB = ...,
+    current_user: _CURRENT_USER = ...,
 ) -> BulkUploadResponse:
     """Upload a single bulk PDF and auto-split it into individual categorized documents.
 
@@ -439,6 +444,8 @@ def upload_bulk_document(
         application_id: Id of the owning application.
         file: Multipart bulk PDF file.
         db: Active database session.
+        current_user: The authenticated employee, recorded as the actor when
+            the upload satisfies a pending document request.
 
     Returns:
         A list of all persisted documents extracted from the bulk file.
@@ -453,6 +460,7 @@ def upload_bulk_document(
         filename=file.filename or "",
         content_type=file.content_type or "",
         file=file.file,
+        user=current_user,
     )
     split_items = [
         BulkUploadSplitItem(
