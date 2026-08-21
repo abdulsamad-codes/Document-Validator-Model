@@ -25,20 +25,37 @@ logger = logging.getLogger(__name__)
 
 
 def variance_of_laplacian(image: np.ndarray) -> float:
-    """Return the sharpness of an image as the Variance of Laplacian.
+    """Return the sharpness of an image using tiled Variance of Laplacian.
 
-    A blurred image contains few high-frequency edges, so the variance of its
-    Laplacian response is low; a sharp image produces a high variance. The
-    result is compared against :data:`BLUR_THRESHOLD` by the callers.
+    A global Variance of Laplacian artificially lowers the score of sparse
+    pages (mostly whitespace) because the variance is dominated by zero-edge
+    background. Computing the 95th percentile of variance over a grid of tiles
+    ensures that a sparse page with sharp text correctly scores high, while
+    preventing localized noise (like a single sharp staple mark) from causing
+    a completely blurry page to falsely pass. The result is compared against
+    :data:`BLUR_THRESHOLD`.
 
     Args:
         image: An RGB (BGR) image as returned by OpenCV.
 
     Returns:
-        The Variance of Laplacian of the grayscale image (``>= 0``).
+        The 95th percentile Variance of Laplacian across 256x256 tiles (``>= 0``).
     """
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    return float(cv2.Laplacian(gray, cv2.CV_64F).var())
+    lap = cv2.Laplacian(gray, cv2.CV_64F)
+    
+    tile_size = 256
+    h, w = lap.shape
+    
+    variances = []
+    for y in range(0, h, tile_size):
+        for x in range(0, w, tile_size):
+            variances.append(lap[y:y+tile_size, x:x+tile_size].var())
+            
+    if not variances:
+        return 0.0
+        
+    return float(np.percentile(variances, 95))
 
 
 def is_blank_image(image: np.ndarray) -> bool:
