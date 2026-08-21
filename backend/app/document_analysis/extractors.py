@@ -1028,7 +1028,7 @@ class AuthorityLetterExtractor(RegexExtractor):
     #: GDA Abbotabad: "...on behalf of this\nAuthority." captures just
     #: "this"). Triggers the letterhead fallback in extract() below.
     _GENERIC_ORG_REFERENCE = re.compile(
-        r"^(?:this|the said|said)(?:\s+(?:authority|board|office|department))?$",
+        r"^(?:this|the said|said|the)(?:\s+(?:authority|board|office|department))?$",
         re.IGNORECASE,
     )
     #: Letterhead lines to skip when falling back -- contact details, not
@@ -1049,7 +1049,7 @@ class AuthorityLetterExtractor(RegexExtractor):
             re.IGNORECASE,
         ),
         "organization_name": re.compile(
-            r"on\s+(?:the\s+)?behalf\s+of\s+([^.\n]+)",
+            r"on\s+(?:the\s+)?behalf\s+of\s+((?:[^\n.]|\n(?=[^\n.]))+)",
             re.IGNORECASE,
         ),
         "account_holder": re.compile(
