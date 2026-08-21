@@ -1451,7 +1451,12 @@ class TripartiteAgreementExtractor(RegexExtractor):
     #: "(hereinafter referred to as ...)" clause. Tune against real samples.
     _patterns = {
         "party_1link": re.compile(
-            r"((?:1\s*LINK|1-LINK|ONE[-\s]?LINK|ONELINK)[^,\n]*?)(?=\s*\(hereinafter|\s*,|\s*\n|$)",
+            # Negative lookbehind excludes the Authority Letter boilerplate
+            # "...matters related to 1-Link and the KPITB on behalf of..."
+            # which appears at the top of compound Tripartite Agreement files
+            # before the real party-definition section. The lookbehind is
+            # fixed-width (11 chars) as required by the re module.
+            r"(?<!related to )((?:1\s*LINK|1-LINK|ONE[-\s]?LINK|ONELINK)[^,\n]*?)(?=\s*\(hereinafter|\s*,|\s*\n|$)",
             re.IGNORECASE,
         ),
         "party_kpitb": re.compile(
