@@ -224,6 +224,10 @@ Also removed `PROJECT_FULL_CONTEXT.md` (an untracked, 903-line static architectu
   - **Test accounts now real and merged**: operator/reviewer/it, password `12345678`, plus the existing all-access Employee account.
   - **Full suite**: 912 passed, 12 failed (same pre-existing `fcc9fda` `TECH_BLANK_PAGE` baseline, root cause unchanged), 1 unrelated environment collision (`test_health.py` vs live `worker.heartbeat`, confirmed passes clean with worker stopped, not a real bug).
 
+- **2026-08-21: `AuthorityLetterExtractor` `organization_name` garbage-capture FIXED (commit `6759c21`).** Root cause: the primary `organization_name` regex terminated on `\n`, so a line ending `"...on behalf of the\n"` captured the bare word `"the"` instead of the real organization. **Two documented real cases fixed**: `TMA_Lal_Qilla_Dir_Lower` and `TMA_Samarbagh_Dir_Lower` (both OCR'd and verified directly; Samarbagh was OCR'd fresh this session). Fix: tightened the regex to require a non-whitespace character before the newline, and added `"the"` to `_GENERIC_ORG_REFERENCE` so any remaining bare-pronoun captures trigger the letterhead fallback. Full 9-sample `AUTHORITY_LETTER` sweep: all other files byte-for-byte unchanged. Full `test_document_analysis_engine.py` + `test_reports_api.py` suite: **89/89 passed**.
+
+- **2026-08-21: New splitter continuation-absorption instance observed (not investigated).** While OCR'ing `TMA_Samarbagh_Dir_Lower.pdf`, the splitter log showed: `"Page 8 weakly matches ONE_LINK_LETTER but was absorbed into the open BUSINESS_REQUIREMENT_DOCUMENT document."` This is a new instance of the already-documented continuation-absorption bug (same shape as the splitter fix in `68d47d6`/earlier entries). **Not investigated or fixed this session — logged for awareness only.** Do not treat as resolved.
+
 ## What's actually left to build
 
 1. **Extraction support for the rule-engine gaps above**, if those checks are wanted — this is the real remaining scope, not UI work.
