@@ -647,8 +647,9 @@ class BusinessRequirementDocumentExtractor(RegexExtractor):
             re.IGNORECASE,
         ),
         "revenue_services_listed": re.compile(
-            r"(sources? of income|services offered|revenue[- ]generating services|prescribed fees?)",
+            r"((?:sources? of income|services offered|revenue[- ]generating services|prescribed fees?)[^\n]*(?:\n[^\n]+){0,7})",
             re.IGNORECASE,
+
         ),
     }
 

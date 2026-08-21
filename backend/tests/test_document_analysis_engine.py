@@ -604,7 +604,12 @@ def test_extract_brd_fields_prose_form():
         BRD_TEXT_PROSE_FORM, AnalyzedDocumentType.BUSINESS_REQUIREMENT_DOCUMENT
     )
     assert fields["digitization_intent_confirmed"] == "KPITB's FinTech Unit"
-    assert fields["revenue_services_listed"] == "prescribed fees"
+    assert fields["revenue_services_listed"] == (
+        "prescribed fees at each facility office.\n"
+        "For ease and transparency, this office is already collaborating with KPITB\n"
+        "on a Management Information System and plans to integrate digital payment\n"
+        "solutions through KPITB's FinTech Unit within the system."
+    )
 
 
 def test_extract_brd_fields_numbered_list_form():
@@ -613,7 +618,16 @@ def test_extract_brd_fields_numbered_list_form():
         AnalyzedDocumentType.BUSINESS_REQUIREMENT_DOCUMENT,
     )
     assert fields["digitization_intent_confirmed"] == "KPITB's FIN TECH UNIT"
-    assert fields["revenue_services_listed"] == "sources of Income"
+    assert fields["revenue_services_listed"] == (
+        "sources of Income of this TMA are:\n"
+        "1. General Bus Stand\n"
+        "2. Cattle Fair Sample\n"
+        "3. Service Fee\n"
+        "INTENTION TO ON-BOARD DEPARTMENT FOR THE ENABLEMENT OF THE DIGITAL\n"
+        "PAYMENTS VIA KPITB's FIN TECH UNIT\n"
+        "This Office intends to go towards Digital Payments via KPITB'S FIN TECH\n"
+        "UNIT."
+    )
 
 
 def test_extract_brd_fields_categorized_bullets_form():
@@ -622,7 +636,16 @@ def test_extract_brd_fields_categorized_bullets_form():
         AnalyzedDocumentType.BUSINESS_REQUIREMENT_DOCUMENT,
     )
     assert fields["digitization_intent_confirmed"] == "KPITB's FinTech Unit"
-    assert fields["revenue_services_listed"] == "SERVICES OFFERED"
+    assert fields["revenue_services_listed"] == (
+        "SERVICES OFFERED:\n"
+        "Revenue Collection\n"
+        "Taxes (Property Tax, Water Tax)\n"
+        "Miscellaneous (Registration Fee, Lease Renewal, Rents)\n"
+        "4. Intention to on-board department for the enablement of the digital\n"
+        "payments via KPITB's FinTech Unit\n"
+        "The Authority intends to collaborate with KPITB's FinTech Unit to digitize\n"
+        "all revenue streams."
+    )
 
 
 def test_brd_missing_digitization_mention_is_missing_not_invalid():
