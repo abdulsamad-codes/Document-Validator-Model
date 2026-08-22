@@ -340,9 +340,17 @@ not assumed from a commit title. The 4 FALSE items and the informational
 note were spot-checked and still hold; nothing this session or the
 interleaved work touched those code paths.
 
-**Result: 14 of the 28 CONFIRMED items were already fixed, 14 are still
-real. Both real-sample-validation findings were fixed as a side effect of
-the AMC structural-parser rewrite. FALSE stays at 4.**
+**Result at the time of this re-verification (2026-08-22): 14 of the 28
+CONFIRMED items were already fixed, 14 are still real. Both
+real-sample-validation findings were fixed as a side effect of the AMC
+structural-parser rewrite. FALSE stays at 4.**
+
+**Update (2026-08-23): 6 more of the 14 "still real" items were fixed this
+session (`8f5fce7`) — batches 1 and 2 of the fix-order recommendation below
+(items 9, 11, 14, 19, 20, 25). 20 of 28 CONFIRMED items are now fixed, 8
+remain open** (items 8, 12, 13, 16, 21, 22, 23, 24 — batches 3 onward,
+untouched this session per explicit scope). See the table below for
+per-item status and the fix-order section for what's still queued.
 
 ### Corrected status table
 
@@ -358,36 +366,39 @@ the AMC structural-parser rewrite. FALSE stays at 4.**
 | High 6 | Commit before audit log (confidence, normalization) | High | ALREADY FIXED | `1c9bd12` — both services now defer the audit write (`commit=False`) and commit once after, with an explicit atomicity comment; regression tests cite this doc's own item number |
 | High 7 | `SKIPPED` outcome retried as a failure | High | ALREADY FIXED | `56bdad7` "SKIPPED outcomes no longer burn a retry attempt" — new `_DocumentSkipped` exception routes to `jobs.mark_skipped_permanent`, a terminal state that spends no retry budget, instead of `mark_failed_attempt` |
 | Medium 8 | `useProcessingOverview.js` loading flash | Medium | **STILL REAL** | `useProcessingOverview.js:34` — `setLoading(false)` is still the first line of `reload`, still executes before the `await` |
-| Medium 9 | `ReportIssues.jsx` null reference | Medium | **STILL REAL** | `ReportIssues.jsx:60,64` — `groupIssues(issues ?? [])` guards line 60, but line 64's `issues.length` still reads the raw prop |
+| Medium 9 | `ReportIssues.jsx` null reference | Medium | FIXED (2026-08-23) | `8f5fce7` — `safeIssues = issues ?? []` used consistently for both the grouping call and the empty-state length check; regression test added |
 | Medium 10 | Focus trap missing in modals | Medium | ALREADY FIXED | `9c28012` — both `ConfirmDialog.jsx` and `SessionTimeoutModal.jsx` gained auto-focus-on-open and Tab-key containment |
-| Medium 11 | `useProcessingProgress.js` polls unconditionally every 2.5s | Medium | **STILL REAL** | `useProcessingProgress.js:75-80` — still no `hasWork`-style gate, unlike `useProcessingOverview.js` which has one |
+| Medium 11 | `useProcessingProgress.js` polls unconditionally every 2.5s | Medium | FIXED (2026-08-23) | `8f5fce7` — added the same `hasWork` gate `useProcessingOverview.js` already had; regression test added (fake timers, confirms polling stops once idle) |
 | Medium 12 | No rate limiting on login | Medium | **STILL REAL** | `auth/routes.py` — no throttling logic; repo-wide search for rate-limiting libraries/middleware still finds nothing relevant |
 | Medium 13 | Read-then-write race on `application.status` | Medium | **STILL REAL** | Same unguarded `if application.status is ApplicationStatus.SUBMITTED: ... update(...)` pattern, now at 3 call sites (`upload/services.py:284`, `bulk_queue/services.py:47`, `:78`) |
-| Medium 14 | `useValidationReport.js` `loadApplications` missing request-ID guard | Medium | **STILL REAL** | `useValidationReport.js` — sibling `reload()` now uses `reportRequestIdRef` (line 67, 95, 125), but `loadApplications` (lines 69-84) still has no guard at all — same inconsistency, just with `reload()`'s side now fixed instead of neither side |
+| Medium 14 | `useValidationReport.js` `loadApplications` missing request-ID guard | Medium | FIXED (2026-08-23) | `8f5fce7` — added an `activeStatusFilter` ref guard mirroring `useVerification.js`'s `reload`; regression test added (stale-response race) |
 | Medium 15 | `ApplicationTable` `SortIcon` defined inside render | Medium | ALREADY FIXED | `04e4a00` "hoist ApplicationTable's SortIcon to module scope" |
 | Medium 16 | `_process_bulk_upload` returns the wrong `ProcessingMethod` | Medium | **STILL REAL** | `document_processing/services.py:364-370` — still returns `ProcessingMethod.PADDLE_OCR`/`raw_text=""` immediately after splitting, before OCR has run |
 | Medium 17 | `useValidationTask.js` `resultsData.results` possibly undefined | Medium | ALREADY FIXED (obsolete) | `15fe827` "operator Validation page and IT System Logs viewer" deleted `useValidationTask.js` outright — no remaining reference anywhere in `frontend/src`; superseded by the `operator_workflow`/`/validation` page's own hooks |
 | Low 18 | `findNavItem` doesn't resolve `/validation-tasks` | Low | ALREADY FIXED (obsolete) | The route itself no longer exists — `AppRoutes.jsx` has no `/validation-tasks`, only `/validation` (`ValidationPage`), which **is** in `NAVIGATION` (`navigation.js:56`, `roles: ['OPERATOR']`) and resolves correctly through `findNavItem`'s exact-match branch |
-| Low 19 | Dead `user?.initials` fallback | Low | **STILL REAL** | `SidebarProfile.jsx:13`, `Navbar.jsx:33` still reference `user?.initials`; `auth/schemas.py`'s `UserRead` still has only `email`/`name`, no `initials` anywhere in the backend |
-| Low 20 | `[].every()` vacuous truth on empty checklist | Low | **STILL REAL** | `ReviewDecision.jsx:61,69` — `checklist.every(...)` still returns `true` on an empty array, no separate length guard added to the APPROVE validation chain |
+| Low 19 | Dead `user?.initials` fallback | Low | FIXED (2026-08-23) | `8f5fce7` — deleted from both `SidebarProfile.jsx` and `Navbar.jsx`; confirmed truly unreachable (no `initials` anywhere in `useAuth`, `AuthContext`, or backend `UserRead`) before removing, no behavior change |
+| Low 20 | `[].every()` vacuous truth on empty checklist | Low | FIXED (2026-08-23) | `8f5fce7` — `checklistComplete = checklist.length > 0 && checklist.every(...)`; regression test added |
 | Low 21 | Download URL not application-scoped | Low | **STILL REAL** | `documents.js:127-130` and `upload/routes.py:389` still `/documents/{document_id}/download`, still not nested under `/applications/{application_id}/documents/...` like every sibling endpoint |
 | Low 22 | Base `AuthenticationError.status_code` is 500 | Low | **STILL REAL** | `auth/exceptions.py:17` — base class still `status_code: int = 500`; all concrete subclasses still correctly override it |
 | Low 23 | `REJECTED` in `RULE_RESULT_STATUSES` has no backend enum match | Low | **STILL REAL** | `database/models/enums.py:58-64` — `ValidationStatus` still only `PASS`/`FAIL`/`WARNING`/`PENDING_MANUAL_REVIEW`, no `REJECTED` |
 | Low 24 | `document.status.toLowerCase()` no null guard | Low | **STILL REAL** | `ProcessingProgress.jsx:75` — unchanged, no guard |
-| Low 25 | `context[field.ocr_result_id]` no `.get()` fallback | Low | **STILL REAL** | `normalization/services.py:102` — unchanged raw dict-index lookup |
+| Low 25 | `context[field.ocr_result_id]` no `.get()` fallback | Low | FIXED (2026-08-23) | `8f5fce7` — `context.get(field.ocr_result_id, (0, "unknown"))`, matching `normalize_field`'s own existing default sentinel values; regression test added (monkeypatched missing-context race) |
 | Root cause | `autoStartProcessingAfterUpload` defaults to `false` | — | ALREADY FIXED | `91307f8` (already noted in the original doc) |
 | Real-sample 1 | Garbage `/IBAN` value on combined-label AMC sample (`GDA_Abbotabad`) | — | ALREADY FIXED | Structural bank-account-block parser rewrite (`81e2700`, `d48e7fd`, `a213bc8`, `d5b3ea3`) — re-ran `AccountMaintenanceCertificateExtractor.extract()` against the exact cached file today: `account_number` now `'0010002989240012'`, clean |
 | Real-sample 2 | All three critical fields empty on bracket-label AMC sample (`DG_Sports_KP`) | — | ALREADY FIXED | Same rewrite — re-ran against the exact cached file today: `account_holder`/`account_number`/`iban` all populated (`'Peshawar Sports Complex'`, `'2000749217'`, `'PK54KHYB0001002000749217'`) |
 
 **FALSE (4)** — spot-checked, unchanged: `queue_jobs.job_type` column still present, `alembic heads` still matches (a different head now, migrations have moved on, but still fully applied, no drift); the single-upload/bulk-split distinction in `upload/services.py` is unchanged; `ProcessingProgress.jsx`'s three-part breakdown vs. `bulk_queue/services.py`'s `total_documents` is still the same by-design split (`bulk_queue/services.py:119`); the global `protected_router` auth wrap is unchanged. The informational note on `human_verification/routes.py`'s per-route auth inconsistency also still holds exactly as described (`get_human_review`/`get_human_review_history` still take no `current_user` param; `submit_human_review` still does) — not a security gap, still worth knowing.
 
-### Recommended fix order for the 14 still-real items
+### Recommended fix order for the 14 still-real items (as of 2026-08-22)
 
 Grouped by effort and by whether a fix mirrors a pattern already proven elsewhere in this same codebase (lower risk, faster to review) versus needing an actual design/scope decision first.
 
-1. **Trivial one-line defensive guards, batchable into one PR, near-zero risk**: ReportIssues.jsx `issues.length` guard (#9), `ProcessingProgress.jsx` `document.status?.toLowerCase()` guard (#24), `normalization/services.py`'s `context.get(field.ocr_result_id)` fallback (#25), `ReviewDecision.jsx`'s empty-checklist guard (#20), delete the dead `user?.initials` fallback (#19).
-2. **Mirror an existing in-codebase pattern, quick and low-risk**: `useValidationReport.js`'s `loadApplications` request-ID guard (#14) — copy the `reportRequestIdRef` pattern its own sibling `reload()` already uses; `useProcessingProgress.js`'s `hasWork`-gated polling (#11) — copy `useProcessingOverview.js`'s own gate. Both fixes already exist in this repo, just not applied to the sibling hook.
+**Update (2026-08-23): steps 1 and 2 below are done (`8f5fce7`)**, except `ProcessingProgress.jsx`'s `document.status?.toLowerCase()` guard (#24) — that one was grouped into step 1's original write-up but was *not* part of what got approved and implemented this round (batches 1+2 as actually scoped covered #9, #25, #20, #19, #14, #11 only); #24 is still open and effectively belongs with the remaining batch-3-onward items below.
+
+1. ~~**Trivial one-line defensive guards, batchable into one PR, near-zero risk**: ReportIssues.jsx `issues.length` guard (#9), `normalization/services.py`'s `context.get(field.ocr_result_id)` fallback (#25), `ReviewDecision.jsx`'s empty-checklist guard (#20), delete the dead `user?.initials` fallback (#19).~~ **FIXED, `8f5fce7`.** (`ProcessingProgress.jsx`'s `document.status?.toLowerCase()` guard, #24, was originally grouped here but is still open — see below.)
+2. ~~**Mirror an existing in-codebase pattern, quick and low-risk**: `useValidationReport.js`'s `loadApplications` request-ID guard (#14) — copy the `reportRequestIdRef` pattern its own sibling `reload()` already uses; `useProcessingProgress.js`'s `hasWork`-gated polling (#11) — copy `useProcessingOverview.js`'s own gate.~~ **FIXED, `8f5fce7`.**
 3. **`useProcessingOverview.js` loading flash (#8)** — one-line reorder (drop the premature `setLoading(false)`), but touches a hook with an unusual `setLoading(false)`-then-`setRefreshing(true)` split worth reading carefully before changing.
+3a. **`ProcessingProgress.jsx`'s `document.status?.toLowerCase()` guard (#24)** — trivial one-line guard, same risk tier as step 1's items, just not included in the batch that was actually approved and shipped; safe to pick up any time.
 4. **Base `AuthenticationError.status_code` (#22)** — trivial (500→401), but confirm nothing raises the base class directly and relies on 500 before changing.
 5. **Download URL not application-scoped (#21)** — isolated route/URL-shape change; needs a check of every caller (frontend `getDocumentDownloadUrl` usage, any hardcoded links) before moving it under `/applications/{id}/documents/...`, since it's a public download link.
 6. **`REJECTED` enum mismatch (#23)** — needs a scope decision first: add `REJECTED` to the backend `ValidationStatus` enum (a migration) if a rule can genuinely produce that outcome, or remove it from the frontend catalogue if it can't. Not mechanical.
