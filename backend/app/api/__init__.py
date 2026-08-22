@@ -37,7 +37,6 @@ from app.rule_engine.routes import router as rule_engine_router
 from app.system_logs.routes import router as system_logs_router
 from app.technical_validation.routes import router as technical_validation_router
 from app.upload.routes import router as upload_router
-from app.validation.routes import router as validation_router
 
 api_router = APIRouter()
 
@@ -67,7 +66,6 @@ protected_router.include_router(reports_router)
 protected_router.include_router(human_verification_router)
 protected_router.include_router(feedback_router)
 protected_router.include_router(continuous_learning_router)
-protected_router.include_router(validation_router)
 protected_router.include_router(operator_workflow_router)
 protected_router.include_router(system_logs_router)
 protected_router.include_router(performance_router)

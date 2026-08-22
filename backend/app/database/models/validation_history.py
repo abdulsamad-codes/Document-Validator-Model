@@ -1,11 +1,9 @@
 """Validation history model.
 
-Append-only record of application-level validation workflow events. Unlike the
-vestigial ``validation`` module's per-task ``ValidationLog`` (which records
-field-level checks on a task that nothing ever creates), this table records the
-operator/reviewer workflow that actually runs: documents requested, documents
-received, operator submissions and rejections, processing failures and final
-review decisions. Each row captures the actor, the status before and after the
+Append-only record of application-level validation workflow events. This table
+records the operator/reviewer workflow that actually runs: documents requested,
+documents received, operator submissions and rejections, processing failures
+and final review decisions. Each row captures the actor, the status before and after the
 event, the missing documents at that point and any comment, so repeated
 document submissions preserve their full history instead of overwriting it.
 """

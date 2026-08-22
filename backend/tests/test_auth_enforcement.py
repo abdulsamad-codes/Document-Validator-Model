@@ -73,24 +73,10 @@ _PROTECTED_ENDPOINTS: list[tuple[str, str]] = [
     ("get", "/documents/1"),
     ("get", "/documents/1/download"),
     ("post", "/applications/1/bulk-upload"),
-    # validation
-    ("post", "/validation/tasks"),
-    ("get", "/validation/tasks"),
-    ("get", "/validation/tasks/1"),
-    ("post", "/validation/tasks/1/start"),
-    ("post", "/validation/tasks/1/complete"),
-    ("post", "/validation/tasks/1/reject"),
-    ("post", "/validation/tasks/1/request-correction"),
-    ("get", "/validation/tasks/1/results"),
-    ("get", "/validation/tasks/1/logs"),
-    ("get", "/validation/applications/1/logs"),
-    ("post", "/validation/fields/1/verify"),
-    ("post", "/validation/fields/1/correct"),
-    ("post", "/validation/evidence/1/review"),
 ]
 
 
-def test_protected_endpoint_inventory_has_53_entries():
+def test_protected_endpoint_inventory_has_40_entries():
     """Guards the list above against silently drifting from the real router set.
 
     If a new endpoint is added to a protected module and this list isn't
@@ -98,7 +84,7 @@ def test_protected_endpoint_inventory_has_53_entries():
     here -- see `app/api/__init__.py` for why per-router discipline alone
     already failed silently once.
     """
-    assert len(_PROTECTED_ENDPOINTS) == 53
+    assert len(_PROTECTED_ENDPOINTS) == 40
 
 
 def test_unauthenticated_requests_rejected_everywhere(client):
