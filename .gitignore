@@ -88,6 +88,7 @@ htmlcov/
 !docs/*.pdf
 
 /Confidential Data/
+/Individual PDFs/
 
 # Confidential credentials — never commit account/password docs
 /docs/DEV_ACCOUNTS.md
