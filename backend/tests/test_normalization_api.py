@@ -23,6 +23,8 @@ from tests.test_document_analysis_api import (
 )
 from tests.test_technical_validation_api import create_application
 
+from app.database.repositories.extracted_field_repository import ExtractedFieldRepository
+
 API = "/api/v1"
 
 NORMALIZE_URL = "/normalize"
@@ -125,6 +127,56 @@ def test_normalize_persists_normalized_value(authenticated_client, storage_root)
     assert fields["iban"].normalized_value == "DE89370400440532013000"
     assert fields["account_holder"].normalized_value == "JOHN A. DOE"
     assert fields["statement_period"].normalized_value == "2026-01-01 - 2026-01-31"
+
+
+def test_normalize_survives_field_with_missing_ocr_context(
+    authenticated_client, storage_root, monkeypatch
+):
+    """A field whose ocr_result_id has no matching entry in `_build_context`'s
+    map must not crash normalize() for the whole application --
+    docs/TEAMMATE_BUG_TRIAGE.md's corrected Low #25. Before the fix this
+    raised an unhandled KeyError from `context[field.ocr_result_id]` and the
+    endpoint returned a 500 for every field, not just the affected one.
+
+    Both `ExtractedFieldRepository.get_by_application` and
+    `OCRRepository.get_by_application` join through the same
+    ocr_result -> document -> application_id path, so under a single
+    transaction the two are always consistent -- this can only diverge via a
+    race between the two reads (a document/OCR result changing between them).
+    That's reproduced directly here by monkeypatching `_build_context` to
+    drop one real entry, rather than trying to force an inconsistent DB state
+    that the schema's own foreign key already prevents.
+    """
+    application_id = add_digital_statement(authenticated_client, storage_root)
+    evaluate(authenticated_client, application_id)
+
+    from app.normalization.services import NormalizationService
+
+    original_build_context = NormalizationService._build_context
+
+    def _build_context_missing_iban(self, app_id):
+        context = dict(original_build_context(self, app_id))
+        target = next(
+            field
+            for field in ExtractedFieldRepository(self._db).get_by_application(app_id)
+            if field.field_name == "iban"
+        )
+        del context[target.ocr_result_id]
+        return context
+
+    monkeypatch.setattr(NormalizationService, "_build_context", _build_context_missing_iban)
+
+    result = normalize(authenticated_client, application_id)
+
+    items = items_by_field(result)
+    # The affected field falls back to the "unknown" sentinel instead of
+    # crashing the whole call.
+    assert items["iban"]["document_id"] == 0
+    assert items["iban"]["file_name"] == "unknown"
+    assert items["iban"]["status"] == "NORMALIZED"
+    # Every other field on the same application still normalizes normally.
+    assert items["account_number"]["normalized_value"] == "1234567890"
+    assert items["account_holder"]["normalized_value"] == "JOHN A. DOE"
 
 
 # --- Human review flow -------------------------------------------------------

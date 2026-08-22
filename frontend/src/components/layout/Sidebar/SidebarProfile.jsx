@@ -9,15 +9,15 @@ function SidebarProfile() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const name = user?.name ?? USER_PROFILE.name;
-  const initials =
-    user?.initials ??
-    name
-      .split(' ')
-      .map((part) => part[0])
-      .filter(Boolean)
-      .slice(0, 2)
-      .join('')
-      .toUpperCase();
+  // The backend user model has no `initials` field (see auth/schemas.py's
+  // UserRead: only email/name), so this is always computed from the name.
+  const initials = name
+    .split(' ')
+    .map((part) => part[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
 
   const handleLogout = async () => {
     await logout();

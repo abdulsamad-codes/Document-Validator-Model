@@ -96,11 +96,17 @@ class NormalizationService:
         summary = NormalizationSummary()
         try:
             for field in fields:
+                # Falls back to the same "unknown" sentinel _build_context already
+                # uses for a document with no matching filename, rather than
+                # letting one field with a stale/missing ocr_result_id crash
+                # normalization for the whole application via an unguarded
+                # dict-index lookup.
+                document_id, file_name = context.get(field.ocr_result_id, (0, "unknown"))
                 item = self.normalize_field(
                     field_name=field.field_name,
                     value=field.human_corrected_value or field.extracted_value or "",
-                    document_id=context[field.ocr_result_id][0],
-                    file_name=context[field.ocr_result_id][1],
+                    document_id=document_id,
+                    file_name=file_name,
                     verification_status=field.verification_status,
                 )
                 items.append(item)

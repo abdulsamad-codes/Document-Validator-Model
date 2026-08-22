@@ -57,11 +57,12 @@ function IssueGroup({ title, items, variant }) {
  * @param {object[]} props.recommendations Deterministic report recommendations.
  */
 function ReportIssues({ issues, recommendations }) {
-  const groups = groupIssues(issues ?? []);
+  const safeIssues = issues ?? [];
+  const groups = groupIssues(safeIssues);
 
   return (
     <div className={styles.wrap}>
-      {issues.length === 0 && recommendations.length === 0 ? (
+      {safeIssues.length === 0 && recommendations.length === 0 ? (
         <p className={styles.empty}>
           No issues requiring attention were found for this application.
         </p>

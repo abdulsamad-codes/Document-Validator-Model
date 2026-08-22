@@ -58,7 +58,10 @@ function ReviewDecision({
   submitError,
   onSubmit,
 }) {
-  const checklistComplete = checklist.every((item) => item.is_checked);
+  // checklist.every() is vacuously true on an empty array, so require at
+  // least one item before treating the checklist as complete -- otherwise
+  // an application with no checklist items could be approved unchecked.
+  const checklistComplete = checklist.length > 0 && checklist.every((item) => item.is_checked);
   const hasCorrection = corrections.some((correction) => (correction.corrected_value ?? '').trim());
 
   let validationError = null;

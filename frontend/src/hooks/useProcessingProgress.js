@@ -72,13 +72,24 @@ export function useProcessingProgress(applicationId) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     reload();
-    const autoRefresh = getPreference('autoRefreshProcessingStatus', true);
-    if (!autoRefresh) {
+  }, [reload]);
+
+  // Same hasWork gate as useProcessingOverview.js: only poll while there is
+  // actually queued or in-flight work, instead of unconditionally every
+  // 2.5s for as long as the page/preference allows.
+  const hasWork =
+    progress != null && (Number(progress.queued) > 0 || Number(progress.processing) > 0);
+
+  useEffect(() => {
+    if (!getPreference('autoRefreshProcessingStatus', true)) {
+      return undefined;
+    }
+    if (!hasWork) {
       return undefined;
     }
     const interval = window.setInterval(reload, 2500);
     return () => window.clearInterval(interval);
-  }, [reload]);
+  }, [hasWork, reload]);
 
   return {
     progress,

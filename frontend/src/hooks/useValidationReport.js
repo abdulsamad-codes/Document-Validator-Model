@@ -66,20 +66,35 @@ export function useValidationReport() {
   // must not let that stale response overwrite the newly-selected one.
   const reportRequestIdRef = useRef(0);
 
+  // Same stale-response guard as useVerification.js's `reload` (activeAppId
+  // ref, compared against a locally-captured value before every setState):
+  // switching statusFilter quickly enough that two loadApplications calls
+  // are in flight must not let the older one overwrite the newer one's
+  // result.
+  const activeStatusFilter = useRef(statusFilter);
+  useEffect(() => {
+    activeStatusFilter.current = statusFilter;
+  }, [statusFilter]);
+
   const loadApplications = useCallback(async () => {
+    const fetchStatusFilter = statusFilter;
     setAppsLoading(true);
     setAppsError(null);
     try {
       const { items } = await listApplications({
-        status: statusFilter || undefined,
+        status: fetchStatusFilter || undefined,
         limit: 100,
       });
+      if (activeStatusFilter.current !== fetchStatusFilter) return;
       setApplications(items ?? []);
     } catch (err) {
+      if (activeStatusFilter.current !== fetchStatusFilter) return;
       setAppsError(getApiErrorMessage(err));
       setApplications([]);
     } finally {
-      setAppsLoading(false);
+      if (activeStatusFilter.current === fetchStatusFilter) {
+        setAppsLoading(false);
+      }
     }
   }, [statusFilter]);
 
