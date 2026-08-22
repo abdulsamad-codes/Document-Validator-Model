@@ -1,5 +1,7 @@
 # Project Context – FinTech Document Verification System
 
+<!-- git identity fix verified 2026-08-22 -->
+
 Last updated: 2026-08-22. This file is the single source of truth for project state across sessions/tools — keep it current rather than trusting an earlier assistant summary in chat history.
 
 ## 📍 Session picks up here (2026-08-22 end-of-day) — read this first
