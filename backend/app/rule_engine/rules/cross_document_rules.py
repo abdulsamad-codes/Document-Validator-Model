@@ -85,7 +85,23 @@ class _CrossDocumentRule(BaseRule):
 
 
 class CrossAccountHolderRule(_CrossDocumentRule):
-    """The account holder must agree on the AMC, bilateral and tripartite docs."""
+    """The account holder must agree on the AMC and tripartite docs.
+
+    BILATERAL_AGREEMENT was removed from ``participants`` 2026-08-22, the
+    same failure shape already on record for ``CrossBranchCodeRule`` /
+    ``CrossPeriodRule`` (see CONTEXT.md): confirmed via real-sample
+    validation of ``BilateralAgreementExtractor`` (two independent real
+    departments) that the real Bilateral Agreement bank-account table only
+    ever has a Bank Name + Account No column, never an Account Title/Holder
+    column -- so ``account_holder`` is a genuine, structural honest-miss for
+    this document type, not a gap in the extractor. Since
+    ``_CrossDocumentRule.evaluate`` hard-FAILs when a participant lacks the
+    field, leaving Bilateral registered here would make this rule
+    permanently unpassable for every real application. AMC and Tripartite
+    both do extract ``account_holder`` for real (via the shared
+    ``_extract_bank_account_block`` structural parser), so the comparison
+    between those two remains meaningful and stays registered.
+    """
 
     id = "CROSS_ACCOUNT_HOLDER_MATCH"
     name = "Account holder is consistent across documents"
@@ -93,7 +109,6 @@ class CrossAccountHolderRule(_CrossDocumentRule):
     participants = frozenset(
         {
             DocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
-            DocumentType.BILATERAL_AGREEMENT,
             DocumentType.TRIPARTITE_AGREEMENT,
         }
     )
