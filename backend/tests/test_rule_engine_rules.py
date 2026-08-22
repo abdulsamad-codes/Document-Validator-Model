@@ -88,14 +88,16 @@ def run(rule_id: str, ctx: RuleContext) -> RuleResult:
 # --- Registry contract -------------------------------------------------------
 
 
-def test_registry_has_53_rules_in_8_categories():
+def test_registry_has_52_rules_in_8_categories():
     from collections import Counter
 
     rules = REGISTRY.rules()
-    assert len(rules) == 53
+    assert len(rules) == 52
     categories = Counter(rule.category for rule in rules)
     assert categories == {
-        "document_completeness": 8,
+        # DocumentScheduleRule is implemented but deliberately not registered
+        # -- see the inline rationale in rule_engine/rules/__init__.py.
+        "document_completeness": 7,
         "field_presence": 9,
         "format": 6,
         # CrossBranchCodeRule and CrossPeriodRule are implemented but
@@ -126,7 +128,6 @@ def test_registry_rule_ids_are_unique():
         (DocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE, "DOC_AMC_PRESENT"),
         (DocumentType.ONE_LINK_LETTER, "DOC_ONE_LINK_PRESENT"),
         (DocumentType.AUTHORITY_LETTER, "DOC_AUTHORITY_LETTER_PRESENT"),
-        (DocumentType.SCHEDULE_OF_CHARGES, "DOC_SCHEDULE_OF_CHARGES_PRESENT"),
         (DocumentType.BUSINESS_REQUIREMENT_DOCUMENT, "DOC_BRD_PRESENT"),
         (DocumentType.FORMAL_REQUEST_LETTER, "DOC_FORMAL_REQUEST_PRESENT"),
     ],

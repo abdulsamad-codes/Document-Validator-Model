@@ -77,13 +77,18 @@ OVERALL_STATUS_PRECEDENCE: tuple[ValidationStatus, ...] = (
 # -- Document configuration ---------------------------------------------------
 #: Document types the rule engine treats as required, each exactly once. This
 #: extends the Phase 4 required set with the bilateral agreement.
+#:
+#: SCHEDULE_OF_CHARGES deliberately removed 2026-08-22, same reasoning as
+#: completeness/constants.py's REQUIRED_DOCUMENT_TYPES -- see there and
+#: CONTEXT.md for the decision record. Corresponding rule (DocumentScheduleRule,
+#: rule_engine/rules/document_rules.py) is unregistered, not deleted -- see
+#: rule_engine/rules/__init__.py.
 REQUIRED_DOCUMENT_TYPES: tuple[DocumentType, ...] = (
     DocumentType.TRIPARTITE_AGREEMENT,
     DocumentType.BILATERAL_AGREEMENT,
     DocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
     DocumentType.ONE_LINK_LETTER,
     DocumentType.AUTHORITY_LETTER,
-    DocumentType.SCHEDULE_OF_CHARGES,
     DocumentType.BUSINESS_REQUIREMENT_DOCUMENT,
     DocumentType.FORMAL_REQUEST_LETTER,
 )

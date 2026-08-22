@@ -25,6 +25,14 @@ class CompletenessStatus(str, Enum):
 
 
 #: Document types every application must provide exactly once.
+#:
+#: SCHEDULE_OF_CHARGES deliberately removed 2026-08-22: real-world evidence
+#: (every candidate real sample found so far, including every file whose name
+#: suggested this type) confirms it is not a real standalone document in this
+#: checklist -- its content (the Payment Methods & Charges clause) lives
+#: inside the Bilateral Agreement, which already has its own real extractor
+#: (BilateralAgreementExtractor.transaction_charges) and its own required
+#: presence check above. See CONTEXT.md for the full decision record.
 REQUIRED_DOCUMENT_TYPES: frozenset[DocumentType] = frozenset(
     {
         DocumentType.TRIPARTITE_AGREEMENT,
@@ -32,7 +40,6 @@ REQUIRED_DOCUMENT_TYPES: frozenset[DocumentType] = frozenset(
         DocumentType.ACCOUNT_MAINTENANCE_CERTIFICATE,
         DocumentType.ONE_LINK_LETTER,
         DocumentType.AUTHORITY_LETTER,
-        DocumentType.SCHEDULE_OF_CHARGES,
         DocumentType.BUSINESS_REQUIREMENT_DOCUMENT,
         DocumentType.FORMAL_REQUEST_LETTER,
     }

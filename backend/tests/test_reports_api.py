@@ -54,12 +54,12 @@ prescribed fees collected at each facility office.
 This office intends to go towards Digital Payments via KPITB's FinTech Unit.
 """
 
-#: Per-group rule totals expected from the 53-rule ruleset (55 implemented,
-#: CrossPeriodRule and CrossBranchCodeRule unregistered -- see
-#: rule_engine/rules/__init__.py -- plus FieldStatementPeriodPresenceRule and
-#: FieldBalancesPresenceRule removed outright, same file).
+#: Per-group rule totals expected from the 52-rule ruleset (55 implemented,
+#: CrossPeriodRule, CrossBranchCodeRule and DocumentScheduleRule unregistered
+#: -- see rule_engine/rules/__init__.py -- plus FieldStatementPeriodPresenceRule
+#: and FieldBalancesPresenceRule removed outright, same file).
 EXPECTED_GROUP_TOTALS = {
-    "Document Validation": 17,
+    "Document Validation": 16,
     "Format Validation": 6,
     # CrossPeriodRule is unregistered (see rule_engine/rules/__init__.py) --
     # 3 of the 4 implemented cross-document rules are active.
@@ -73,7 +73,13 @@ EXPECTED_GROUP_TOTALS = {
 
 
 def build_full_application(client, storage_root, *, with_detections: bool) -> int:
-    """Build an application carrying all eight required documents, analysed.
+    """Build an application carrying all seven required documents, analysed.
+
+    SCHEDULE_OF_CHARGES deliberately excluded: no longer a required document
+    type (see rule_engine/constants.py's REQUIRED_DOCUMENT_TYPES and
+    CONTEXT.md) -- this fixture derives its document set directly from that
+    constant, so it now builds seven documents, not eight, with no separate
+    change needed here.
 
     BILATERAL_AGREEMENT, AUTHORITY_LETTER, ACCOUNT_MAINTENANCE_CERTIFICATE,
     TRIPARTITE_AGREEMENT, BUSINESS_REQUIREMENT_DOCUMENT, ONE_LINK_LETTER and
@@ -172,13 +178,13 @@ def test_report_approved_application(authenticated_client, storage_root):
     assert report["overall_status"] == "APPROVED"
     assert report["application"]["status"] == "SUBMITTED"
     assert report["application"]["created_by"] == "Test Operator"
-    assert len(report["document_summary"]) == 8
+    assert len(report["document_summary"]) == 7
 
     summary = report["rule_summary"]
-    assert summary["total"] == 53
+    assert summary["total"] == 52
     assert summary["failed"] == 0
     assert summary["pending_manual_review"] == 0
-    assert summary["passed"] + summary["warnings"] == 53
+    assert summary["passed"] + summary["warnings"] == 52
 
     assert [
         group["category"] for group in summary["by_category"]
@@ -230,7 +236,14 @@ def test_report_approved_application(authenticated_client, storage_root):
     # has one, so its own template coverage is honestly lower than the old
     # synthetic fixture's -- same shift pattern as the entries above, verified
     # via the actual test run.
-    assert extraction["overall_confidence"] == 0.9701
+    # Recalibrated again 2026-08-22 (second time same day): SCHEDULE_OF_CHARGES
+    # removed from REQUIRED_DOCUMENT_TYPES (see CONTEXT.md) -- build_full_application
+    # now builds seven documents instead of eight, dropping the fully-covered
+    # 9-field BANK_STATEMENT_TEXT fallback that type used to contribute --
+    # fewer, honestly-lower-scoring real extractors now make up the fleet
+    # mean instead of one artificially-easy synthetic filler, verified via
+    # the actual test run.
+    assert extraction["overall_confidence"] == 0.9587
 
     assert [item["code"] for item in report["recommendations"]] == [
         "NO_ACTION_REQUIRED"
@@ -244,7 +257,7 @@ def test_report_failed_application(authenticated_client, storage_root):
 
     assert report["overall_status"] == "FAILED"
     summary = report["rule_summary"]
-    assert summary["total"] == 53
+    assert summary["total"] == 52
     assert summary["failed"] > 0
     # Only the present AMC document's visual rules await detection; the rest
     # fail because their documents are missing.
@@ -308,14 +321,14 @@ def test_report_summary_condensed(authenticated_client, storage_root):
     assert summary["report_version"] == REPORT_VERSION
     assert summary["overall_status"] == "APPROVED"
     assert summary["application_status"] == "SUBMITTED"
-    assert summary["document_count"] == 8
-    assert summary["rule_total"] == 53
-    assert summary["rule_passed"] + summary["rule_warnings"] == 53
+    assert summary["document_count"] == 7
+    assert summary["rule_total"] == 52
+    assert summary["rule_passed"] + summary["rule_warnings"] == 52
     assert summary["rule_failed"] == 0
     assert summary["rule_pending_review"] == 0
     assert summary["field_count"] > 0
     # See test_report_approved_application's overall_confidence comment.
-    assert summary["overall_confidence"] == 0.9701
+    assert summary["overall_confidence"] == 0.9587
     assert summary["recommendation_count"] == 1
 
 

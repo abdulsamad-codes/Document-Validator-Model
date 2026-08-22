@@ -84,9 +84,9 @@ def test_operator_queue_lists_application_with_completeness(
     item = payload["items"][0]
     assert item["application_id"] == application_id
     assert item["status"] == ApplicationStatus.SUBMITTED.value
-    assert item["required_document_count"] == 8
+    assert item["required_document_count"] == 7
     assert item["received_document_count"] == 0
-    assert item["missing_document_count"] == 8
+    assert item["missing_document_count"] == 7
     assert item["needs_attention"] is True
 
 

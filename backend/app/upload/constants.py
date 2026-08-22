@@ -27,12 +27,21 @@ DOCUMENT_TYPE_SLUGS: dict[DocumentType, str] = {
 
 #: Maximum number of copies an application may hold per document type. Types
 #: missing from this map are limited to a single copy. Multiple copies are a
-#: business requirement: e.g. three 1-Link forms and six Schedule of Charges
-#: agreements are uploaded per application.
+#: business requirement: e.g. three 1-Link forms are uploaded per application.
+#:
+#: SCHEDULE_OF_CHARGES's 6-copy entry removed 2026-08-22: it is no longer a
+#: required checklist type (see completeness/constants.py and CONTEXT.md),
+#: so the business rationale for a generous multi-copy cap no longer applies
+#: -- it now falls back to the default 1-copy limit like any other
+#: non-required type. DOCUMENT_TYPE_SLUGS above deliberately keeps its entry:
+#: that dict is a plain lookup (``DOCUMENT_TYPE_SLUGS[document_type]``, no
+#: default) used for storage regardless of required-checklist status, and the
+#: splitter's title-phrase entry for this type is deliberately left in place
+#: (see preprocessing/splitter.py) -- removing the slug would crash storage
+#: if the splitter ever did classify a real page as this type.
 MAX_COPIES_BY_DOCUMENT_TYPE: dict[DocumentType, int] = {
     DocumentType.ONE_LINK_LETTER: 3,
     DocumentType.TRIPARTITE_AGREEMENT: 3,
-    DocumentType.SCHEDULE_OF_CHARGES: 6,
 }
 
 #: Filename extensions accepted for upload, lower case with a leading dot.

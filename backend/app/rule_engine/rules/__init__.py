@@ -87,13 +87,25 @@ class RuleRegistry:
     def __init__(self) -> None:
         self._rules: tuple[BaseRule, ...] = tuple(
             [
-                # Document completeness (8).
+                # Document completeness (7 registered of 8 implemented).
+                # DocumentScheduleRule is implemented but deliberately not
+                # registered, found 2026-08-22: SCHEDULE_OF_CHARGES is not a
+                # real standalone document in this checklist -- every real
+                # candidate sample found (including every file whose name
+                # suggested this type) turned out to actually be a Bilateral
+                # Agreement. With this rule registered, it hard-FAILed every
+                # real application unconditionally (no real sample has ever
+                # been splitter-classified as SCHEDULE_OF_CHARGES), the same
+                # failure shape as CrossBranchCodeRule/CrossPeriodRule above.
+                # Bilateral Agreement's own required-presence check
+                # (DocumentBilateralRule) plus its transaction_charges field
+                # already cover what this type was meant to verify. Register
+                # again only if a genuine standalone real sample surfaces.
                 DocumentTripartiteRule(),
                 DocumentBilateralRule(),
                 DocumentAmcRule(),
                 DocumentOneLinkRule(),
                 DocumentAuthorityLetterRule(),
-                DocumentScheduleRule(),
                 DocumentBrdRule(),
                 DocumentFormalRequestRule(),
                 # Required field presence (9).

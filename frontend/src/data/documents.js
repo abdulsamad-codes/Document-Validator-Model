@@ -4,10 +4,13 @@
  * Mirrors the backend `DocumentType` enum (app/database/models/enums.py) so the
  * upload UI always sends a value the API accepts. Applications require a fixed
  * set of documents, some of them in multiple copies (a single 1-Link form is
- * uploaded three times, six Schedule of Charges agreements, etc.). The catalogue
+ * uploaded three times, three Tripartite Agreement copies, etc.). The catalogue
  * below is the single source of truth for those requirements: the dashboard's
  * per-application checklist and the upload page's slot grid both derive their
  * required sets and copy counts from here.
+ *
+ * SCHEDULE_OF_CHARGES intentionally has no entry (removed 2026-08-22): it is
+ * not a real standalone document in this checklist -- see CONTEXT.md.
  */
 
 export const DOCUMENT_GROUP_REQUIRED = 'required';
@@ -37,12 +40,6 @@ export const DOCUMENT_TYPES = [
     label: 'Tripartite Agreement',
     group: DOCUMENT_GROUP_REQUIRED,
     requiredCopies: 3,
-  },
-  {
-    type: 'SCHEDULE_OF_CHARGES',
-    label: 'Schedule of Charges Agreement (Sub-Biller)',
-    group: DOCUMENT_GROUP_REQUIRED,
-    requiredCopies: 6,
   },
   {
     type: 'BUSINESS_REQUIREMENT_DOCUMENT',
@@ -94,7 +91,7 @@ export const SUPPORTING_DOCUMENT_TYPES = DOCUMENT_TYPES.filter(
 
 /**
  * Total number of required uploads per application
- * (1 + 1 + 3 + 3 + 6 + 1 + 1 + 2 + 1).
+ * (1 + 1 + 3 + 3 + 1 + 1 + 2 + 1).
  */
 export const TOTAL_REQUIRED_DOCUMENTS = REQUIRED_DOCUMENT_TYPES.reduce(
   (sum, entry) => sum + entry.requiredCopies,

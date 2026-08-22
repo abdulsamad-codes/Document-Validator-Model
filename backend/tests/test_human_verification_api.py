@@ -96,8 +96,8 @@ def test_screen_contains_full_review_data(authenticated_client, storage_root):
     report = screen["report"]
     assert report["report_version"] == REVIEW_VERSION
     assert report["overall_status"] == "APPROVED"
-    assert len(report["document_summary"]) == 8
-    assert len(screen["documents"]) == 8
+    assert len(report["document_summary"]) == 7
+    assert len(screen["documents"]) == 7
     assert len(screen["visual_detections"]) == 11
     assert len(screen["fields"]) > 0
     assert all(field["normalized_value"] is not None for field in screen["fields"])

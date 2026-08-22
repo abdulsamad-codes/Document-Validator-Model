@@ -103,8 +103,8 @@ def test_complete_application(authenticated_client):
     assert report["missing_documents"] == []
     assert report["duplicate_documents"] == []
     assert report["unexpected_documents"] == []
-    assert len(report["uploaded_documents"]) == 8
-    assert len(report["required_documents"]) == 8
+    assert len(report["uploaded_documents"]) == 7
+    assert len(report["required_documents"]) == 7
     assert all(item["is_present"] for item in report["required_documents"])
     assert all(item["copy_count"] == 1 for item in report["required_documents"])
 
@@ -123,7 +123,7 @@ def test_missing_required_document(authenticated_client):
 
     assert report["status"] == "INCOMPLETE"
     assert report["missing_documents"] == [missing_type.value]
-    assert report["completion_percentage"] == round(100.0 * 7 / 8, 2)
+    assert report["completion_percentage"] == round(100.0 * 6 / 7, 2)
     assert report["duplicate_documents"] == []
     assert report["unexpected_documents"] == []
 
@@ -140,7 +140,7 @@ def test_multiple_missing_documents(authenticated_client):
         REQUIRED[0].value,
         REQUIRED[1].value,
     }
-    assert report["completion_percentage"] == round(100.0 * 6 / 8, 2)
+    assert report["completion_percentage"] == round(100.0 * 5 / 7, 2)
 
 
 def test_empty_application(authenticated_client):
@@ -240,7 +240,7 @@ def test_optional_documents_with_complete_set(authenticated_client):
     report = verify(authenticated_client, application_id)
 
     assert report["status"] == "COMPLETE"
-    assert len(report["uploaded_documents"]) == 9
+    assert len(report["uploaded_documents"]) == 8
 
 
 # --- Unexpected documents ---------------------------------------------------
