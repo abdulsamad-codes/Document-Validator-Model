@@ -21,6 +21,8 @@ function SessionTimeoutModal() {
   const lastActivity = useRef(null);
   const [warning, setWarning] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const modalRef = useRef(null);
+  const previousFocusRef = useRef(null);
 
   const handleActivity = useCallback(() => {
     lastActivity.current = Date.now();
@@ -30,6 +32,60 @@ function SessionTimeoutModal() {
   useEffect(() => {
     lastActivity.current = Date.now();
   }, []);
+
+  useEffect(() => {
+    if (!warning) {
+      if (previousFocusRef.current && typeof previousFocusRef.current.focus === 'function') {
+        previousFocusRef.current.focus();
+      }
+      previousFocusRef.current = null;
+      return undefined;
+    }
+
+    previousFocusRef.current = document.activeElement;
+
+    const timer = setTimeout(() => {
+      if (modalRef.current) {
+        const focusables = modalRef.current.querySelectorAll('button:not([disabled])');
+        if (focusables.length > 0) {
+          // Focus the stay signed in confirm button
+          const confirmBtn = modalRef.current.querySelector(`.${styles.confirm}`);
+          if (confirmBtn) {
+            confirmBtn.focus();
+          } else {
+            focusables[0].focus();
+          }
+        }
+      }
+    }, 0);
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Tab' && modalRef.current) {
+        const focusables = Array.from(
+          modalRef.current.querySelectorAll('button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')
+        );
+        if (focusables.length === 0) {
+          return;
+        }
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [warning]);
 
   useEffect(() => {
     ACTIVITY_EVENTS.forEach((event) =>
@@ -71,6 +127,7 @@ function SessionTimeoutModal() {
   return (
     <div className={styles.overlay} role="presentation">
       <div
+        ref={modalRef}
         className={styles.modal}
         role="alertdialog"
         aria-modal="true"

@@ -8,6 +8,7 @@ misconfiguration fails fast during application startup instead of at runtime.
 
 from functools import lru_cache
 from pathlib import Path
+import logging
 from typing import Literal
 
 from pydantic import Field, SecretStr, model_validator
@@ -177,6 +178,11 @@ class Settings(BaseSettings):
             _DEV_SECRET_KEY
         ):
             raise ValueError("SECRET_KEY must be overridden when ENVIRONMENT is production")
+        if self.environment == "development":
+            logging.getLogger(__name__).warning(
+                "ENVIRONMENT is set to 'development' (default). "
+                "Ensure ENVIRONMENT is set to 'production' in production deployments."
+            )
         return self
 
     @model_validator(mode="after")

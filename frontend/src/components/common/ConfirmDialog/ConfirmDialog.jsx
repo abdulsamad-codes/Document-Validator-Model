@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 import { AlertTriangle } from 'lucide-react';
 import Spinner from '../Spinner/Spinner';
@@ -32,17 +32,61 @@ function ConfirmDialog({
   onConfirm,
   onCancel,
 }) {
+  const dialogRef = useRef(null);
+  const previousFocusRef = useRef(null);
+
   useEffect(() => {
     if (!open) {
+      if (previousFocusRef.current && typeof previousFocusRef.current.focus === 'function') {
+        previousFocusRef.current.focus();
+      }
+      previousFocusRef.current = null;
       return undefined;
     }
+
+    previousFocusRef.current = document.activeElement;
+
+    // Focus the first focusable button inside the dialog on mount
+    const timer = setTimeout(() => {
+      if (dialogRef.current) {
+        const focusables = dialogRef.current.querySelectorAll('button:not([disabled])');
+        if (focusables.length > 0) {
+          focusables[0].focus();
+        }
+      }
+    }, 0);
+
     const handleKeyDown = (event) => {
       if (event.key === 'Escape' && !loading) {
         onCancel();
+        return;
+      }
+
+      if (event.key === 'Tab' && dialogRef.current) {
+        const focusables = Array.from(
+          dialogRef.current.querySelectorAll('button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')
+        );
+        if (focusables.length === 0) {
+          return;
+        }
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
       }
     };
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
   }, [open, loading, onCancel]);
 
   if (!open) {
@@ -52,6 +96,7 @@ function ConfirmDialog({
   return (
     <div className={styles.overlay} role="presentation" onMouseDown={onCancel}>
       <div
+        ref={dialogRef}
         className={styles.dialog}
         role="alertdialog"
         aria-modal="true"
