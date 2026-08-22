@@ -2,6 +2,41 @@
 
 Last updated: 2026-08-22. This file is the single source of truth for project state across sessions/tools — keep it current rather than trusting an earlier assistant summary in chat history.
 
+## 📍 Session picks up here (2026-08-22 end-of-day) — read this first
+
+Everything below is re-verified against actual repo state today (`git log`, `git branch -a`, live commit contents), not carried forward from an earlier chat's memory — a prior triage note in this same session had gone stale on several points (see the correction at the bottom of this section) and that mistake shouldn't repeat.
+
+**Done today, in order (all on `main`, all pushed):**
+1. `organization_name` garbage-capture fix on a line-wrapped "on behalf of the" clause (`6759c21`, closed `3b1cd41`).
+2. Tripartite `party_1link` regression fix — excluded Authority Letter preamble from the match (`6c26f8d`, closed `110f961`).
+3. `BLUR_THRESHOLD` false-positive fix — global blur variance replaced with tiled 95th-percentile (`5e20a81`, closed `ee6aeb1`).
+4. `audit/backend-verification-2026-08-20` merged into `main` (`904ab84`); branch deleted both local and remote (absent from `git branch -a`).
+5. Modal focus-trap fix cherry-picked (`9c28012`, adds focus traps to `SessionTimeoutModal`/`ConfirmDialog` + an environment startup log warning). Note: `4f8c390` (a stale `revenue_services_listed` BRD-test-assertion fix) landed adjacent to this in the log but is an unrelated, independent fix — not actually tied to the focus-trap change despite landing close together.
+6. `BilateralAgreementExtractor` rewritten against real content and real-sample validated for the first time ever (`fc27a24`).
+7. `CrossAccountHolderRule` unregistered for `BILATERAL_AGREEMENT` — `account_holder` is a structural honest-miss, matching the `CrossBranchCodeRule` precedent (`19a2e29`, fixtures updated `c56efee`).
+8. Tripartite `branch_code` investigated and accepted as a documented Bucket B gap — no real sample with a filled branch code exists yet (`106f757`).
+9. Login page background video asset committed, 41MB (`3230882`).
+10. CONTEXT.md docs cleanup batch: stale header date, missing merge-resolution entry, 5 stale Known Gaps entries corrected, `FormalRequestLetterExtractor` documented (`7859d68`).
+11. Repo-root `pytest.ini` added — fixes bare `pytest` crashing on collection of `backend/scripts/*.py` (`cb84b08`).
+12. `feature/afsana-validation-logs` fully reconciled: 2 real pieces landed (`6c794c9` — `OTHER_SUPPORTING_DOCUMENT`/`BULK_UPLOAD` frontend catalogue entries; `e2ce416` — hyphenated date format support in `_parse_date`), the rest correctly identified as superseded or unsafe and dropped (see the dated entries later in this file for the full reasoning, including the misrouted-`ONE_LINK_LETTER` finding that caught one drop). Branch deleted both local and remote.
+13. `feature/samad-doc-splitter` closed: one real bug recovered (`frontend/.env.example`'s active `VITE_API_BASE_URL` line, silently dropped in an earlier refactor, breaks the Vite dev-server CORS proxy — restored, `2dc9d5c`), the other 3 commits confirmed stale docs/config. Branch deleted both local and remote.
+14. PyMuPDF AGPL licensing decision logged and closed (`49e9b62`) — see the section directly below.
+15. `SCHEDULE_OF_CHARGES` removed from the required document checklist — `DocumentScheduleRule` was an unconditional, unsatisfiable `overall_status` blocker (any FAIL forces overall FAIL; zero real samples of this type exist in ~21 real files checked all session), not just a missing extractor. Its real content overlaps `BILATERAL_AGREEMENT`'s already-extracted Transaction Charges section (`6cd94ee`, decision documented `433ab2c`).
+16. `app.validation` module (`ValidationTask`/`ValidationRun`/`ValidationLog`) deleted outright — confirmed zero real callers anywhere, superseded in practice by `app.operator_workflow` (real, live triage queue) + `app.human_verification` (final decision), which already form the two-stage workflow this module was scaffolded for but never wired into. 18 files removed, 7 edited, one new Alembic migration (`fa41896`). CLAUDE.md and CONTEXT.md both updated to document `operator_workflow` and this module's fate (`89dbcb4`).
+
+**Correction to a stale in-session recollection**: earlier today's own triage note described items 12 ("afsana's remaining 3 commits — not yet reconciled"), 14 ("PyMuPDF — still open"), 15 ("Schedule of Charges — zero-sample gap still open") and CNIC_BACK ("still open") as outstanding. All four were already resolved by the time that note was written — re-verify against `git log`/`git branch -a` before trusting any in-session "still open" list, this file included, rather than propagating one forward.
+
+**Still genuinely open** (re-verified against the current Known Gaps section below, not assumed):
+- **AuditLog viewer decision** — written from 5 real call sites, never read back anywhere (no route, no UI); undecided whether it should ever be surfaced.
+- **ImageEnhancer dead code decision** — deskew/CLAHE/denoise, present but unused anywhere; undecided whether image enhancement belongs in the pipeline.
+- **CNIC_BACK** — not open as a *decision* (that was closed 2026-08-17: deliberately out of scope), but the standing condition (zero real `CNIC_BACK` samples exist) remains, so it stays unmapped until one turns up.
+- Rule-engine coverage gaps vs. `docs/Master_Rules_Combined.md` (blank-date enforcement, PayMin/Digital Muhasil/Paymere BCX terminology, organization-name cross-document consistency, per-page 1-Link signature, layout/point-numbering conformance, E-Stamp/Notary Public visual checks, Formal Request Letter subject-line, CNIC expiry/completeness) — no extraction support exists for any of them yet; don't add a rule before extraction.
+- Master Rules §3's AMC↔Tripartite/Bilateral branch-name consistency check has no implementing rule at all (found 2026-08-16).
+- AMC `issue_date` gap — a bare `"Date"` label alternative fixes 2 real samples but breaks 2 others; not landed, no safe fix found yet.
+- 1-Link Letter checklist-meaning mismatch (real samples are Participation Memoranda, not Section 4's actual required content) — flagged, needs a product/ops scope decision, not a code fix.
+- `fcc9fda`'s blank-page technical-validation check causes the 12 pre-existing `test_document_analysis_api.py` failures (previously logged elsewhere in this file as "13" — today's own suite runs isolated the 13th as an unrelated environmental artifact, a stale local `worker.heartbeat` file, not a 13th named code failure; the real, stable code-level count is 12). Needs to be raised with Zarghuna, not touched reactively.
+- Teammate bug triage: 28 confirmed issues in `docs/TEAMMATE_BUG_TRIAGE.md`, none fixed yet, pending an explicit scope decision.
+
 ## ✅ Legal/Compliance Decision: PyMuPDF Licensing (closed 2026-08-22)
 
 `PyMuPDF` (imported as `fitz`) is used for PDF rendering/extraction throughout `document_processing` and `preprocessing`. The installed package is **dual-licensed AGPL-3.0 / Artifex Commercial License** — confirmed directly from the installed package's own metadata (`License-Expression`/`License` field), not from memory (foundation audit, Section 8). AGPL is the strongest copyleft license that exists: its network-use clause requires making the source code of the **entire application** available to any network users of this service, unless a commercial license has been obtained from Artifex.
