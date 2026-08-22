@@ -97,7 +97,18 @@ _STRONG_TITLE_PHRASES: list[tuple[DocumentType, tuple[str, ...]]] = [
             # Found 2026-08-18 on a real file (Confidential Data/); the same
             # title was also confirmed present, previously unidentified,
             # inside 3 other already-cached real samples from 2 other files.
-            "APPLICATION FORM (IN-DIRECT CUSTOMER)",
+            # Deliberately truncated before the final word (originally
+            # "...CUSTOMER)"): found 2026-08-22 on a 4th real file
+            # (GDC Alpurai Shangla) that this exact title OCR's as
+            # "...Customex)" -- a one-character misread past this file's
+            # own real content, confirmed nowhere else in the ~9-file real
+            # corpus that carries this phrase. A prefix match absorbs any
+            # future misread of this one word instead of hardcoding a fix
+            # for this specific typo. Verified zero false-positive risk:
+            # grepped this shorter prefix against every file in
+            # Confidential Data/.ocr_cache/ -- every real occurrence, in
+            # every file, is this same genuine title.
+            "APPLICATION FORM (IN-DIRECT",
             "ONELINK",
             "ONE-LINK",
             "1LINK",
@@ -153,8 +164,12 @@ _STRONG_TITLE_PHRASES: list[tuple[DocumentType, tuple[str, ...]]] = [
 #: MAX_COPIES_BY_DOCUMENT_TYPE's own documented intent ("three 1-Link forms
 #: uploaded per application"), not sections of one form, and must keep
 #: counting as separate copies (see test_split_mixed_repeated_copies_and_pairs).
+#: Must match the exact (possibly truncated) string stored in
+#: _STRONG_TITLE_PHRASES above, since split_bulk_pdf compares
+#: `matched_phrase` (the literal phrase that matched, not the detected
+#: type) against this set.
 _CONTINUATION_TITLE_PHRASES: frozenset[str] = frozenset(
-    {"APPLICATION FORM (IN-DIRECT CUSTOMER)"}
+    {"APPLICATION FORM (IN-DIRECT"}
 )
 
 #: Strong title phrases exempted from the header-zone gate -- matched

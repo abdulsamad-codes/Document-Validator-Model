@@ -250,6 +250,35 @@ def test_split_application_form_ends_before_a_genuinely_different_document():
     assert types == [DocumentType.ONE_LINK_LETTER, DocumentType.AUTHORITY_LETTER]
 
 
+def test_split_application_form_matches_despite_ocr_misread_of_last_word():
+    """Real GDC Alpurai Shangla.pdf OCR's this title as "...Customex)" (a
+    one-character misread of "Customer)") -- confirmed 2026-08-22 by
+    reading the real cached OCR text directly. The exact-string match that
+    fixed the other 3 real samples of this same title did not catch this
+    one; the phrase was narrowed to a prefix (drops the last word) so any
+    misread of it doesn't matter.
+    """
+    types = _doc_types([
+        "AUTHORITY LETTER\nUnrelated preceding document.",
+        "Application Form (In-Direct Customex)\nForm A, company details.",
+    ])
+    assert types == [DocumentType.AUTHORITY_LETTER, DocumentType.ONE_LINK_LETTER]
+
+
+def test_split_application_form_ocr_misread_still_groups_multipage():
+    """The prefix match must still support the multi-page continuation
+    grouping (_CONTINUATION_TITLE_PHRASES) even when the repeated title is
+    OCR-misread the same way on every page, matching GDC Alpurai Shangla's
+    real 2-of-3 pages carrying the identical "...Customex)" misread.
+    """
+    types = _doc_types([
+        "Application Form (In-Direct Customex)\nForm A, company details.",
+        "Application Form (In-Direct Customex)\nDirectors/partners table.",
+        "Application Form (In-Direct Customer)\nForm B, business information.",
+    ])
+    assert types == [DocumentType.ONE_LINK_LETTER]
+
+
 def _stamp_paper_boilerplate(lines: int = 30) -> str:
     """Simulate the fixed verification/QR boilerplate block real e-stamp
     paper pages carry before their actual title -- see
