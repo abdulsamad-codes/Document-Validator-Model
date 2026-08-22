@@ -46,10 +46,20 @@ Local Government & Rural Development Department
 """
 
 
-def test_detect_formal_request_letter():
-    """Detect formal request letter type from keyword scoring."""
+def test_detect_formal_request_letter_is_not_a_generic_keyword_category():
+    """detect_document_type must never recognise this type by keyword score.
+
+    FORMAL_REQUEST_LETTER is a real checklist type, routed exclusively via
+    the splitter's own title-anchored classification through
+    DocumentAnalysisService._CHECKLIST_TYPE_MAP -- not via this generic
+    4-category keyword scorer. A prior version of _DETECTION_KEYWORDS
+    briefly included this type, which caused every OTHER_SUPPORTING_DOCUMENT
+    (the splitter's own catch-all for unmatched content) to be silently
+    misclassified and confidently extracted as a Formal Request Letter
+    instead of honestly falling through to NEEDS_REVIEW.
+    """
     doc_type = detect_document_type(SYNTHETIC_FORMAL_REQUEST_LETTER)
-    assert doc_type is AnalyzedDocumentType.FORMAL_REQUEST_LETTER
+    assert doc_type is AnalyzedDocumentType.UNKNOWN
 
 
 def test_formal_request_letter_extraction():

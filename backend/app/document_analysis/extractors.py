@@ -1509,15 +1509,6 @@ _DETECTION_KEYWORDS: dict[AnalyzedDocumentType, list[tuple[str, int]]] = {
         ("tax year", 2),
         ("income tax", 1),
     ],
-    AnalyzedDocumentType.FORMAL_REQUEST_LETTER: [
-        ("formal request letter", 4),
-        ("formal request", 3),
-        ("request letter", 3),
-        ("onboarding as a sub-biller", 3),
-        ("managing director", 2),
-        ("kpitb", 2),
-        ("sub-biller", 2),
-    ],
 }
 
 class AccountMaintenanceCertificateExtractor(RegexExtractor):
