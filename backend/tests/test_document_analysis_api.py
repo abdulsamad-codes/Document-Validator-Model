@@ -73,18 +73,48 @@ PLAIN_TEXT = (
 
 #: Synthetic (fabricated, non-real) fixture mirroring docs/Master_Rules_Combined.md
 #: Section 7's structure for a Bilateral Agreement. Never real extracted values.
-BILATERAL_AGREEMENT_TEXT = """BILATERAL AGREEMENT
-This Agreement is made between the Bank and the Department.
-Department: Sample Regional Development Authority
+#: Real template wording (fabricated department/values) -- mirrors the real
+#: "AGREEMENT FOR DIGITAL PAYMENT COLLECTION VIA PAYMIR" structure confirmed
+#: 2026-08-22 against two independent real departments. The original version
+#: of this fixture (labeled "Department:"/"Section 5.2:"/"Account Title:"/
+#: "Effective Date:" fields, "PayMin" platform) matched neither real sample
+#: at all -- see BilateralAgreementExtractor's docstring and the matching
+#: fixture in test_document_analysis_engine.py for the full rewrite rationale.
+BILATERAL_AGREEMENT_TEXT = """AGREEMENT
+FOR DIGITAL PAYMENT COLLECTION VIA PAYMIR
+BETWEEN
+Khyber Pakhtunkhwa Information Technology Board
+AND
+Sample Regional Development Authority
 
-Section 5 - Transaction Charges
-Section 5.2: As per prevailing charges of 1-Link, PKR 15 per transaction, payable via PayMin.
+This Agreement is made and entered into on this 09 day of 03, 2026, at Peshawar,
+By and Between:
+Khyber Pakhtunkhwa Information Technology Board (KPITB), hereinafter referred as First party
+or Party A or Party 1;
+and
+Sample Regional Development Authority, Government of Khyber Pakhtunkhwa, Peshawar,
+having its registered office at Sample Road, Peshawar, hereinafter referred to as "Client" or
+Second Party or Party B or Party 2 which expression shall, unless repugnant to the context,
+include its successors-in-interests.
 
-Section 6 - Account Information
-Account Title: Sample Regional Development Authority
-Account Number: 9876543210
-IBAN: DE89370400440532013000
-Effective Date: 2026-01-15
+"PAYMIR" means Digital Payment Gateway developed by the KPITB.
+
+5. PAYMENT METHODS & CHARGES
+5.1.The following payment methods shall be available to citizens through Paymir:
+5.2.Transaction Charges:
+Amount in PKR (Transaction Range)
+Transaction Charges (Including 1-LINK)
+PKR 1-10,000
+PKR 25.00 per transaction
+6. DEPOSIT & DISBURSEMENT OF FUNDS
+6.1.All payments collected through Paymir shall be deposited directly into the provided Bank of
+the Sample Regional Development Authority as follow:
+Sr No
+Bank Name
+Account No
+01
+Bank of Fake Branch
+PK98FAKE00012345678901
 """
 
 #: Synthetic (fabricated, non-real) fixtures mirroring the checklist types.
@@ -546,10 +576,10 @@ def test_analyze_bilateral_agreement_runs_real_extraction(
     assert item["document_type"] == "BILATERAL_AGREEMENT"
     fields = item["extracted_fields"]
     assert fields["organization_name"] == "Sample Regional Development Authority"
-    assert fields["platform_name"] == "PayMin"
-    assert fields["account_number"] == "9876543210"
-    assert fields["iban"] == "DE89370400440532013000"
-    assert fields["effective_date"] == "2026-01-15"
+    assert fields["platform_name"] == "Paymir"
+    assert fields["account_number"] == "PK98FAKE00012345678901"
+    assert fields["iban"] == "PK98FAKE00012345678901"
+    assert fields["effective_date"] == "2026-03-09"
     assert item["confidence_score"] is not None
     assert item["confidence_score"] > 0.0
     assert item.get("message") is None
@@ -557,7 +587,7 @@ def test_analyze_bilateral_agreement_runs_real_extraction(
     stored = get_analysis_results(authenticated_client, application_id)
     stored_item = stored["items"][0]
     assert stored_item["document_type"] == "BILATERAL_AGREEMENT"
-    assert stored_item["extracted_fields"]["account_number"] == "9876543210"
+    assert stored_item["extracted_fields"]["account_number"] == "PK98FAKE00012345678901"
 
 
 def test_analyze_account_maintenance_certificate_runs_real_extraction(

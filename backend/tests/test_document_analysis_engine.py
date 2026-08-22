@@ -89,19 +89,61 @@ Currency: EUR
 #: Agreement -- department name, PayMin/Digital Muhasil/Paymere BCX platform
 #: terminology, a Section 5.2 PKR transaction-charge line and a Section 6
 #: account block. Never real extracted values.
-BILATERAL_AGREEMENT_TEXT = """BILATERAL AGREEMENT
-This Agreement is made between the Bank and the Department.
-Department: Sample Regional Development Authority
+#: Fabricated data (PK98FAKE IBAN -- checksum-valid so FormatIbanRule accepts
+#: it, unlike the other fixtures' PK99FAKE placeholders below -- "Sample"
+#: department), real template wording
+#: -- mirrors the real "AGREEMENT FOR DIGITAL PAYMENT COLLECTION VIA PAYMIR"
+#: structure confirmed 2026-08-22 against two independent real departments
+#: (Conservator Wildlife Peshawar Zoo, a second KP department). The original
+#: version of this fixture (labeled "Department:"/"Section 5.2:"/"Account
+#: Title:"/"Effective Date:" fields, "PayMin" platform) matched none of the
+#: two real samples at all -- replaced, not just re-asserted. Effective date
+#: filled ("this 09 day of 03, 2026") -- see the _UNFILLED variant below for
+#: the other real, confirmed template shape (blank date).
+BILATERAL_AGREEMENT_TEXT = """AGREEMENT
+FOR DIGITAL PAYMENT COLLECTION VIA PAYMIR
+BETWEEN
+Khyber Pakhtunkhwa Information Technology Board
+AND
+Sample Regional Development Authority
 
-Section 5 - Transaction Charges
-Section 5.2: As per prevailing charges of 1-Link, PKR 15 per transaction, payable via PayMin.
+This Agreement is made and entered into on this 09 day of 03, 2026, at Peshawar,
+By and Between:
+Khyber Pakhtunkhwa Information Technology Board (KPITB), hereinafter referred as First party
+or Party A or Party 1;
+and
+Sample Regional Development Authority, Government of Khyber Pakhtunkhwa, Peshawar,
+having its registered office at Sample Road, Peshawar, hereinafter referred to as "Client" or
+Second Party or Party B or Party 2 which expression shall, unless repugnant to the context,
+include its successors-in-interests.
 
-Section 6 - Account Information
-Account Title: Sample Regional Development Authority
-Account Number: 9876543210
-IBAN: DE89370400440532013000
-Effective Date: 2026-01-15
+"PAYMIR" means Digital Payment Gateway developed by the KPITB.
+
+5. PAYMENT METHODS & CHARGES
+5.1.The following payment methods shall be available to citizens through Paymir:
+5.2.Transaction Charges:
+Amount in PKR (Transaction Range)
+Transaction Charges (Including 1-LINK)
+PKR 1-10,000
+PKR 25.00 per transaction
+6. DEPOSIT & DISBURSEMENT OF FUNDS
+6.1.All payments collected through Paymir shall be deposited directly into the provided Bank of
+the Sample Regional Development Authority as follow:
+Sr No
+Bank Name
+Account No
+01
+Bank of Fake Branch
+PK98FAKE00012345678901
 """
+
+#: Same real template, unfilled effective-date clause -- confirmed real
+#: (one of the two real samples leaves this blank: "on this day of , 20__").
+#: Everything else identical to BILATERAL_AGREEMENT_TEXT.
+BILATERAL_AGREEMENT_TEXT_UNFILLED_DATE = BILATERAL_AGREEMENT_TEXT.replace(
+    "on this 09 day of 03, 2026, at Peshawar,",
+    "on this day of , 20__, at Peshawar,",
+)
 
 #: Synthetic (fabricated, non-real) fixtures mirroring the real prose-embedded
 #: Authority Letter template confirmed on two independent real departments in
@@ -434,16 +476,34 @@ def test_extract_unknown_type_raises():
 
 
 def test_extract_bilateral_agreement_fields():
+    """Real-sample-validated 2026-08-22 (Conservator Wildlife Peshawar Zoo +
+    a second independent department) -- see BilateralAgreementExtractor's
+    docstring for the full rewrite rationale. account_holder is a deliberate
+    honest miss, not asserted here: neither real sample's bank-account table
+    has an Account Title/Holder column, only Bank Name + Account No.
+    """
     fields = extract_fields(
         BILATERAL_AGREEMENT_TEXT, AnalyzedDocumentType.BILATERAL_AGREEMENT
     )
     assert fields["organization_name"] == "Sample Regional Development Authority"
-    assert fields["platform_name"] == "PayMin"
-    assert "PKR 15 per transaction" in fields["transaction_charges"]
-    assert fields["account_holder"] == "Sample Regional Development Authority"
-    assert fields["account_number"] == "9876543210"
-    assert fields["iban"] == "DE89370400440532013000"
-    assert fields["effective_date"] == "2026-01-15"
+    assert fields["platform_name"] == "Paymir"
+    assert "PKR 25.00 per transaction" in fields["transaction_charges"]
+    assert "account_holder" not in fields
+    assert fields["account_number"] == "PK98FAKE00012345678901"
+    assert fields["iban"] == "PK98FAKE00012345678901"
+    assert fields["effective_date"] == "2026-03-09"
+
+
+def test_extract_bilateral_agreement_fields_unfilled_date_is_honest_miss():
+    """The real template's execution-date clause is sometimes left blank
+    (confirmed real, one of the two real samples) -- must honestly miss
+    rather than guess a date, while every other field is unaffected."""
+    fields = extract_fields(
+        BILATERAL_AGREEMENT_TEXT_UNFILLED_DATE, AnalyzedDocumentType.BILATERAL_AGREEMENT
+    )
+    assert "effective_date" not in fields
+    assert fields["organization_name"] == "Sample Regional Development Authority"
+    assert fields["account_number"] == "PK98FAKE00012345678901"
 
 
 def test_bilateral_agreement_validators_and_scoring():

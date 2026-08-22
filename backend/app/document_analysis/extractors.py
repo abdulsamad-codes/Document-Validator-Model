@@ -92,6 +92,29 @@ def _as_iso_date_dotted(raw: str) -> str | None:
         return None
 
 
+def _as_iso_date_day_of_month(raw: str) -> str | None:
+    """Parse the real Bilateral Agreement template's execution-date clause
+    ("this <DD> day of <MM>, <YYYY>") and return it as an ISO string.
+
+    Deliberately separate from :func:`_as_iso_date`: confirmed against both
+    real cached samples, this template states the day-of-month and month as
+    two bare numbers in that order (not a month name), a shape none of the
+    other date parsers handle. Returns ``None`` both when the numbers don't
+    form a real date and -- just as importantly -- when the template's blanks
+    were never filled in (confirmed real: one of the two samples leaves this
+    clause entirely blank, "on this day of , 20__"), which never reaches this
+    parser at all since the pattern requires the digits to be present.
+    """
+    match = re.match(r"(\d{1,2})\s+day\s+of\s+(\d{1,2}),\s*(\d{4})", raw.strip())
+    if match is None:
+        return None
+    day, month, year = match.groups()
+    try:
+        return date(int(year), int(month), int(day)).isoformat()
+    except ValueError:
+        return None
+
+
 def _as_float(raw: str) -> float | None:
     """Parse an amount and return it as a float."""
     return _parse_amount(raw)
@@ -880,8 +903,14 @@ class TaxExtractor(RegexExtractor):
 #: Platform names docs/Master_Rules_Combined.md requires the agreement to
 #: name explicitly (Section 7, "Platform Terminology"). Matched literally
 #: rather than via a labeled regex since the term appears embedded in prose,
-#: not after a "Field:" label.
-_KNOWN_PLATFORM_NAMES: tuple[str, ...] = ("Digital Muhasil", "PayMin", "Paymere BCX")
+#: not after a "Field:" label. "Paymir" added 2026-08-22: confirmed real --
+#: both real cached samples define it verbatim ("'PAYMIR' means Digital
+#: Payment Gateway developed by the KPITB") and use it throughout; neither
+#: of the other three spec-guessed names appears in either real sample at
+#: all. Not a rename of an existing entry -- a fourth, real, previously
+#: unvalidated name; the other three are left in place since no real sample
+#: has yet confirmed or ruled them out.
+_KNOWN_PLATFORM_NAMES: tuple[str, ...] = ("Digital Muhasil", "PayMin", "Paymere BCX", "Paymir")
 
 
 def _as_platform_name(raw: str) -> str | None:
@@ -895,35 +924,105 @@ def _as_platform_name(raw: str) -> str | None:
 class BilateralAgreementExtractor(RegexExtractor):
     """Extracts structured fields from a Bilateral Agreement (SLA).
 
-    Field patterns are based on docs/Master_Rules_Combined.md Section 7
-    ("Bilateral Agreement (SLA)") rather than a labeled-field layout the way
-    the other extractors are, since the master rules describe this document
-    as prose/section-numbered rather than a "Label: value" form. Real-sample
-    validation against Confidential Data/ is still pending -- see the
-    docstring note in docs/IMPLEMENTATION_ROADMAP.md Phase 1 on why a single
-    pattern per type can't be trusted blind; patterns here should be revisited
-    once validated against actual OCR text.
+    Real-sample validated 2026-08-22 against the first two real samples ever
+    found for this type (Conservator Wildlife Peshawar Zoo and a second,
+    independent department -- both "AGREEMENT FOR DIGITAL PAYMENT COLLECTION
+    VIA PAYMIR" between KPITB and a real department, same template). The
+    original patterns below were written blind against
+    docs/Master_Rules_Combined.md Section 7 and, run against these two real
+    samples, scored 6 of 7 fields missing and the 7th (``account_number``) as
+    garbage -- a table row index ("01"), the same failure class already fixed
+    for AMC/Tripartite. Every field below was rewritten from what these two
+    real, cross-validated samples actually contain, not the spec:
+
+    organization_name previously required a labeled "Department:"/
+    "Organization Name:" field that does not exist anywhere in either real
+    sample. The real party-B name appears in prose, at the start of the
+    paragraph that follows the "...Party A;\\nand\\n" transition between the
+    two parties' definition paragraphs (confirmed identical boilerplate in
+    both samples) -- anchored on that fixed-width transition instead.
+
+    platform_name's three spec-guessed names (Digital Muhasil/PayMin/Paymere
+    BCX) appear in neither real sample; both instead define and use "PAYMIR"
+    throughout ("'PAYMIR' means Digital Payment Gateway developed by the
+    KPITB"). Added as a fourth known name -- the other three are left in
+    place since no real sample has confirmed or ruled them out yet.
+
+    transaction_charges was anchored on the literal string "Section 5.2",
+    which never appears -- the real numbering is bare "5.2." (no "Section"
+    prefix). The real content under it is also not a single line but a full
+    tiered PKR fee table (7 tiers, confirmed byte-identical boilerplate
+    across both real samples), so the capture now runs from the "5.2."
+    heading to the start of the next top-level numbered section ("6.
+    DEPOSIT & DISBURSEMENT...") rather than one line -- bounded by the
+    document's own real section structure, not a magic line count, and kept
+    as a multi-line value (like BusinessRequirementDocumentExtractor's
+    revenue_services_listed) since this is a human-review context field, not
+    a field anything else parses further.
+
+    account_holder/account_number/iban previously used the same label-
+    anchored same-line regexes already documented as producing the row-index
+    ("01") garbage-capture bug for AMC/Tripartite before their fix. Both real
+    samples have the identical stacked "Sr No / Bank Name / Account No"
+    column-table shape that fix's shared structural parser
+    (``_extract_bank_account_block``) already recognizes and handles
+    correctly out of the box -- reused via an ``extract()`` override below,
+    the same convention TripartiteAgreementExtractor already uses. Neither
+    real sample's table has an "Account Title"/"Account Holder" column at
+    all (only Bank Name + Account No), so account_holder is an honest,
+    structural miss for this document type -- not force-mapped from the bank
+    name, which would be a different, wrong value. The regex patterns are
+    kept as-is for layouts the structural parser doesn't recognize, matching
+    the same fallback convention.
+
+    effective_date's real clause ("...made and entered into on this <DD> day
+    of <MM>, <YYYY>...") states the day-of-month and month as two bare
+    numbers, not the "DD Month YYYY"/slash/ISO shapes the shared date parsers
+    handle -- a dedicated parser (``_as_iso_date_day_of_month``) was added.
+    One of the two real samples leaves this clause's blanks entirely unfilled
+    ("on this day of , 20__") -- confirmed to honestly miss rather than guess,
+    since the pattern requires the digits to be present at all.
+
+    **Verified after, against both real samples**: organization_name,
+    platform_name, transaction_charges, account_number and iban now extract
+    correctly on both; effective_date extracts correctly on the one sample
+    that states it and honestly misses on the one that doesn't;
+    account_holder honestly misses on both (matches the real table shape, not
+    a regression). See CONTEXT.md for the full field-by-field before/after.
     """
 
     document_type = AnalyzedDocumentType.BILATERAL_AGREEMENT
 
     _patterns = {
         "organization_name": re.compile(
-            r"(?:Department|Organization|Organisation)\s*(?:Name)?\s*[:|-]\s*(.+)",
-            re.IGNORECASE | re.MULTILINE,
+            # Fixed-width lookbehind on the parties' paragraph-transition
+            # boilerplate ("...Party A;\nand\n"), confirmed identical in both
+            # real samples; captures up to the first comma or "(" so a
+            # trailing "(KP-PSRA)"-style abbreviation is left for a human to
+            # read in context rather than swallowed into the value.
+            r"(?<=;\nand\n)([^,\n(]+)",
         ),
         "platform_name": re.compile(
-            r"(Digital Muhasil|PayMin|Paymere BCX)",
+            r"(Digital Muhasil|PayMin|Paymere BCX|Paymir)",
             re.IGNORECASE,
         ),
         "transaction_charges": re.compile(
-            # Anchored to "Section 5.2" specifically (not a bare "Section 5" or
-            # "Transaction Charges" heading, which docs/Master_Rules_Combined.md
-            # Section 7 shows appearing earlier as a section title on its own
-            # line and would otherwise match first and capture the title, not
-            # the actual PKR charge line 5.2 introduces).
-            r"Section\s*5\.2\s*[:.\-]?\s*(.+)",
-            re.IGNORECASE | re.MULTILINE,
+            # Two stop conditions, either one ending the capture -- both
+            # confirmed necessary against real samples, not defensive:
+            # (1) an ALL-CAPS section-header line ("6. DEPOSIT & DISBURSEMENT
+            # OF FUNDS"), not just any numbered line -- a bare \d+\. boundary
+            # latches onto the sentence-case "1. Open your mobile camera..."
+            # how-to-verify list on an e-stamp verification page one real
+            # sample inserts before its own "6." section; (2) the OCR cache's
+            # own "--- page break ---" marker (inserted by the caching tool
+            # between pages, never real document content) -- present exactly
+            # once in that same real sample, right where the stamp-page is
+            # inserted, and absent in the other (clean, no intervening page)
+            # sample. Together they stop cleanly on both: the header alone
+            # would still capture the whole intervening stamp page as noise.
+            r"5\.2\.?\s*Transaction Charges:?\s*\n(.*?)"
+            r"(?=\n\d+\.\s+(?-i:[A-Z][A-Z\s&,]*)\n|\n--- page break ---\n)",
+            re.IGNORECASE | re.DOTALL,
         ),
         "account_holder": re.compile(
             r"(?:Account Title|Account Holder|Account Name)\s*[:|-]?\s*(.+)",
@@ -938,15 +1037,26 @@ class BilateralAgreementExtractor(RegexExtractor):
             re.IGNORECASE,
         ),
         "effective_date": re.compile(
-            r"(?:Effective Date|Date of Agreement)\s*[:|-]?\s*([A-Za-z0-9\-/.]+)",
-            re.IGNORECASE | re.MULTILINE,
+            r"on\s+this\s+(\d{1,2}\s+day\s+of\s+\d{1,2},\s*\d{4})",
+            re.IGNORECASE,
         ),
     }
 
     _post = {
         "platform_name": _as_platform_name,
-        "effective_date": _as_iso_date,
+        "effective_date": _as_iso_date_day_of_month,
     }
+
+    def extract(self, text: str) -> dict[str, Any]:
+        # Structural parser takes precedence for account_holder/account_number
+        # /iban -- see the class docstring. Regex patterns above remain as the
+        # fallback for layouts the structural parser doesn't recognize.
+        fields = super().extract(text)
+        block = _extract_bank_account_block(text)
+        for key in ("account_holder", "account_number", "iban"):
+            if key in block:
+                fields[key] = block[key]
+        return fields
 
 
 class AuthorityLetterExtractor(RegexExtractor):
