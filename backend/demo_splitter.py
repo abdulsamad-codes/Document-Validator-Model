@@ -22,15 +22,25 @@ print()
 with open(PDF_PATH, "rb") as f:
     content = f.read()
 
-results = DocumentSplitter.split_bulk_pdf(content)
+result = DocumentSplitter.split_bulk_pdf(content)
 
-print(f"✅ Total documents detected: {len(results)}")
+print(f"✅ Total documents detected: {len(result.documents)}")
 print()
 print("Breakdown:")
 print("-" * 40)
-for i, (doc_type, pdf_bytes) in enumerate(results, 1):
+for i, (doc_type, pdf_bytes) in enumerate(result.documents, 1):
     size_kb = len(pdf_bytes) / 1024
     print(f"  {i}. {doc_type.value:<45} ({size_kb:.1f} KB)")
+
+if result.warnings:
+    print()
+    print(f"⚠️  {len(result.warnings)} possible cross-document absorption warning(s):")
+    for warning in result.warnings:
+        print(
+            f"  - document #{warning.document_index + 1} "
+            f"({warning.document_type.value}): page {warning.page_number + 1} "
+            f"weakly matches {warning.weakly_matched_type.value}"
+        )
 
 print()
 print("=" * 60)

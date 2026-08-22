@@ -254,11 +254,12 @@ class DocumentProcessingService:
             with open(path, "rb") as f:
                 content = f.read()
 
-            split_results = DocumentSplitter.split_bulk_pdf(
-                content, 
+            split_result = DocumentSplitter.split_bulk_pdf(
+                content,
                 max_bytes=get_settings().max_upload_size_mb * 1024 * 1024,
                 ocr_engine=self._engine_factory()
             )
+            split_results = split_result.documents
 
             batch_counts: dict[DocumentType, int] = {}
             for doc_type, _ in split_results:
@@ -324,6 +325,31 @@ class DocumentProcessingService:
                 )
 
             self._documents.create_many(documents=created_documents)
+
+            if split_result.warnings:
+                # Surfaces the splitter's absorption-disagreement signal
+                # (app/preprocessing/splitter.py::AbsorptionWarning, logged
+                # since c236ba2 but never visible to a human) the same way
+                # the too-many-copies case above already is: an
+                # operator-visible note on the application, not a silent
+                # console-only log line. Grouped per affected document so
+                # one blob with several absorbed pages produces one note,
+                # not one line per page.
+                warnings_by_document: dict[int, list[str]] = {}
+                for warning in split_result.warnings:
+                    warnings_by_document.setdefault(warning.document_index, []).append(
+                        f"page {warning.page_number + 1} weakly matches "
+                        f"{warning.weakly_matched_type.value}"
+                    )
+                for document_index, page_notes in warnings_by_document.items():
+                    flagged_document = created_documents[document_index]
+                    self._flag_for_manual_review(
+                        application_id,
+                        f"{flagged_document.document_type.value} "
+                        f"(copy {flagged_document.copy_number}) may contain merged "
+                        f"content from another document: {'; '.join(page_notes)}. "
+                        f"Flagged for manual review.",
+                    )
 
             TechnicalValidationService(self._db).validate(application_id=application_id)
 

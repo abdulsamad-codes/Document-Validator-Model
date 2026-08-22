@@ -26,6 +26,11 @@ def _make_pdf_with_text(pages: list[str]) -> bytes:
 
 
 def _split(page_texts: list[str]) -> list[tuple[DocumentType, bytes]]:
+    return DocumentSplitter.split_bulk_pdf(_make_pdf_with_text(page_texts)).documents
+
+
+def _split_full(page_texts: list[str]):
+    """Return the full ``SplitResult`` (documents + absorption warnings)."""
     return DocumentSplitter.split_bulk_pdf(_make_pdf_with_text(page_texts))
 
 
@@ -338,6 +343,62 @@ def test_split_absorption_disagreement_is_logged_but_does_not_split(caplog):
         "possible cross-document absorption" in record.message
         for record in caplog.records
     )
+
+
+def test_split_absorption_disagreement_is_returned_as_structured_warning():
+    """The same disagreement must also be returned as an AbsorptionWarning,
+    not just logged -- this is what a caller with a DB session (see
+    document_processing/services.py) uses to flag the document for a human
+    instead of relying on a console-only log line.
+    """
+    result = _split_full([
+        "TRIPARTITE AGREEMENT\nPage 1.",
+        "This page mentions an authority letter in passing, deep in prose, "
+        "not as its own header -- so it carries weak but not strong evidence.",
+    ])
+
+    assert len(result.documents) == 1
+    assert result.documents[0][0] == DocumentType.TRIPARTITE_AGREEMENT
+    assert len(result.warnings) == 1
+    warning = result.warnings[0]
+    assert warning.document_index == 0
+    assert warning.document_type == DocumentType.TRIPARTITE_AGREEMENT
+    assert warning.page_number == 1
+    assert warning.weakly_matched_type == DocumentType.AUTHORITY_LETTER
+
+
+def test_split_no_warnings_when_every_document_matches_strongly():
+    """The common, healthy case: no absorption disagreement anywhere must
+    produce an empty warnings list, not just an absent log line.
+    """
+    result = _split_full([
+        "TRIPARTITE AGREEMENT\nPage 1.",
+        "AUTHORITY LETTER\nPage 2.",
+    ])
+
+    assert len(result.documents) == 2
+    assert result.warnings == []
+
+
+def test_split_multiple_absorbed_pages_in_one_group_produce_one_warning_each():
+    """Several disagreeing pages absorbed into the same open group must each
+    surface their own warning, all indexed to the same document.
+    """
+    result = _split_full([
+        "TRIPARTITE AGREEMENT\nPage 1.",
+        "This page mentions an authority letter in passing, deep in prose, "
+        "not as its own header -- so it carries weak but not strong evidence.",
+        "This page mentions a business requirement document in passing, deep "
+        "in prose, not as its own header -- weak evidence only.",
+    ])
+
+    assert len(result.documents) == 1
+    assert len(result.warnings) == 2
+    assert {w.document_index for w in result.warnings} == {0}
+    assert {w.weakly_matched_type for w in result.warnings} == {
+        DocumentType.AUTHORITY_LETTER,
+        DocumentType.BUSINESS_REQUIREMENT_DOCUMENT,
+    }
 
 
 def test_classify_text_authority_letter():

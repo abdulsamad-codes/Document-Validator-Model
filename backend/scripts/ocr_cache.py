@@ -93,7 +93,7 @@ def _split_and_cache_all(
         Mapping of (document_type, copy_number) -> cache file path.
     """
     content = source_file.read_bytes()
-    split_docs = DocumentSplitter.split_bulk_pdf(content, ocr_engine=engine)
+    split_docs = DocumentSplitter.split_bulk_pdf(content, ocr_engine=engine).documents
 
     slug = _slug(source_file.name)
     CACHE_DIR.mkdir(parents=True, exist_ok=True)

@@ -9,6 +9,7 @@ queue-ready ``Document`` rows.
 """
 
 import logging
+from typing import NamedTuple
 
 import pymupdf as fitz
 
@@ -19,6 +20,35 @@ from app.upload.exceptions import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class AbsorptionWarning(NamedTuple):
+    """One page that weakly matched a different type than its open group.
+
+    Surfaces the disagreement `split_bulk_pdf` already logs
+    (``c236ba2``) as structured data instead of a console-only log line,
+    so a caller with a database session can attach it to the resulting
+    ``Document`` row for a human to actually see -- see the
+    ``_flag_for_manual_review`` pattern in
+    ``document_processing/services.py``/``upload/services.py``, which
+    already does exactly this for the related "too many copies" case.
+    """
+
+    document_index: int
+    document_type: DocumentType
+    page_number: int
+    weakly_matched_type: DocumentType
+
+
+class SplitResult(NamedTuple):
+    """Return shape of :meth:`DocumentSplitter.split_bulk_pdf`.
+
+    ``documents`` keeps the original ``list[tuple[DocumentType, bytes]]``
+    shape callers already rely on; ``warnings`` is additive.
+    """
+
+    documents: list[tuple[DocumentType, bytes]]
+    warnings: list[AbsorptionWarning]
 
 #: Fraction of the page height treated as the header (title) region. Matches
 #: here are *strong* boundary evidence; matches deeper in the page are treated
@@ -274,7 +304,7 @@ class DocumentSplitter:
         *,
         max_bytes: int | None = None,
         ocr_engine: object | None = None,
-    ) -> list[tuple[DocumentType, bytes]]:
+    ) -> SplitResult:
         """Split in-memory PDF ``content`` into categorized document bytes.
 
         The caller is expected to have already enforced the upload size limit;
@@ -288,8 +318,12 @@ class DocumentSplitter:
                 rejected with :class:`FileTooLargeException`.
 
         Returns:
-            A list of ``(DocumentType, PDF bytes)``, one entry per logical
-            document. A valid PDF that yields no logical documents is rejected.
+            A :class:`SplitResult`: ``documents`` is a list of
+            ``(DocumentType, PDF bytes)``, one entry per logical document (a
+            valid PDF that yields no logical documents is rejected);
+            ``warnings`` lists every page that was silently absorbed into an
+            open document despite weakly matching a different type --
+            ``document_index`` indexes into ``documents``.
 
         Raises:
             InvalidFileTypeException: When the content is empty, is not a
@@ -315,6 +349,7 @@ class DocumentSplitter:
             ) from exc
 
         split_documents: list[tuple[DocumentType, bytes]] = []
+        warnings: list[AbsorptionWarning] = []
         current_type: DocumentType | None = None
         current_pages: list[int] = []
         #: The strong-title phrase that opened/last extended current_pages,
@@ -322,6 +357,27 @@ class DocumentSplitter:
         #: that exact phrase extend the same document instead of starting a
         #: new copy. None for any other phrase (or no phrase yet).
         current_continuation_phrase: str | None = None
+        #: (page_number, weakly_matched_type) pairs collected for the
+        #: currently-open group -- flushed into `warnings`, indexed against
+        #: `split_documents`, whenever that group is finalized below.
+        pending_warnings: list[tuple[int, DocumentType]] = []
+
+        def _finalize_current_group() -> None:
+            split_documents.append(
+                (current_type, cls._create_pdf(document, current_pages))
+            )
+            if pending_warnings:
+                document_index = len(split_documents) - 1
+                for page_num, weak_type in pending_warnings:
+                    warnings.append(
+                        AbsorptionWarning(
+                            document_index=document_index,
+                            document_type=current_type,
+                            page_number=page_num,
+                            weakly_matched_type=weak_type,
+                        )
+                    )
+                pending_warnings.clear()
 
         try:
             for page_num in range(len(document)):
@@ -345,9 +401,7 @@ class DocumentSplitter:
                     # Strong header/title evidence marks a fresh document —
                     # even when it equals the current type (repeated copies).
                     if current_pages:
-                        split_documents.append(
-                            (current_type, cls._create_pdf(document, current_pages))
-                        )
+                        _finalize_current_group()
                     current_type = detected_type or DocumentType.OTHER_SUPPORTING_DOCUMENT
                     current_pages = [page_num]
                     current_continuation_phrase = (
@@ -373,6 +427,7 @@ class DocumentSplitter:
                             detected_type.value,
                             current_type.value if current_type else "OTHER_SUPPORTING_DOCUMENT",
                         )
+                        pending_warnings.append((page_num, detected_type))
                     current_pages.append(page_num)
                 else:
                     # First page without strong evidence: weak phrases only type
@@ -382,7 +437,7 @@ class DocumentSplitter:
                     current_continuation_phrase = None
 
             if current_pages:
-                split_documents.append((current_type, cls._create_pdf(document, current_pages)))
+                _finalize_current_group()
         finally:
             document.close()
 
@@ -392,7 +447,7 @@ class DocumentSplitter:
             )
 
         logger.info("Split bulk PDF into %s documents", len(split_documents))
-        return split_documents
+        return SplitResult(documents=split_documents, warnings=warnings)
 
     @classmethod
     def _classify_page(
