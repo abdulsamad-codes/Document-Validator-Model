@@ -705,7 +705,12 @@ def test_analyze_business_requirement_document_runs_real_extraction(
     assert item["document_type"] == "BUSINESS_REQUIREMENT_DOCUMENT"
     fields = item["extracted_fields"]
     assert fields["digitization_intent_confirmed"] == "KPITB's FinTech Unit"
-    assert fields["revenue_services_listed"] == "prescribed fees"
+    assert fields["revenue_services_listed"] == (
+        "prescribed fees at each facility\n"
+        "office. This office is already collaborating with KPITB on a Management\n"
+        "Information System and plans to integrate digital payment solutions\n"
+        "through KPITB's FinTech Unit within the system."
+    )
     assert item["confidence_score"] is not None
     assert item["confidence_score"] > 0.0
     assert item.get("message") is None
