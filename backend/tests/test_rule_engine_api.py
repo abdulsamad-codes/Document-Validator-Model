@@ -39,28 +39,60 @@ VALIDATION_RESULTS_URL = "/validation-results"
 
 RULE_ENGINE_VERSION = "1.0.0"
 
-#: Synthetic Bilateral Agreement text (never real data) carrying the same
-#: account_holder/account_number/iban values as BANK_STATEMENT_TEXT, so the
-#: cross-document rules below can compare BILATERAL_AGREEMENT against
-#: ACCOUNT_MAINTENANCE_CERTIFICATE/TRIPARTITE_AGREEMENT the same way they did
-#: before Phase 1 gave BILATERAL_AGREEMENT its own real extractor (previously
-#: BANK_STATEMENT_TEXT was reused verbatim and misrouted through the generic
-#: keyword-based classifier regardless of storage type -- see
-#: document_analysis/services.py's routing-precedence fix). Deliberately has
-#: no statement_period: a Bilateral Agreement doesn't carry one, so
-#: CROSS_PERIOD_MATCH is expected to FAIL below, not PASS.
-BILATERAL_STATEMENT_TEXT = """BILATERAL AGREEMENT
-This Agreement is made between the Bank and the Department.
-Department: Sample Regional Development Authority
+#: Synthetic Bilateral Agreement text (never real data), real-template-shaped
+#: 2026-08-22 to match BilateralAgreementExtractor's real-sample rewrite (see
+#: that class's docstring and test_document_analysis_engine.py's fixture of
+#: the same shape) -- the previous version used a labeled "Department:"/
+#: "Section 5.2:"/"Account Title:" shape that matched neither real sample and
+#: is honestly missing under the rewritten patterns.
+#:
+#: account_number/iban deliberately carry the SAME values as
+#: ACCOUNT_MAINTENANCE_CERTIFICATE_CROSS_DOC_TEXT/TRIPARTITE_AGREEMENT_CROSS_DOC_TEXT
+#: below, via a combined "Account No./IBAN: <number>/<iban>" label the shared
+#: structural parser (_extract_bank_account_block) splits into separate
+#: account_number and iban values -- so CROSS_ACCOUNT_NUMBER_MATCH/
+#: CROSS_IBAN_MATCH below still have something real to compare. No
+#: "Account Title"/"Account Holder" label is present at all: real Bilateral
+#: Agreement bank tables never have one (confirmed on two independent real
+#: samples -- see BilateralAgreementExtractor's docstring), which is exactly
+#: why BILATERAL_AGREEMENT was removed from CrossAccountHolderRule's
+#: participants (cross_document_rules.py) -- account_holder is not compared
+#: against this fixture by that rule any more.
+#:
+#: Deliberately has no statement_period: a Bilateral Agreement doesn't carry
+#: one, so CROSS_PERIOD_MATCH is expected to FAIL below, not PASS (rule is
+#: actually unregistered -- see the other fixture files' matching comment).
+BILATERAL_STATEMENT_TEXT = """AGREEMENT
+FOR DIGITAL PAYMENT COLLECTION VIA PAYMIR
+BETWEEN
+Khyber Pakhtunkhwa Information Technology Board
+AND
+Sample Regional Development Authority
 
-Section 5 - Transaction Charges
-Section 5.2: As per prevailing charges of 1-Link, PKR 15 per transaction, payable via PayMin.
+This Agreement is made and entered into on this 09 day of 03, 2026, at Peshawar,
+By and Between:
+Khyber Pakhtunkhwa Information Technology Board (KPITB), hereinafter referred as First party
+or Party A or Party 1;
+and
+Sample Regional Development Authority, Government of Khyber Pakhtunkhwa, Peshawar,
+having its registered office at Sample Road, Peshawar, hereinafter referred to as "Client" or
+Second Party or Party B or Party 2 which expression shall, unless repugnant to the context,
+include its successors-in-interests.
 
-Section 6 - Account Information
-Account Title: John A. Doe
-Account Number: 1234567890
-IBAN: DE89370400440532013000
-Effective Date: 2026-01-15
+"PAYMIR" means Digital Payment Gateway developed by the KPITB.
+
+5. PAYMENT METHODS & CHARGES
+5.1.The following payment methods shall be available to citizens through Paymir:
+5.2.Transaction Charges:
+Amount in PKR (Transaction Range)
+Transaction Charges (Including 1-LINK)
+PKR 1-10,000
+PKR 25.00 per transaction
+6. DEPOSIT & DISBURSEMENT OF FUNDS
+6.1.All payments collected through Paymir shall be deposited directly into the provided Bank of
+the Sample Regional Development Authority as follow:
+Bank Name: Future Bank Limited
+Account No./IBAN: 1234567890/DE89370400440532013000
 """
 
 #: Synthetic (fabricated, non-real) Account Maintenance Certificate text

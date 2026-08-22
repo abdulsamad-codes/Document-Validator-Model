@@ -223,7 +223,14 @@ def test_report_approved_application(authenticated_client, storage_root):
     # extracted-field confidence scores to the fleet-wide mean instead of a
     # fully-covered 9-field bank statement's -- same shift pattern as the
     # entries above, verified via the actual test run.
-    assert extraction["overall_confidence"] == 0.9787
+    # Recalibrated again 2026-08-22: BILATERAL_STATEMENT_TEXT (test_rule_engine_api.py)
+    # was rewritten to the real Bilateral Agreement template shape (see
+    # BilateralAgreementExtractor's docstring) -- it no longer carries a
+    # labeled "Account Title" at all, since no real Bilateral Agreement sample
+    # has one, so its own template coverage is honestly lower than the old
+    # synthetic fixture's -- same shift pattern as the entries above, verified
+    # via the actual test run.
+    assert extraction["overall_confidence"] == 0.9701
 
     assert [item["code"] for item in report["recommendations"]] == [
         "NO_ACTION_REQUIRED"
@@ -308,7 +315,7 @@ def test_report_summary_condensed(authenticated_client, storage_root):
     assert summary["rule_pending_review"] == 0
     assert summary["field_count"] > 0
     # See test_report_approved_application's overall_confidence comment.
-    assert summary["overall_confidence"] == 0.9787
+    assert summary["overall_confidence"] == 0.9701
     assert summary["recommendation_count"] == 1
 
 

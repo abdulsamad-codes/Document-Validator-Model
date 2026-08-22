@@ -418,11 +418,16 @@ def test_cross_document_rule_fails_on_missing_participant():
 
 
 def test_cross_document_rule_fails_on_missing_field_in_participant():
+    # TRIPARTITE, not BILATERAL: CrossAccountHolderRule's participants no
+    # longer include BILATERAL_AGREEMENT (unregistered 2026-08-22 -- real
+    # Bilateral Agreement bank tables never carry an Account Title/Holder
+    # column, see cross_document_rules.py), so stripping BILATERAL's
+    # account_holder here would no longer affect this rule at all.
     ctx = _cross_document_context()
     ctx.fields = [
         field_value
         for field_value in ctx.fields
-        if not (field_value.field_name == "account_holder" and field_value.document_type == BILATERAL)
+        if not (field_value.field_name == "account_holder" and field_value.document_type == TRIPARTITE)
     ]
     result = run("CROSS_ACCOUNT_HOLDER_MATCH", ctx)
     assert result.status is ValidationStatus.FAIL
