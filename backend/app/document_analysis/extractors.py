@@ -52,9 +52,10 @@ def _parse_amount(raw: str) -> float | None:
 def _parse_date(raw: str) -> date | None:
     """Parse a date string into a :class:`datetime.date`.
 
-    Supports ISO (``YYYY-MM-DD``), slash (``DD/MM/YYYY``) and textual month
-    (``DD Mon YYYY``) representations, which cover the realistic OCR output of
-    financial documents.
+    Supports ISO (``YYYY-MM-DD``), slash (``DD/MM/YYYY``), hyphen
+    (``DD-MM-YYYY``) and textual month (``DD Mon YYYY``, ``DD-Mon-YYYY``)
+    representations, which cover the realistic OCR output of financial
+    documents.
 
     Args:
         raw: Raw date text.
@@ -63,7 +64,17 @@ def _parse_date(raw: str) -> date | None:
         The parsed date, or ``None`` when it cannot be parsed.
     """
     value = raw.strip()
-    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%Y/%m/%d", "%d %b %Y", "%d %B %Y"):
+    for fmt in (
+        "%Y-%m-%d",
+        "%d/%m/%Y",
+        "%m/%d/%Y",
+        "%Y/%m/%d",
+        "%d-%m-%Y",
+        "%d %b %Y",
+        "%d %B %Y",
+        "%d-%b-%Y",
+        "%d-%B-%Y",
+    ):
         try:
             return datetime.strptime(value, fmt).date()
         except ValueError:
