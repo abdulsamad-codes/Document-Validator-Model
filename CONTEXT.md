@@ -2,9 +2,11 @@
 
 Last updated: 2026-08-22. This file is the single source of truth for project state across sessions/tools — keep it current rather than trusting an earlier assistant summary in chat history.
 
-## ⚠️ Legal/Compliance Requirement: PyMuPDF Licensing
+## ✅ Legal/Compliance Decision: PyMuPDF Licensing (closed 2026-08-22)
 
-`PyMuPDF` (imported as `fitz`) is used for PDF rendering/extraction throughout `document_processing` and `preprocessing`. The installed package is **dual-licensed AGPL-3.0 / Artifex Commercial License** — confirmed directly from the installed package's own metadata (`License-Expression`/`License` field), not from memory (foundation audit, Section 8). AGPL is the strongest copyleft license that exists: its network-use clause would require making the source code of the **entire application** available to any network users of this service, unless a commercial license has been obtained from Artifex. **This is not a code issue — it is a legal determination the deploying organization must make before any production deployment.** Confirm whether an Artifex commercial license already covers this deployment; if not, this needs legal review before handover, independent of any other finding in this file.
+`PyMuPDF` (imported as `fitz`) is used for PDF rendering/extraction throughout `document_processing` and `preprocessing`. The installed package is **dual-licensed AGPL-3.0 / Artifex Commercial License** — confirmed directly from the installed package's own metadata (`License-Expression`/`License` field), not from memory (foundation audit, Section 8). AGPL is the strongest copyleft license that exists: its network-use clause requires making the source code of the **entire application** available to any network users of this service, unless a commercial license has been obtained from Artifex.
+
+**Decision (Abdul, 2026-08-22): staying on the free AGPL license, no commercial Artifex license.** Explicitly accepted: this means the full application source must be made available to anyone using the app over the network, per AGPL's network-use clause. Closed; no further legal review pending on this point.
 
 ## What this project is
 
