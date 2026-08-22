@@ -70,6 +70,18 @@ export const DOCUMENT_TYPES = [
     group: DOCUMENT_GROUP_REQUIRED,
     requiredCopies: 1,
   },
+  {
+    type: 'OTHER_SUPPORTING_DOCUMENT',
+    label: 'Other Supporting Document',
+    group: DOCUMENT_GROUP_SUPPORTING,
+    requiredCopies: 0,
+  },
+  {
+    type: 'BULK_UPLOAD',
+    label: 'Bulk Upload',
+    group: DOCUMENT_GROUP_SUPPORTING,
+    requiredCopies: 0,
+  },
 ];
 
 export const REQUIRED_DOCUMENT_TYPES = DOCUMENT_TYPES.filter(
