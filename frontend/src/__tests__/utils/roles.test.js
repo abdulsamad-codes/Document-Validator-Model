@@ -18,6 +18,7 @@ const ALL_NAV_IDS = [
   'human-review',
   'application-history',
   'performance',
+  'system-logs',
   'settings',
 ];
 
@@ -71,7 +72,9 @@ describe('role predicates', () => {
 describe('visibleNavigationFor', () => {
   it('hides strict IT reporting pages from the all-access Employee account', () => {
     expect(visibleIds({ role: 'Verification Officer' }).sort()).toEqual(
-      ALL_NAV_IDS.filter((id) => !['application-history', 'performance'].includes(id)).sort()
+      ALL_NAV_IDS.filter(
+        (id) => !['application-history', 'performance', 'system-logs'].includes(id)
+      ).sort()
     );
   });
 
@@ -93,9 +96,17 @@ describe('visibleNavigationFor', () => {
     );
   });
 
-  it('restricts IT to applications, processing, history and performance', () => {
+  it('restricts IT to applications, processing, history, performance and system logs', () => {
     expect(visibleIds({ role: 'IT' }).sort()).toEqual(
-      ['dashboard', 'applications', 'processing', 'application-history', 'performance', 'settings'].sort()
+      [
+        'dashboard',
+        'applications',
+        'processing',
+        'application-history',
+        'performance',
+        'system-logs',
+        'settings',
+      ].sort()
     );
   });
 

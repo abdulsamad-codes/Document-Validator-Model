@@ -39,6 +39,11 @@ vi.mock('../services/performance', () => ({
   listPerformanceApplications: vi.fn(() => Promise.resolve({ items: [], total: 0 })),
 }));
 
+vi.mock('../services/systemLogs', () => ({
+  listSystemLogs: vi.fn(() => Promise.resolve({ items: [], total: 0, offset: 0, limit: 50 })),
+  getSystemLog: vi.fn(),
+}));
+
 describe('Phase 1 frontend routes', () => {
   it('renders the Validation page at /validation', async () => {
     render(
@@ -138,6 +143,52 @@ describe('Phase 1 frontend routes', () => {
     );
     render(
       <MemoryRouter initialEntries={['/performance']}>
+        <App />
+      </MemoryRouter>
+    );
+    expect(await screen.findByText(/access denied/i)).toBeInTheDocument();
+  });
+
+  it('renders the System Logs page at /system-logs for allowed roles and denies for others', async () => {
+    // Employee allowed
+    vi.mocked(authService.getCurrentUser).mockImplementationOnce(() =>
+      Promise.resolve({ user: { id: 10, name: 'Employee', role: 'EMPLOYEE' } })
+    );
+    render(
+      <MemoryRouter initialEntries={['/system-logs']}>
+        <App />
+      </MemoryRouter>
+    );
+    expect(await screen.findByText(/no log entries found/i)).toBeInTheDocument();
+
+    // IT allowed
+    vi.mocked(authService.getCurrentUser).mockImplementationOnce(() =>
+      Promise.resolve({ user: { id: 11, name: 'It User', role: 'IT' } })
+    );
+    render(
+      <MemoryRouter initialEntries={['/system-logs']}>
+        <App />
+      </MemoryRouter>
+    );
+    expect(await screen.findByText(/no log entries found/i)).toBeInTheDocument();
+
+    // Operator denied
+    vi.mocked(authService.getCurrentUser).mockImplementationOnce(() =>
+      Promise.resolve({ user: { id: 12, name: 'Operator', role: 'OPERATOR' } })
+    );
+    render(
+      <MemoryRouter initialEntries={['/system-logs']}>
+        <App />
+      </MemoryRouter>
+    );
+    expect(await screen.findByText(/access denied/i)).toBeInTheDocument();
+
+    // Reviewer denied
+    vi.mocked(authService.getCurrentUser).mockImplementationOnce(() =>
+      Promise.resolve({ user: { id: 13, name: 'Reviewer', role: 'REVIEWER' } })
+    );
+    render(
+      <MemoryRouter initialEntries={['/system-logs']}>
         <App />
       </MemoryRouter>
     );

@@ -13,6 +13,7 @@ import PerformancePage from '../pages/Performance/PerformancePage';
 import PlaceholderPage from '../pages/Placeholder/PlaceholderPage';
 import ProcessingPage from '../pages/Processing/ProcessingPage';
 import SettingsPage from '../pages/Settings/SettingsPage';
+import SystemLogsPage from '../pages/SystemLogs/SystemLogsPage';
 import UploadDocumentsPage from '../pages/UploadDocuments/UploadDocumentsPage';
 import ValidationPage from '../pages/Validation/ValidationPage';
 import ValidationReportPage from '../pages/ValidationReport/ValidationReportPage';
@@ -22,12 +23,13 @@ import VerificationPage from '../pages/Verification/VerificationPage';
  * Application route table.
  *
  * The applications module owns the list, create, details and upload pages.
- * The Validation, Validation Report, Human Review, Application History and
- * Performance pages are real business workflows: Validation reviews
- * business-level completeness and drives the operator actions, Validation
- * Report shows the verification report, Human Review records the final
- * decision, and Application History / Performance (IT-only) give the IT team
- * a business-facing lifecycle and timing view. Every other sidebar entry
+ * The Validation, Validation Report, Human Review, Application History,
+ * Performance and System Logs pages are real business workflows: Validation
+ * reviews business-level completeness and drives the operator actions,
+ * Validation Report shows the verification report, Human Review records the
+ * final decision, and Application History / Performance / System Logs
+ * (IT-only) give the IT team a business-facing lifecycle, timing and audit
+ * view. Every other sidebar entry
  * resolves to the shared PlaceholderPage so no path returns a 404 and the
  * sidebar active state matches the route. Internal processing routes stay
  * reachable as placeholders but are not exposed in the sidebar. Admin/IT-only
@@ -38,7 +40,7 @@ import VerificationPage from '../pages/Verification/VerificationPage';
 const PLACEHOLDER_ITEMS = [
   ...NAV_ITEMS.filter(
     ({ id }) =>
-      !['dashboard', 'applications', 'processing', 'settings', 'validation', 'human-review', 'reports', 'application-history', 'performance'].includes(id)
+      !['dashboard', 'applications', 'processing', 'settings', 'validation', 'human-review', 'reports', 'application-history', 'performance', 'system-logs'].includes(id)
   ),
   ...ADMIN_NAV_ITEMS,
   ...INTERNAL_ROUTES,
@@ -59,6 +61,7 @@ function AppRoutes() {
         <Route path="settings" element={<SettingsPage />} />
         <Route path="application-history" element={<ApplicationHistoryPage />} />
         <Route path="performance" element={<PerformancePage />} />
+        <Route path="system-logs" element={<SystemLogsPage />} />
         <Route path="reports" element={<ValidationReportPage />} />
         <Route path="human-review" element={<HumanReviewPage />} />
         <Route path="validation" element={<ValidationPage />} />

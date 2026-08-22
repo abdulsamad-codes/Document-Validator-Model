@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   MessageSquare,
   RefreshCw,
+  ScrollText,
   Settings,
   UserCheck,
 } from 'lucide-react';
@@ -18,9 +19,9 @@ import {
  * Each section groups top-level links only. Feedback collection and Continuous
  * Learning are internal administrative functions and are deliberately not
  * sidebar entries: they hang off the Settings item as admin-only child links
- * and are surfaced on the Settings page. Application History and Performance
- * are IT-only operational views and are top-level System entries restricted
- * to the IT role. Internal document-processing stages (technical validation,
+ * and are surfaced on the Settings page. Application History, Performance and
+ * System Logs are IT-only operational views and are top-level System entries
+ * restricted to the IT role. Internal document-processing stages (technical validation,
  * extraction, confidence, normalisation, business rules, ...) are
  * intentionally absent: they run automatically as part of application
  * verification and will surface later inside an application's status view,
@@ -73,6 +74,13 @@ export const NAVIGATION = [
         label: 'Performance',
         path: '/performance',
         icon: BarChart3,
+        strictRoles: ['IT'],
+      },
+      {
+        id: 'system-logs',
+        label: 'System Logs',
+        path: '/system-logs',
+        icon: ScrollText,
         strictRoles: ['IT'],
       },
       {
